@@ -106,7 +106,7 @@ async function main() {
     (modern.startsWith("Pitch") || modern.startsWith("Selected Work"));
   const execNotCons =
     exec.startsWith("Executive Brief") &&
-    cons.startsWith("Situation Snapshot") &&
+    (cons.startsWith("Profile Summary") || cons.startsWith("Situation Snapshot")) &&
     !cons.includes("Signature Achievements");
   const noSharedChapters =
     !modern.includes("Chapter") &&

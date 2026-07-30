@@ -172,21 +172,21 @@ export const STRUCTURE_CATALOG: StructureDef[] = [
   {
     id: "consultant_band",
     name: "Consultant Band",
-    structureName: "SCQA Case-Led Proposal",
-    feel: "Consulting sales deck — situation, then outcomes, then case portfolio, then method and commercial close.",
-    spine: "Situation → Outcome Ledger → Case Portfolio → Method Toolkit → Commercial Next Step",
+    structureName: "Impact-Led Professional Pack",
+    feel: "Bold header band with clean professional sections — summary, skills, achievements, experience.",
+    spine: "Profile Summary → Core Skills → Key Achievements → Professional Experience → Education",
     literature: [
-      "McKinsey SCQA (Situation–Complication–Question–Answer) storytelling",
-      "Consulting case / proposal structure (cases before abstract claims)",
-      "Social proof (Cialdini tradition) + peak-end on client outcomes",
-      "Regulatory focus as content framing for enterprise buyers (Higgins) — not the section-order engine",
+      "Peak-end achievements before full history",
+      "Schema match via skills block",
+      "Consulting delivery evidence without sales-deck framing",
+      "Primacy of recent proof for enterprise buyers",
     ],
     expectedHeadings: [
-      "Situation Snapshot",
-      "Outcome Ledger",
-      "Case Portfolio",
-      "Method & Toolkit",
-      "Commercial Next Step",
+      "Profile Summary",
+      "Core Skills",
+      "Key Achievements",
+      "Professional Experience",
+      "Education",
     ],
   },
 ];
@@ -312,18 +312,18 @@ function buildExecutivePyramid(ctx: StructureCtx): ResumeSection[] {
     {
       heading: "Executive Brief",
       lines: [
-        `Recommendation: ${fn} as ${ctx.headline} for enterprise programs requiring ${ctx.cleanSkills.slice(0, 8).join(", ")}.`,
-        `Governing idea: functional ownership + stakeholder governance + release accountability under progressive tenure (~${ctx.yearsHint}+ years).`,
-        `Fit thesis: strongest match where transformation workstreams need audit-friendly evidence and vendor-ready coordination (${ctx.vendorName} ecosystems).`,
-        `Near-total JD skill coverage: ${ctx.cleanSkills.slice(0, 16).join(ctx.skillSeparator)}`,
-        ...ctx.summaryLines.slice(1, 6),
+        `${fn} is positioned as ${ctx.headline} with ~${ctx.yearsHint}+ years progressive SAP delivery.`,
+        `Strengths: functional ownership, stakeholder governance, and release accountability.`,
+        `Core skills: ${ctx.cleanSkills.slice(0, 14).join(ctx.skillSeparator)}`,
+        ...ctx.summaryLines.slice(1, 5),
       ].filter(Boolean),
     },
     {
       heading: "Signature Achievements",
-      lines: ctx.impactLines.map((l) =>
-        l.replace(/^[•▸→–\-]\s*/, "◆ ")
-      ),
+      lines: ctx.impactLines.map((l) => {
+        const body = l.replace(/^[•▸→–\-◆]\s*/, "").replace(/^OP-\d+\s+/i, "");
+        return `${ctx.bullet || "•"} ${body}`;
+      }),
     },
     {
       heading: "Leadership Engagements",
@@ -470,13 +470,14 @@ function buildMinimalSparse(ctx: StructureCtx): ResumeSection[] {
   const fn = firstName(ctx.candidateName);
   const recent = ctx.projects.filter((p) => p.era === "recent");
   const prior = ctx.projects.filter((p) => p.era !== "recent");
+  const bullet = ctx.bullet || "•";
   return [
     {
       heading: "Pitch",
       lines: [
-        `${fn} — ${ctx.headline}. ~${ctx.yearsHint}+ yrs progressive SAP delivery.`,
-        `Near-100% JD match: ${ctx.cleanSkills.slice(0, 14).join(" · ")}.`,
-        ...ctx.summaryLines.slice(3, 6),
+        `${fn} — ${ctx.headline}. ~${ctx.yearsHint}+ years progressive SAP delivery.`,
+        `Skills: ${ctx.cleanSkills.slice(0, 14).join(" · ")}.`,
+        ...ctx.summaryLines.slice(2, 5),
       ].filter(Boolean),
     },
     {
@@ -489,9 +490,12 @@ function buildMinimalSparse(ctx: StructureCtx): ResumeSection[] {
     {
       heading: "Selected Work",
       lines: [
-        ...ctx.impactLines.slice(0, 4),
+        ...ctx.impactLines.slice(0, 4).map((l) => {
+          const body = l.replace(/^[•▸→–\-◆]\s*/, "").replace(/^OP-\d+\s+/i, "");
+          return `${bullet} ${body}`;
+        }),
         "",
-        ...expLines(recent, ctx.cleanSkills, ctx.bullet, " · ", {
+        ...expLines(recent, ctx.cleanSkills, bullet, " · ", {
           maxBullets: 14,
           stackLabel: "Tools",
           titleStyle: "plain",
@@ -500,7 +504,7 @@ function buildMinimalSparse(ctx: StructureCtx): ResumeSection[] {
     },
     {
       heading: "Prior Roles",
-      lines: expLines(prior, ctx.cleanSkills, ctx.bullet, " · ", {
+      lines: expLines(prior, ctx.cleanSkills, bullet, " · ", {
         maxBullets: 10,
         stackLabel: "Tools",
         titleStyle: "plain",
@@ -508,65 +512,48 @@ function buildMinimalSparse(ctx: StructureCtx): ResumeSection[] {
     },
     {
       heading: "Footnotes",
-      lines: [
-        "Education & professional development on request.",
-        "SR SOFT LLC C2C/CTC representation.",
-      ],
+      lines: ["Education and professional development available on request."],
     },
   ];
 }
 
 /**
- * 6) SCQA case-led proposal (P0 fix: NOT claim→proof→portfolio like executive)
- * Cases open after a short situation; commercial CTA closes — opposite of pyramid answer-first.
+ * 6) Consultant band — professional impact-led pack (no sales-deck SCQA chatter).
  */
 function buildScqaCasePortfolio(ctx: StructureCtx): ResumeSection[] {
-  const fn = firstName(ctx.candidateName);
-  const topSkills = ctx.cleanSkills.slice(0, 8).join(", ");
+  const bullet = ctx.bullet || "•";
   return [
     {
-      heading: "Situation Snapshot",
+      heading: "Profile Summary",
+      lines: ctx.summaryLines.slice(0, 8),
+    },
+    {
+      heading: "Core Skills",
       lines: [
-        `SITUATION: Enterprise programs need a ${ctx.headline} who can own ${topSkills} end-to-end.`,
-        `COMPLICATION: Many profiles over-claim early tenure or mismatch domain tooling — buyers need progressive, audit-ready proof.`,
-        `QUESTION: Who can deliver with ~${ctx.yearsHint}+ years progressive depth and vendor-ready communication (${ctx.vendorName})?`,
-        `PREVIEW: ${fn} — near-100% JD skill coverage below; case portfolio and outcome ledger prove it.`,
-        `JD skills in scope: ${ctx.cleanSkills.slice(0, 18).join(ctx.skillSeparator)}`,
-        ...ctx.summaryLines.slice(3, 6),
+        ctx.cleanSkills.slice(0, 20).join(ctx.skillSeparator),
+        ctx.cleanSkills.slice(20).join(ctx.skillSeparator),
+        ...ctx.skillLines.filter((l) => !/^JD /i.test(l)),
       ].filter(Boolean),
     },
     {
-      heading: "Outcome Ledger",
-      lines: ctx.impactLines.map((l, i) => {
-        const body = l.replace(/^[•▸→–\-◆]\s*/, "");
-        return `OP-${String(i + 1).padStart(2, "0")}  ${body}`;
+      heading: "Key Achievements",
+      lines: ctx.impactLines.map((l) => {
+        const body = l.replace(/^[•▸→–\-◆]\s*/, "").replace(/^OP-\d+\s+/i, "");
+        return `${bullet} ${body}`;
       }),
     },
     {
-      heading: "Case Portfolio",
-      lines: expLines(ctx.projects, ctx.cleanSkills, ctx.bullet, ctx.skillSeparator, {
-        caseLabel: true,
-        titleStyle: "case",
-        stackLabel: "Engagement stack",
-        maxBullets: 18,
+      heading: "Professional Experience",
+      lines: expLines(ctx.projects, ctx.cleanSkills, bullet, ctx.skillSeparator, {
+        stackLabel: "Environment",
+        maxBullets: 16,
       }),
     },
     {
-      heading: "Method & Toolkit",
+      heading: "Education",
       lines: [
-        `Core toolkit: ${ctx.cleanSkills.slice(0, 16).join(ctx.skillSeparator)}`,
-        `Extended toolkit: ${ctx.cleanSkills.slice(16).join(ctx.skillSeparator)}`,
-        "Method: discover → design → configure/build → test (unit/SIT/UAT) → cutover → hypercare → KT.",
-        "Differentiators: progressive career integrity; domain-honest tooling; audit-friendly artifacts.",
-        "Partner tracks: PMO cadence, business workshops, technical interface coordination.",
-      ].filter((l) => !l.endsWith(": ")),
-    },
-    {
-      heading: "Commercial Next Step",
-      lines: [
-        `Represented by SR SOFT LLC for C2C/CTC staffing with ${ctx.vendorName}.`,
-        "Workshop, cutover, and hypercare coverage as scoped.",
-        "References and annex available for shortlisted opportunities — request case deep-dives by engagement.",
+        "Bachelor's degree or equivalent professional experience.",
+        "Continuous professional development in SAP process and delivery methods.",
       ],
     },
   ];

@@ -92,7 +92,7 @@ export function LayoutPicker({
                         ? "Growth narrative (Arc→Chapters→Milestones)"
                         : l.id === "modern_minimal"
                           ? "Proof-first dense (Pitch→Keywords→Work)"
-                          : "SCQA case deck (Situation→Outcomes→Cases)"}
+                          : "Impact pack (Summary→Skills→Achievements)"}
               </span>
               <span className="mt-0.5 block text-[11px] text-slate-600">
                 Aura:{" "}

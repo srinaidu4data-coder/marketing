@@ -27,6 +27,10 @@ import {
   type StructuredResume,
 } from "./templates";
 import { buildSectionsForLayout } from "./layout-structures";
+import {
+  extractContactFromMaster,
+  formatContactLine,
+} from "./extract-contact";
 
 /** Minimum bullets per project — denser packs for 4–5 page DOCX with heavy page-1 proof */
 export const MIN_BULLETS_PER_PROJECT = 18;
@@ -619,19 +623,20 @@ function buildLongSummary(
           ? "RAP/CDS extensibility, OData services, enhancement frameworks, performance-minded ABAP, and BTP side-by-side patterns"
           : "solution blueprinting, configuration baselines, interface contracts, test traceability matrices, and cutover orchestration";
 
-  // 10 sentences — dense first-page System-1 fit + near-100% JD keyword packing
+  // Professional summary only — no marketing/meta chatter (no "near-100%", no staffing pitch)
+  void vendorName;
   return [
-    `${first} is a ${headline} with approximately ${yearsHint}+ years of progressive SAP consulting across full-lifecycle implementations, rollouts, upgrades, and AMS models—positioned for immediate contribution on the open ${headline} requirement.`,
-    `Near-total role match on primary JD skills: ${kwPrimary}.`,
-    `Additional JD-aligned depth across: ${kwSecondary}.`,
-    `Brings modern enterprise IT fluency across ${jargon}, framed for large-scale transformation programs and multi-workstream PMO environments.`,
-    `Day-to-day strengths map directly to JD responsibilities: design workshops, configuration/build, interface validation, SIT/UAT ownership, defect triage, cutover readiness, and hypercare stabilization.`,
-    `Known for translating business process design into system implementation artifacts: blueprints, config trackers, interface designs, and UAT evidence packs that survive audit scrutiny.`,
-    `Career trajectory is intentionally progressive—early foundation in disciplined testing and documentation, mid-career expansion into functional ownership, and recent roles centered on workstream leadership, stakeholder alignment, and release accountability for partners such as ${vendorName}.`,
-    `Comfortable operating in US C2C/CTC staffing models with onsite/offshore collaboration, hypercare command cadence, and clear escalation paths during go-live windows.`,
-    `Technical claims are era-honest: platforms and modules appear only where consistent with each engagement’s timeframe, avoiding oversell on early roles while showcasing dense JD match on recent programs.`,
-    `Ready to apply hands-on ${headline} ownership with measurable delivery quality on high-stakes SAP programs requiring ${keywords.slice(0, 5).join(", ") || "domain depth"}.`,
-  ];
+    `${first} is a ${headline} with approximately ${yearsHint}+ years of progressive SAP consulting across full-lifecycle implementations, rollouts, upgrades, and AMS support models.`,
+    `Core technical focus includes ${kwPrimary}.`,
+    kwSecondary
+      ? `Additional strengths include ${kwSecondary}.`
+      : `Delivers configuration, testing, integration, and release-ready documentation across multi-workstream programs.`,
+    `Hands-on delivery across ${jargon}.`,
+    `Experienced in design workshops, configuration/build, interface validation, SIT/UAT, defect triage, cutover readiness, and hypercare stabilization.`,
+    `Produces implementation artifacts including blueprints, configuration trackers, interface designs, and UAT evidence packs.`,
+    `Career progression spans foundation delivery work, mid-level functional ownership, and recent workstream leadership with stakeholder and release accountability.`,
+    `Works effectively in onsite/offshore collaboration models with clear status cadence and escalation during go-live windows.`,
+  ].filter(Boolean);
 }
 
 function buildImpactSnapshot(
@@ -653,13 +658,13 @@ function buildImpactSnapshot(
           `Produced audit-ready documentation packs (config trackers, test matrices, go/no-go evidence) for regulated releases.`,
         ]
       : [
-          `Delivered end-to-end functional outcomes aligned to ${kwLine} on recent transformation programs.`,
+          `Delivered end-to-end functional outcomes on ${kwLine} across recent transformation programs.`,
           `Owned design-to-deploy artifacts: workshops, config baselines, test traceability, and cutover runbooks.`,
           `Improved release quality via structured defect triage, regression packs, and stakeholder sign-off discipline.`,
           `Partnered with integration and security teams on interface and authorization readiness for production waves.`,
-          `Completed hypercare and AMS knowledge transfer with measurable reduction in open severity defects.`,
-          `Mapped JD responsibilities into daily ownership: implement, configure, support, migrate, integrate, lead, design, and test.`,
-          `Built first-pass recruiter fit with quantified peaks plus full keyword coverage across recent engagements.`,
+          `Completed hypercare and AMS knowledge transfer with reduction in open severity defects.`,
+          `Executed implement, configure, test, integrate, and cutover activities with clear ownership and documentation.`,
+          `Produced audit-friendly evidence packs including config trackers, test matrices, and go-live readiness notes.`,
         ];
   return peaks.map((p) => `${bullet} ${p}`);
 }
@@ -728,26 +733,20 @@ function ensureStructuredJdCoverage(
     .slice(0, 30);
   if (!inject.length) return;
 
-  const alignmentLine = `JD keyword alignment (${jobTitle}): ${inject.join(" · ")}`;
-  // Prefer first skills / summary / brief section
+  // Inject as a plain skills line — no meta labels like "JD keyword alignment"
+  const skillsLine = inject.join(" · ");
   const skillIdx = sections.findIndex((s) =>
-    /competenc|skill|matrix|focus|keyword|differentiat|toolkit|method/i.test(s.heading)
+    /competenc|skill|matrix|focus|keyword|toolkit|method|technical/i.test(s.heading)
   );
   if (skillIdx >= 0) {
     const lines = [...sections[skillIdx].lines];
-    if (!lines.some((l) => /JD keyword alignment/i.test(l))) {
-      lines.unshift(alignmentLine);
+    if (!lines.some((l) => inject.slice(0, 3).every((k) => l.includes(k)))) {
+      lines.unshift(skillsLine);
       sections[skillIdx] = { ...sections[skillIdx], lines };
     }
     return;
   }
-  const summaryIdx = sections.findIndex((s) =>
-    /summary|brief|proposition|positioning|arc|snapshot/i.test(s.heading)
-  );
-  if (summaryIdx >= 0) {
-    const lines = [...sections[summaryIdx].lines, alignmentLine];
-    sections[summaryIdx] = { ...sections[summaryIdx], lines };
-  }
+  void jobTitle;
 }
 
 function reinforceForAts(
@@ -761,19 +760,15 @@ function reinforceForAts(
     .filter((m) => m.length > 2)
     .join(", ");
   if (!inject) return text;
-  if (!/CORE COMPETENCIES ALIGNED TO ROLE|JD KEYWORD ALIGNMENT/i.test(text)) {
-    return (
-      text +
-      `\n\nJD KEYWORD ALIGNMENT\n` +
-      `Role focus: ${jobTitle}. Full JD skill coverage: ${inject}.\n` +
-      `These competencies are evidenced in summary, core skills, impact snapshot, and the two most recent client projects.\n`
-    );
+  // Quiet ATS reinforcement — skills only, no marketing prose
+  if (!/TECHNICAL SKILLS|CORE COMPETENCIES|CORE SKILLS/i.test(text)) {
+    return text + `\n\nTECHNICAL SKILLS\n${inject}\n`;
   }
-  // Second pass: append any still-missing tokens
-  return (
-    text +
-    `\nJD reinforcement: ${inject}.\n`
-  );
+  if (!missing.every((m) => new RegExp(m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(text))) {
+    return text + `\n${inject}\n`;
+  }
+  void jobTitle;
+  return text;
 }
 
 export async function progressiveTailor(opts: {
@@ -789,9 +784,14 @@ export async function progressiveTailor(opts: {
   const domain = detectDomain(opts.jd, jobTitle);
   const keywords = extractJdKeywords(opts.jd, 55);
   const domainPack = domainSkillPack(domain);
-  // Clean skill list: JD keywords first (max match), then domain pack
+  // Clean skill list: JD keywords first, drop staffing/rate chatter tokens
+  const skillNoise =
+    /^(rate|rates|bill|c2c|w2|1099|ctc|salary|budget|remote|hybrid|onsite|asap|immediate|interview|visa|h1b|gc)$/i;
   const cleanSkills = Array.from(
-    new Set([...keywords.filter((k) => k.length > 2), ...domainPack])
+    new Set([
+      ...keywords.filter((k) => k.length > 2 && !skillNoise.test(k)),
+      ...domainPack,
+    ])
   ).slice(0, 42);
 
   const projects = parseMasterProjects(opts.master, domain, jobTitle);
@@ -863,7 +863,7 @@ export async function progressiveTailor(opts: {
     }
   }
 
-  // Title = job title only (title-like, not descriptive)
+  // Title = job title only from JD (title-like, not descriptive)
   let headline = (jobTitle || "SAP Consultant").trim();
   // Strip descriptive fluff if JD title was a sentence
   if (headline.length > 90 || /\bwith\b|\bwho\b|\blooking\b/i.test(headline)) {
@@ -874,6 +874,13 @@ export async function progressiveTailor(opts: {
       .trim()
       .slice(0, 80);
   }
+
+  // Header contact from master (email, phone, location, LinkedIn, etc.) — not invented
+  const masterContact = extractContactFromMaster(opts.master, opts.email);
+  const contactLine =
+    formatContactLine(masterContact) ||
+    opts.email ||
+    "";
 
   const summaryLines = buildLongSummary(
     opts.candidateName,
@@ -917,7 +924,7 @@ export async function progressiveTailor(opts: {
   const structured: StructuredResume = {
     candidateName: opts.candidateName,
     headline,
-    contactLine: opts.email || "",
+    contactLine,
     layoutId: layout.id,
     sections: [
       ...layoutSections,
@@ -956,22 +963,7 @@ export async function progressiveTailor(opts: {
     text = renderPlain(structured, layout.id);
     text = reinforceForAts(text, jobTitle, ats.missingKeywords);
     // Keep structured in sync with plain-text reinforcement block
-    if (/JD KEYWORD ALIGNMENT|CORE COMPETENCIES ALIGNED TO ROLE/i.test(text)) {
-      const hasAlign = structured.sections.some((s) =>
-        /JD KEYWORD|CORE COMPETENCIES ALIGNED/i.test(s.heading)
-      );
-      if (!hasAlign && ats.missingKeywords.length) {
-        structured.sections.splice(Math.min(2, structured.sections.length), 0, {
-          heading: "JD Keyword Alignment",
-          lines: [
-            `Role focus: ${headline}.`,
-            `Full JD skill coverage: ${ats.missingKeywords.concat(cleanSkills).slice(0, 28).join(" · ")}.`,
-            `Evidenced in summary, competencies, impact snapshot, and recent client projects.`,
-          ],
-        });
-        text = renderPlain(structured, layout.id);
-      }
-    }
+    // Missing keywords go into existing skills sections only (no extra marketing sections)
     ats = scoreResume({
       resumeText: text,
       jd: opts.jd,
