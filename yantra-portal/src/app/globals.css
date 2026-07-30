@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #0f172a;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+/* Status colors matching original portal */
+.bg-status-success {
+  background-color: #d1fae5;
+}
+.text-status-success-foreground {
+  color: #065f46;
+}

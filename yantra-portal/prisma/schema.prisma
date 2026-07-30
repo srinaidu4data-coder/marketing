@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(uuid())
+  name         String
+  email        String        @unique
+  passwordHash String
+  role         String        // ADMIN | EMPLOYEE
+  deletedAt    DateTime?
+  createdAt    DateTime      @default(now())
+  allocations  Allocation[]
+  chains       Chain[]
+  auditLogs    AuditLog[]
+}
+
+model Candidate {
+  id               String            @id @default(uuid())
+  name             String
+  email            String
+  masterResumeText String            @default("")
+  masterResumePath String?
+  /// Resume layout template id (see RESUME_LAYOUTS)
+  layoutId         String            @default("ats_classic")
+  /// DOCX | DOCX_PDF
+  exportFormat     String            @default("DOCX")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  allocations      Allocation[]
+  chainCandidates  ChainCandidate[]
+  vendorSubmissions VendorSubmission[]
+}
+
+model Allocation {
+  id          String    @id @default(uuid())
+  candidateId String
+  employeeId  String
+  createdAt   DateTime  @default(now())
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  employee    User      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, employeeId])
+}
+
+model Chain {
+  id           String           @id @default(uuid())
+  employeeId   String
+  vendorName   String
+  vendorEmail  String
+  rawJobText   String
+  status       String           @default("READY") // DRAFT | GENERATING | READY | SENDING | SENT | FAILED
+  employeeNote String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  employee     User             @relation(fields: [employeeId], references: [id])
+  candidates   ChainCandidate[]
+}
+
+model ChainCandidate {
+  id                 String    @id @default(uuid())
+  chainId            String
+  candidateId        String
+  tailoredResumeText String    @default("")
+  tailoredResumePath String?
+  docxPath           String?
+  pdfPath            String?
+  layoutId           String    @default("ats_classic")
+  jobTitle           String    @default("")
+  skillFingerprint   String    @default("")
+  atsScore           Int       @default(0)
+  atsReady           Boolean   @default(false)
+  atsBreakdownJson   String    @default("{}")
+  sendStatus         String    @default("PENDING") // PENDING | SENT | FAILED
+  createdAt          DateTime  @default(now())
+  chain              Chain     @relation(fields: [chainId], references: [id], onDelete: Cascade)
+  candidate          Candidate @relation(fields: [candidateId], references: [id])
+}
+
+/// Ledger of candidate→vendor submissions for hard-block rule
+model VendorSubmission {
+  id               String    @id @default(uuid())
+  candidateId      String
+  vendorEmail      String
+  vendorName       String
+  jobTitle         String
+  skillFingerprint String
+  chainId          String?
+  employeeId       String?
+  sentAt           DateTime  @default(now())
+  candidate        Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId, vendorEmail])
+}
+
+model PromptVersion {
+  id        String   @id @default(uuid())
+  content   String
+  status    String   @default("DRAFT") // DRAFT | ACTIVE | ARCHIVED
+  tested    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model EmailTemplateVersion {
+  id        String   @id @default(uuid())
+  type      String   // SUBJECT | BODY
+  content   String
+  status    String   @default("DRAFT") // DRAFT | ACTIVE | ARCHIVED
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  userId    String?
+  meta      String   @default("{}")
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
+model ApiUsageLog {
+  id           String   @id @default(uuid())
+  employeeId   String?
+  operation    String
+  tokensIn     Int      @default(0)
+  tokensOut    Int      @default(0)
+  costUsd      Float    @default(0)
+  isTestMode   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+}
+
+/// Admin console key/value configuration (cost caps, defaults, branding)
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
