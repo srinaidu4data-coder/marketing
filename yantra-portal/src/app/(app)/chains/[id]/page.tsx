@@ -2,7 +2,11 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
-import { recoverStuckChainAction, sendChain } from "@/app/actions/chains";
+import {
+  recoverStuckChainAction,
+  retryGenerateChainAction,
+  sendChain,
+} from "@/app/actions/chains";
 import { Badge, Button, Card, PageHeader } from "@/components/ui";
 import { formatDateTime } from "@/lib/utils";
 import { getLayout } from "@/lib/resume/templates";
@@ -26,10 +30,49 @@ export default async function ChainDetailPage({
   });
   if (!chain || chain.employeeId !== user.id) notFound();
 
+  const genErrors = await prisma.auditLog.findMany({
+    where: {
+      OR: [
+        { action: "chain.candidate_failed", meta: { contains: chain.id } },
+        { action: "chain.status_changed", meta: { contains: chain.id } },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    take: 12,
+  });
+
+  const errorHints: string[] = [];
+  for (const row of genErrors) {
+    try {
+      const meta = JSON.parse(row.meta || "{}") as {
+        chainId?: string;
+        message?: string;
+        fatal?: string;
+        errors?: { name?: string; message?: string }[];
+        reason?: string;
+        timedOut?: boolean;
+      };
+      if (meta.chainId && meta.chainId !== chain.id) continue;
+      if (meta.fatal) errorHints.push(meta.fatal);
+      if (meta.message) errorHints.push(meta.message);
+      if (meta.reason) errorHints.push(String(meta.reason));
+      if (meta.timedOut) errorHints.push("Generation hit serverless time budget");
+      if (meta.errors?.length) {
+        for (const e of meta.errors.slice(0, 4)) {
+          errorHints.push(`${e.name || "candidate"}: ${e.message || "failed"}`);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  const uniqueHints = Array.from(new Set(errorHints)).slice(0, 6);
+
   const sent = chain.candidates.filter((c) => c.sendStatus === "SENT").length;
   const total = chain.candidates.length;
   const lowAts = chain.candidates.filter((c) => c.atsScore < 95);
   const stuck = chain.status === "GENERATING" || chain.status === "SENDING";
+  const emptyFailed = chain.status === "FAILED" && total === 0;
 
   async function sendAction() {
     "use server";
@@ -45,6 +88,11 @@ export default async function ChainDetailPage({
   async function recoverAction() {
     "use server";
     await recoverStuckChainAction(params.id);
+  }
+
+  async function retryAction() {
+    "use server";
+    await retryGenerateChainAction(params.id);
   }
 
   return (
@@ -68,7 +116,14 @@ export default async function ChainDetailPage({
                 </Button>
               </form>
             ) : null}
-            {chain.status === "READY" || chain.status === "FAILED" ? (
+            {emptyFailed || (chain.status === "FAILED" && total === 0) || chain.status === "FAILED" ? (
+              <form action={retryAction}>
+                <Button type="submit" variant="outline">
+                  Retry generation
+                </Button>
+              </form>
+            ) : null}
+            {chain.status === "READY" || (chain.status === "FAILED" && total > 0) ? (
               <form action={sendAction}>
                 <Button type="submit" disabled={total === 0}>
                   Send all
@@ -80,10 +135,29 @@ export default async function ChainDetailPage({
       />
 
       {searchParams?.failed === "1" || chain.status === "FAILED" ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-          This chain did not finish cleanly (failed or recovered from a stuck state). You can
-          still create a <Link href="/chains/new" className="underline">new chain</Link>
-          {total > 0 ? " or send any resumes that did generate." : "."}
+        <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          <p>
+            {emptyFailed
+              ? "Generation produced no resumes (timeout, empty selection, or server error)."
+              : "This chain did not finish cleanly (failed or recovered from a stuck state)."}{" "}
+            You can{" "}
+            <Link href="/chains/new" className="underline">
+              create a new chain
+            </Link>
+            {total > 0 ? " or send packs that did generate." : " or retry generation below."}
+          </p>
+          {uniqueHints.length > 0 ? (
+            <ul className="list-disc pl-5 text-xs text-red-900">
+              {uniqueHints.map((h) => (
+                <li key={h}>{h}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs">
+              Tip: On production, start with 1–2 candidates. Dense packs can hit serverless time
+              limits.
+            </p>
+          )}
         </div>
       ) : null}
 
@@ -95,7 +169,12 @@ export default async function ChainDetailPage({
         </div>
       ) : null}
 
-      {lowAts.length > 0 ? (
+      {total === 0 ? (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+          No resume packs on this chain yet. Use <strong>Retry generation</strong> or create a
+          new chain with fewer candidates.
+        </div>
+      ) : lowAts.length > 0 ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           {lowAts.length} resume(s) scored below internal ATS 95. Review before send. Progressive
           tailor already reinforced keywords; consider refining the JD or master resume.

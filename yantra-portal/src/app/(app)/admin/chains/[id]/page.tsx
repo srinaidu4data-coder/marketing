@@ -2,7 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/db";
-import { recoverStuckChainAction, sendChain } from "@/app/actions/chains";
+import {
+  recoverStuckChainAction,
+  retryGenerateChainAction,
+  sendChain,
+} from "@/app/actions/chains";
 import { Badge, Button, Card, PageHeader } from "@/components/ui";
 import { formatDateTime } from "@/lib/utils";
 import { getLayout } from "@/lib/resume/templates";
@@ -26,6 +30,7 @@ export default async function AdminChainDetailPage({
 
   const sent = chain.candidates.filter((c) => c.sendStatus === "SENT").length;
   const stuck = chain.status === "GENERATING" || chain.status === "SENDING";
+  const emptyFailed = chain.status === "FAILED" && chain.candidates.length === 0;
 
   async function sendAction() {
     "use server";
@@ -35,6 +40,11 @@ export default async function AdminChainDetailPage({
   async function recoverAction() {
     "use server";
     await recoverStuckChainAction(params.id);
+  }
+
+  async function retryAction() {
+    "use server";
+    await retryGenerateChainAction(params.id);
   }
 
   return (
@@ -58,7 +68,14 @@ export default async function AdminChainDetailPage({
                 </Button>
               </form>
             ) : null}
-            {chain.status === "READY" || chain.status === "FAILED" ? (
+            {chain.status === "FAILED" || emptyFailed ? (
+              <form action={retryAction}>
+                <Button type="submit" variant="outline">
+                  Retry generation
+                </Button>
+              </form>
+            ) : null}
+            {chain.status === "READY" || (chain.status === "FAILED" && chain.candidates.length > 0) ? (
               <form action={sendAction}>
                 <Button type="submit" disabled={chain.candidates.length === 0}>
                   Send all
@@ -71,15 +88,16 @@ export default async function AdminChainDetailPage({
 
       {searchParams?.failed === "1" || chain.status === "FAILED" ? (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-          Chain failed or was recovered from a stuck state. New chains can still be created —
-          this row no longer blocks the queue.
+          {emptyFailed
+            ? "Generation produced 0 packs (timeout or error). Use Retry generation — prefer 1–2 candidates on serverless."
+            : "Chain failed or was recovered from a stuck state. New chains can still be created."}
         </div>
       ) : null}
 
       {stuck ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           In-flight status <strong>{chain.status}</strong>. If abandoned, recover to free the
-          queue; live jobs heartbeated recently will not auto-fail for {Math.round(3)} minutes.
+          queue; live jobs heartbeated recently will not auto-fail for ~3 minutes.
         </div>
       ) : null}
 

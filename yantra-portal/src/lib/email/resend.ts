@@ -14,8 +14,8 @@
  */
 
 import { readFile } from "fs/promises";
-import path from "path";
 import { PRODUCT_NAME } from "@/lib/brand";
+import { resolveUploadPath } from "@/lib/paths";
 
 export type EmailAttachment = {
   filename: string;
@@ -101,8 +101,7 @@ export async function loadChainAttachments(opts: {
   ) => {
     if (!rel) return;
     try {
-      const full = path.isAbsolute(rel) ? rel : path.join(process.cwd(), rel);
-      const content = await readFile(full);
+      const content = await readFile(resolveUploadPath(rel));
       out.push({ filename, content, contentType });
     } catch (e) {
       console.warn(`[email] attachment missing ${rel}`, e);

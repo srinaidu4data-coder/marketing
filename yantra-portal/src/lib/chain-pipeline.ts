@@ -1,16 +1,12 @@
 /**
- * Resilient chain generation / recovery.
- *
- * Known issue (fixed):
- * - Chains were created as GENERATING then processed inline with no try/finally.
- * - Timeouts, crashes, or mid-loop errors left chains stuck in GENERATING/SENDING.
- * - Stuck rows + long SQLite-held requests made the product feel "blocked" for new chains.
+ * Resilient chain generation / recovery (Vercel-safe).
  *
  * Guarantees:
- * 1. Terminal status always applied (READY / FAILED) — never leave GENERATING forever.
- * 2. Per-candidate isolation — one resume failure does not abort the whole chain.
- * 3. Stale sweeper recovers abandoned GENERATING/SENDING after a timeout.
- * 4. New chain create is never blocked by another employee's in-flight work.
+ * 1. Terminal status always applied (READY if ≥1 pack else FAILED).
+ * 2. Per-candidate isolation — one resume failure does not abort the chain.
+ * 3. Disk writes are best-effort under /tmp on Vercel; DB text is source of truth.
+ * 4. Time budget stops starting new candidates before platform kill.
+ * 5. Stale sweeper recovers abandoned GENERATING/SENDING.
  */
 
 import { mkdir, writeFile } from "fs/promises";
@@ -20,9 +16,20 @@ import { audit } from "@/lib/audit";
 import { tailorResume } from "@/lib/resume-tailor";
 import { renderDocxBuffer } from "@/lib/resume/render-docx";
 import { renderPdfBuffer } from "@/lib/resume/render-pdf";
+import { chainUploadDir } from "@/lib/paths";
 
 /** Chains older than this in GENERATING/SENDING are considered abandoned. */
 export const STALE_CHAIN_MS = 3 * 60 * 1000; // 3 minutes
+
+/** Soft time budget so we finish before serverless kill (leave margin for response). */
+function generationDeadlineMs(): number {
+  if (process.env.VERCEL) {
+    // Hobby often 60s max; leave ~12s for wrap-up. Override via CHAIN_BUDGET_MS.
+    const raw = Number(process.env.CHAIN_BUDGET_MS || 48_000);
+    return Date.now() + (Number.isFinite(raw) && raw > 5_000 ? raw : 48_000);
+  }
+  return Date.now() + Number(process.env.CHAIN_BUDGET_MS || 280_000);
+}
 
 export type GenerateChainInput = {
   chainId: string;
@@ -38,11 +45,11 @@ export type GenerateChainResult = {
   succeeded: number;
   failed: number;
   errors: { candidateId: string; name: string; message: string }[];
+  timedOut?: boolean;
 };
 
 /**
- * Mark abandoned in-flight chains as FAILED so they cannot block queues / UX forever.
- * Safe to call on every create and on the queues admin page.
+ * Mark abandoned in-flight chains as READY/FAILED so they cannot block queues.
  */
 export async function recoverStaleChains(opts?: {
   olderThanMs?: number;
@@ -51,8 +58,6 @@ export async function recoverStaleChains(opts?: {
   const olderThanMs = opts?.olderThanMs ?? STALE_CHAIN_MS;
   const cutoffMs = Date.now() - olderThanMs;
 
-  // NOTE: Prisma SQLite DateTime `lt` filters are unreliable against stored text
-  // timestamps — fetch in-flight rows and compare in JS.
   const inFlight = await prisma.chain.findMany({
     where: {
       status: { in: ["GENERATING", "SENDING"] },
@@ -65,7 +70,6 @@ export async function recoverStaleChains(opts?: {
   const recovered: string[] = [];
   for (const row of stale) {
     const packCount = await prisma.chainCandidate.count({ where: { chainId: row.id } });
-    // Partial packs → READY so operators can still send; zero packs → FAILED
     const terminal: "READY" | "FAILED" = packCount > 0 ? "READY" : "FAILED";
     await prisma.chain.update({
       where: { id: row.id },
@@ -88,9 +92,6 @@ export async function recoverStaleChains(opts?: {
   return { recovered };
 }
 
-/**
- * Force-fail a single stuck chain (admin/employee recover action).
- */
 export async function failStuckChain(
   chainId: string,
   actorUserId: string,
@@ -123,9 +124,23 @@ export async function failStuckChain(
   return { ok: true };
 }
 
+async function safeWriteFile(
+  filePath: string,
+  data: Buffer | string
+): Promise<boolean> {
+  try {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(filePath, data);
+    return true;
+  } catch (e) {
+    console.warn(`[chain] disk write skipped: ${filePath}`, e);
+    return false;
+  }
+}
+
 /**
  * Process all candidates for a chain that is already in GENERATING.
- * Always ends in READY (if ≥1 resume) or FAILED (if zero).
+ * Always ends in READY (if ≥1 pack) or FAILED (if zero).
  */
 export async function generateChainResumes(
   input: GenerateChainInput
@@ -133,31 +148,91 @@ export async function generateChainResumes(
   const { chainId, userId, rawJobText, vendorName, candidateIds } = input;
   const errors: GenerateChainResult["errors"] = [];
   let succeeded = 0;
+  let timedOut = false;
+  const deadline = generationDeadlineMs();
 
   try {
-    // Heartbeat so concurrent recoverSweeper doesn't race a live job
     await prisma.chain.update({
       where: { id: chainId },
       data: { status: "GENERATING" },
     });
 
+    if (!candidateIds.length) {
+      errors.push({
+        candidateId: "",
+        name: "(selection)",
+        message: "No candidate IDs provided — check allocations and selection.",
+      });
+      await prisma.chain.update({ where: { id: chainId }, data: { status: "FAILED" } });
+      await audit("chain.status_changed", userId, {
+        chainId,
+        status: "FAILED",
+        reason: "no_candidate_ids",
+      });
+      return { chainId, status: "FAILED", succeeded: 0, failed: 1, errors };
+    }
+
     const candidates = await prisma.candidate.findMany({
       where: { id: { in: candidateIds } },
     });
 
-    const dir = path.join(process.cwd(), "uploads", "chains", chainId);
-    await mkdir(dir, { recursive: true });
+    if (!candidates.length) {
+      errors.push({
+        candidateId: "",
+        name: "(selection)",
+        message: "Selected candidates not found in database.",
+      });
+      await prisma.chain.update({ where: { id: chainId }, data: { status: "FAILED" } });
+      await audit("chain.status_changed", userId, {
+        chainId,
+        status: "FAILED",
+        reason: "candidates_not_found",
+      });
+      return { chainId, status: "FAILED", succeeded: 0, failed: 1, errors };
+    }
+
+    const dir = chainUploadDir(chainId);
+    // Best-effort dir create — never abort generation if disk is read-only
+    try {
+      await mkdir(dir, { recursive: true });
+    } catch (e) {
+      console.warn(`[chain ${chainId}] mkdir skipped (ephemeral FS)`, e);
+    }
 
     for (const c of candidates) {
+      if (Date.now() > deadline) {
+        timedOut = true;
+        errors.push({
+          candidateId: c.id,
+          name: c.name,
+          message:
+            "Skipped: generation time budget reached (serverless limit). Create a smaller chain or upgrade function duration.",
+        });
+        await audit("chain.candidate_failed", userId, {
+          chainId,
+          candidateId: c.id,
+          message: "time_budget",
+        });
+        // Mark remaining as skipped in one audit
+        const remaining = candidates.slice(candidates.indexOf(c) + 1);
+        for (const r of remaining) {
+          errors.push({
+            candidateId: r.id,
+            name: r.name,
+            message: "Skipped: generation time budget already reached.",
+          });
+        }
+        break;
+      }
+
       try {
-        // Per-candidate heartbeat — keeps updatedAt fresh so live jobs aren't swept
         await prisma.chain.update({
           where: { id: chainId },
           data: { status: "GENERATING" },
         });
 
         const tailored = await tailorResume({
-          master: c.masterResumeText,
+          master: c.masterResumeText || "",
           jd: rawJobText,
           vendorName,
           candidateName: c.name,
@@ -166,7 +241,6 @@ export async function generateChainResumes(
           email: c.email,
         });
 
-        // Mid-candidate heartbeat (after tailor, before export) — keeps stale sweeper at bay
         await prisma.chain.update({
           where: { id: chainId },
           data: { status: "GENERATING" },
@@ -174,7 +248,8 @@ export async function generateChainResumes(
 
         const base = c.name.replace(/[^a-zA-Z0-9._-]/g, "_");
         const textName = `${base}.txt`;
-        await writeFile(path.join(dir, textName), tailored.text, "utf8");
+        const textRel = `uploads/chains/${chainId}/${textName}`;
+        await safeWriteFile(path.join(dir, textName), tailored.text);
 
         let docxPath: string | null = null;
         let pdfPath: string | null = null;
@@ -182,13 +257,12 @@ export async function generateChainResumes(
         try {
           const docxBuf = await renderDocxBuffer(tailored.structured);
           const docxName = `${base}.docx`;
-          await writeFile(path.join(dir, docxName), docxBuf);
-          docxPath = `uploads/chains/${chainId}/${docxName}`;
+          const ok = await safeWriteFile(path.join(dir, docxName), docxBuf);
+          if (ok) docxPath = `uploads/chains/${chainId}/${docxName}`;
         } catch (e) {
-          console.error(`[chain ${chainId}] DOCX failed for ${c.name}`, e);
+          console.error(`[chain ${chainId}] DOCX render failed for ${c.name}`, e);
         }
 
-        // Heartbeat before optional PDF (slowest export step)
         await prisma.chain.update({
           where: { id: chainId },
           data: { status: "GENERATING" },
@@ -198,48 +272,40 @@ export async function generateChainResumes(
           try {
             const pdfBuf = await renderPdfBuffer(tailored.structured);
             const pdfName = `${base}.pdf`;
-            await writeFile(path.join(dir, pdfName), pdfBuf);
-            pdfPath = `uploads/chains/${chainId}/${pdfName}`;
+            const ok = await safeWriteFile(path.join(dir, pdfName), pdfBuf);
+            if (ok) pdfPath = `uploads/chains/${chainId}/${pdfName}`;
           } catch (e) {
-            console.error(`[chain ${chainId}] PDF failed for ${c.name}`, e);
+            console.error(`[chain ${chainId}] PDF render failed for ${c.name}`, e);
           }
         }
 
-        // Skip duplicate if partial retry re-ran same candidate
+        // DB is source of truth — always persist pack even if disk writes failed
         const existing = await prisma.chainCandidate.findFirst({
           where: { chainId, candidateId: c.id },
         });
+        const packData = {
+          tailoredResumeText: tailored.text,
+          tailoredResumePath: textRel,
+          docxPath,
+          pdfPath,
+          layoutId: c.layoutId,
+          jobTitle: tailored.structured.meta.jobTitle,
+          skillFingerprint: tailored.structured.meta.skillFingerprint,
+          atsScore: tailored.ats.score,
+          atsReady: tailored.ats.ready,
+          atsBreakdownJson: JSON.stringify(tailored.ats),
+        };
         if (existing) {
           await prisma.chainCandidate.update({
             where: { id: existing.id },
-            data: {
-              tailoredResumeText: tailored.text,
-              tailoredResumePath: `uploads/chains/${chainId}/${textName}`,
-              docxPath,
-              pdfPath,
-              layoutId: c.layoutId,
-              jobTitle: tailored.structured.meta.jobTitle,
-              skillFingerprint: tailored.structured.meta.skillFingerprint,
-              atsScore: tailored.ats.score,
-              atsReady: tailored.ats.ready,
-              atsBreakdownJson: JSON.stringify(tailored.ats),
-            },
+            data: packData,
           });
         } else {
           await prisma.chainCandidate.create({
             data: {
               chainId,
               candidateId: c.id,
-              tailoredResumeText: tailored.text,
-              tailoredResumePath: `uploads/chains/${chainId}/${textName}`,
-              docxPath,
-              pdfPath,
-              layoutId: c.layoutId,
-              jobTitle: tailored.structured.meta.jobTitle,
-              skillFingerprint: tailored.structured.meta.skillFingerprint,
-              atsScore: tailored.ats.score,
-              atsReady: tailored.ats.ready,
-              atsBreakdownJson: JSON.stringify(tailored.ats),
+              ...packData,
               sendStatus: "PENDING",
             },
           });
@@ -269,6 +335,8 @@ export async function generateChainResumes(
       status,
       succeeded,
       failed: errors.length,
+      timedOut,
+      errors: errors.slice(0, 8),
     });
 
     return {
@@ -277,9 +345,9 @@ export async function generateChainResumes(
       succeeded,
       failed: errors.length,
       errors,
+      timedOut,
     };
   } catch (fatal) {
-    // Absolute last resort — never leave GENERATING
     console.error(`[chain ${chainId}] fatal generation error`, fatal);
     try {
       const packCount = await prisma.chainCandidate.count({ where: { chainId } });
@@ -288,10 +356,11 @@ export async function generateChainResumes(
         where: { id: chainId },
         data: { status },
       });
+      const fatalMsg = fatal instanceof Error ? fatal.message : String(fatal);
       await audit("chain.status_changed", userId, {
         chainId,
         status,
-        fatal: fatal instanceof Error ? fatal.message : String(fatal),
+        fatal: fatalMsg,
       });
       return {
         chainId,
@@ -300,11 +369,7 @@ export async function generateChainResumes(
         failed: errors.length + 1,
         errors: [
           ...errors,
-          {
-            candidateId: "",
-            name: "(pipeline)",
-            message: fatal instanceof Error ? fatal.message : String(fatal),
-          },
+          { candidateId: "", name: "(pipeline)", message: fatalMsg },
         ],
       };
     } catch (updateErr) {
@@ -327,8 +392,7 @@ export async function generateChainResumes(
 }
 
 /**
- * Create chain row + generate resumes end-to-end with recovery + terminal status.
- * Does NOT block on other in-flight chains (only sweeps stale ones first).
+ * Create chain row + generate resumes end-to-end.
  */
 export async function createAndGenerateChain(opts: {
   userId: string;
@@ -338,7 +402,6 @@ export async function createAndGenerateChain(opts: {
   employeeNote?: string | null;
   candidateIds: string[];
 }): Promise<GenerateChainResult & { id: string }> {
-  // Free abandoned work so queues stay healthy — never block create if recover blips
   try {
     await recoverStaleChains();
   } catch (e) {
@@ -375,4 +438,55 @@ export async function createAndGenerateChain(opts: {
   });
 
   return { ...result, id: chain.id };
+}
+
+/**
+ * Re-run generation for a FAILED/READY chain that has missing packs
+ * (e.g. partial time-budget or empty failure).
+ */
+export async function retryGenerateChain(
+  chainId: string,
+  userId: string,
+  candidateIds?: string[]
+): Promise<GenerateChainResult> {
+  const chain = await prisma.chain.findUnique({
+    where: { id: chainId },
+    include: { candidates: true },
+  });
+  if (!chain) {
+    return {
+      chainId,
+      status: "FAILED",
+      succeeded: 0,
+      failed: 1,
+      errors: [{ candidateId: "", name: "(chain)", message: "Chain not found" }],
+    };
+  }
+
+  let ids = candidateIds;
+  if (!ids?.length) {
+    // Prefer original selection via allocations if empty packs
+    if (chain.candidates.length === 0) {
+      const alloc = await prisma.allocation.findMany({
+        where: { employeeId: chain.employeeId },
+        select: { candidateId: true },
+      });
+      ids = alloc.map((a) => a.candidateId);
+    } else {
+      ids = chain.candidates.map((c) => c.candidateId);
+    }
+  }
+
+  await prisma.chain.update({
+    where: { id: chainId },
+    data: { status: "GENERATING" },
+  });
+
+  return generateChainResumes({
+    chainId,
+    userId,
+    rawJobText: chain.rawJobText,
+    vendorName: chain.vendorName,
+    candidateIds: ids,
+  });
 }

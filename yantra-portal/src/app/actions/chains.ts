@@ -14,6 +14,7 @@ import {
   createAndGenerateChain,
   failStuckChain,
   recoverStaleChains,
+  retryGenerateChain,
 } from "@/lib/chain-pipeline";
 import {
   getResendConfig,
@@ -146,6 +147,33 @@ export async function recoverStuckChainAction(chainId: string) {
   revalidatePath("/chains");
   revalidatePath("/admin/chains");
   return result;
+}
+
+/**
+ * Re-run resume generation for a failed/empty/partial chain.
+ */
+export async function retryGenerateChainAction(chainId: string) {
+  const user = await requireUser();
+  const chain = await prisma.chain.findUnique({ where: { id: chainId } });
+  if (!chain) return { ok: false as const, error: "Not found" };
+  if (user.role === "EMPLOYEE" && chain.employeeId !== user.id) {
+    return { ok: false as const, error: "Forbidden" };
+  }
+
+  const result = await retryGenerateChain(chainId, user.id);
+  revalidatePath(`/chains/${chainId}`);
+  revalidatePath(`/admin/chains/${chainId}`);
+  revalidatePath("/admin/queues");
+  revalidatePath("/chains");
+  revalidatePath("/admin/chains");
+  return {
+    ok: result.status === "READY",
+    status: result.status,
+    succeeded: result.succeeded,
+    failed: result.failed,
+    errors: result.errors,
+    timedOut: result.timedOut,
+  };
 }
 
 export async function sendChain(chainId: string) {

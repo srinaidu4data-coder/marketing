@@ -118,9 +118,15 @@ export function NewChainForm({
 
   return (
     <form onSubmit={onSubmit} className="space-y-6">
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-        <strong>Vendor rule:</strong> Different skill/job title for a candidate already sent to
-        this vendor is hard-blocked.
+      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+        <p>
+          <strong>Vendor rule:</strong> Different skill/job title for a candidate already sent to
+          this vendor is hard-blocked.
+        </p>
+        <p>
+          <strong>Tip:</strong> On production, start with <strong>1–2 candidates</strong> so
+          generation finishes within the serverless time limit. You can run multiple chains.
+        </p>
       </div>
 
       <div className="space-y-2">

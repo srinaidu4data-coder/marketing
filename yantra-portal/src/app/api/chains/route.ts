@@ -6,7 +6,8 @@ import { prisma } from "@/lib/db";
 import { checkVendorConflicts } from "@/lib/resume/vendor-guard";
 import { createAndGenerateChain, recoverStaleChains } from "@/lib/chain-pipeline";
 
-export const maxDuration = 300; // allow long multi-candidate packs (seconds, platform-dependent)
+// Vercel: Pro up to 300s; Hobby often caps lower. Budget in pipeline stops early.
+export const maxDuration = 60;
 
 const schema = z.object({
   rawJobText: z.string().min(1),

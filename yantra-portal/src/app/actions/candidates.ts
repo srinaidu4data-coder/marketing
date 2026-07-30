@@ -4,11 +4,12 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 import { audit } from "@/lib/audit";
-import { mkdir, writeFile } from "fs/promises";
+import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { RESUME_LAYOUTS } from "@/lib/resume/templates";
 import { getSystemConfig } from "@/lib/system-settings";
 import { extractMasterText } from "@/lib/resume/extract-master";
+import { masterUploadDir } from "@/lib/paths";
 
 const LAYOUT_IDS = new Set(RESUME_LAYOUTS.map((l) => l.id));
 
@@ -34,15 +35,23 @@ async function persistMasterFile(file: File): Promise<{
   }
 
   const extracted = await extractMasterText(file.name, buf);
-  const dir = path.join(process.cwd(), "uploads", "masters");
-  await mkdir(dir, { recursive: true });
-  const safe = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-  const full = path.join(dir, safe);
-  await writeFile(full, buf);
+  const dir = masterUploadDir();
+  let masterResumePath = `uploads/masters/memory_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  try {
+    await mkdir(dir, { recursive: true });
+    const safe = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+    const full = path.join(dir, safe);
+    await writeFile(full, buf);
+    masterResumePath = process.env.VERCEL
+      ? full // absolute /tmp path on serverless
+      : `uploads/masters/${safe}`;
+  } catch (e) {
+    console.warn("master file disk write skipped; text still stored in DB", e);
+  }
 
   return {
     masterResumeText: extracted.text,
-    masterResumePath: `uploads/masters/${safe}`,
+    masterResumePath,
     extracted: extracted.extracted,
     warning: extracted.warning,
   };
