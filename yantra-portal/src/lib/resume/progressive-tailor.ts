@@ -38,8 +38,10 @@ export const MIN_BULLETS_PER_PROJECT = 18;
 export const RECENT_BULLETS_PER_PROJECT = 22;
 export const MID_BULLETS_PER_PROJECT = 18;
 export const EARLY_BULLETS_PER_PROJECT = 14;
-/** Target project count for multi-page span */
+/** Fallback synthetic count when master has no parseable jobs */
 export const TARGET_PROJECT_COUNT = 5;
+/** Cap only for extreme masters (performance on serverless) */
+export const MAX_PROJECTS_FROM_MASTER = 14;
 
 export type ProjectBlock = {
   title: string;
@@ -282,19 +284,238 @@ function titlesForDomain(domain: DomainHint): string[] {
   }
 }
 
+function parseYearToken(tok: string): number | "Present" | null {
+  if (/present|current|now/i.test(tok)) return "Present";
+  const y = Number(tok);
+  if (y >= 1980 && y <= 2100) return y;
+  return null;
+}
+
+/** Parse date range like "JUL 2019 – PRESENT" or "2019-2021" */
+function parseDateRange(
+  text: string
+): { start: number; end: number | "Present" } | null {
+  const t = text.replace(/\t/g, " ").replace(/\s+/g, " ").trim();
+  // MON YYYY – PRESENT / MON YYYY – MON YYYY
+  let m = t.match(
+    /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.\-/]?\s*(\d{4})\s*[–—\-~to]+\s*(?:(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.\-/]?\s*)?(\d{4}|Present|Current|Now)\b/i
+  );
+  if (m) {
+    const start = Number(m[2]);
+    const end = parseYearToken(m[4]);
+    if (start && end) return { start, end };
+  }
+  // YYYY – YYYY / YYYY – Present
+  m = t.match(/\b(19\d{2}|20\d{2})\s*[–—\-~to]+\s*(19\d{2}|20\d{2}|Present|Current|Now)\b/i);
+  if (m) {
+    const start = Number(m[1]);
+    const end = parseYearToken(m[2]);
+    if (start && end) return { start, end };
+  }
+  return null;
+}
+
+function eraForEnd(end: number | "Present", now: number): ProjectBlock["era"] {
+  const y = end === "Present" ? now : end;
+  if (y >= now - 3) return "recent";
+  if (y >= now - 8) return "mid";
+  return "early";
+}
+
+type ParsedJob = {
+  client: string;
+  location: string;
+  startYear: number;
+  endYear: number | "Present";
+  title: string;
+  bullets: string[];
+};
+
 /**
- * Build 5 progressive engagements spanning the career so DOCX/PDF reaches ~4–5 pages.
+ * Parse ALL professional experience jobs from master resume text.
+ * Supports formats like:
+ *   SR SOFT LLC | Houston, TX    JUL 2019 – PRESENT
+ *   Title line
+ *   bullet / prose lines...
+ */
+export function parseJobsFromMasterText(master: string): ParsedJob[] {
+  if (!master || master.length < 40) return [];
+  const rawLines = master.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  // Normalize tabs and stuck "TXJUL 2019" patterns
+  const lines = rawLines.map((l) =>
+    l
+      .replace(/\t+/g, " | ")
+      .replace(/([A-Z]{2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)/gi, "$1 $2")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+
+  // Find experience section start
+  let startIdx = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (
+      /^(professional experience|work experience|experience|employment history|work history)\b/i.test(
+        lines[i]
+      ) &&
+      lines[i].length < 60
+    ) {
+      startIdx = i + 1;
+      break;
+    }
+  }
+
+  // End at education / certifications if after experience
+  let endIdx = lines.length;
+  for (let i = startIdx; i < lines.length; i++) {
+    if (
+      /^(education|certifications?|skills|technical skills|awards|references)\b/i.test(
+        lines[i]
+      ) &&
+      lines[i].length < 50 &&
+      i > startIdx + 3
+    ) {
+      endIdx = i;
+      break;
+    }
+  }
+
+  const section = lines.slice(startIdx, endIdx);
+  const jobs: ParsedJob[] = [];
+
+  const isJobHeader = (line: string): {
+    client: string;
+    location: string;
+    start: number;
+    end: number | "Present";
+  } | null => {
+    if (!line || line.length < 8 || line.length > 160) return null;
+    if (/^[•▸→–\-\*]/.test(line)) return null;
+    const dates = parseDateRange(line);
+    if (!dates) return null;
+    // Must look like company header (has | or company-like left side)
+    const withoutDates = line
+      .replace(
+        /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.\-/]?\s*\d{4}\s*[–—\-~to]+\s*(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.\-/]?\s*)?(?:\d{4}|Present|Current|Now)\b/gi,
+        ""
+      )
+      .replace(/\b(19\d{2}|20\d{2})\s*[–—\-~to]+\s*(19\d{2}|20\d{2}|Present|Current|Now)\b/gi, "")
+      .trim()
+      .replace(/[|·•]+$/, "")
+      .trim();
+    if (withoutDates.length < 2) return null;
+    // Prefer lines with company | location
+    const parts = withoutDates.split(/\s*[|·•]\s*/).map((p) => p.trim()).filter(Boolean);
+    const client = parts[0] || withoutDates;
+    const location = parts.slice(1).join(", ") || "United States";
+    // Reject pure skill/summary lines mistaken as jobs
+    if (/^(profile|summary|skills|what i bring)/i.test(client)) return null;
+    if (client.split(/\s+/).length > 12 && !/[A-Z]{2,}/.test(client)) return null;
+    return { client, location, start: dates.start, end: dates.end };
+  };
+
+  let i = 0;
+  while (i < section.length) {
+    const header = isJobHeader(section[i]);
+    if (!header) {
+      i++;
+      continue;
+    }
+    i++;
+    // Title: next non-empty non-bullet line(s) until bullets/prose
+    let title = "";
+    const bullets: string[] = [];
+    while (i < section.length && !isJobHeader(section[i])) {
+      const line = section[i];
+      if (!line) {
+        i++;
+        continue;
+      }
+      if (/^[•▸→–\-\*]/.test(line) || /^[–—]\s/.test(line)) {
+        bullets.push(line.replace(/^[•▸→–\-\*]\s*/, "").trim());
+        i++;
+        continue;
+      }
+      // Title-like line (before bullets accumulate)
+      if (!title && bullets.length === 0 && line.length < 140 && !/^Clients?\s+across/i.test(line)) {
+        // May be "Title · subtitle"
+        title = line.replace(/\s*[·|]\s*/g, " — ").trim();
+        i++;
+        continue;
+      }
+      // Stack / meta line (tools) — skip as bullet or keep short context
+      if (/S\/4HANA|SAP ECC|Power BI|Tableau|Oracle|BW|BODS|CFIN/i.test(line) && line.length < 200 && bullets.length === 0) {
+        i++;
+        continue;
+      }
+      // Prose achievement without bullet
+      if (line.length > 40 && !/^(profile|summary)/i.test(line)) {
+        bullets.push(line);
+      }
+      i++;
+    }
+    if (!title) title = "Consultant";
+    jobs.push({
+      client: header.client,
+      location: header.location,
+      startYear: header.start,
+      endYear: header.end,
+      title,
+      bullets: bullets.filter((b) => b.length > 15).slice(0, 30),
+    });
+  }
+
+  // Newest first if not already
+  jobs.sort((a, b) => {
+    const ae = a.endYear === "Present" ? 9999 : a.endYear;
+    const be = b.endYear === "Present" ? 9999 : b.endYear;
+    if (be !== ae) return be - ae;
+    return b.startYear - a.startYear;
+  });
+
+  return jobs.slice(0, MAX_PROJECTS_FROM_MASTER);
+}
+
+/**
+ * Build engagements from master when possible; otherwise synthetic progressive slots.
  */
 function parseMasterProjects(
   master: string,
   domain: DomainHint,
   jobTitle: string
 ): ProjectBlock[] {
-  const yearsMatch = master.match(/(\d+)\+?\s*years?/i);
-  const years = Math.min(18, Math.max(8, Number(yearsMatch?.[1] || 12)));
   const now = new Date().getFullYear();
   const baseSkills = extractSkillsFromMaster(master, domain);
-  // Prefer real employer/client names from master; never leave client empty
+  const parsed = parseJobsFromMasterText(master);
+
+  if (parsed.length > 0) {
+    return parsed.map((job, idx) => {
+      const era = eraForEnd(job.endYear, now);
+      const endY = yearOf(job.endYear);
+      const skills = baseSkills
+        .filter((sk) => skillAllowedInProject(sk, endY))
+        .slice(0, era === "early" ? 8 : 14);
+      // Prefer master bullets; pad with domain seeds only if thin
+      const seeds = seedBulletsForDomain(domain, era, idx);
+      const bullets =
+        job.bullets.length >= 4
+          ? job.bullets
+          : [...job.bullets, ...seeds].slice(0, Math.max(job.bullets.length, 8));
+      return {
+        title: job.title || jobTitle || "Consultant",
+        client: job.client,
+        location: job.location || "United States",
+        startYear: job.startYear,
+        endYear: job.endYear,
+        era,
+        skills,
+        bullets,
+      };
+    });
+  }
+
+  // Fallback synthetic (master had no parseable jobs — e.g. placeholder upload)
+  const yearsMatch = master.match(/(\d+)\+?\s*years?/i);
+  const years = Math.min(18, Math.max(8, Number(yearsMatch?.[1] || 12)));
   const clients = resolveClientNames(master, domain);
   const titles = titlesForDomain(domain);
 
@@ -578,15 +799,16 @@ function weaveJdIntoBullets(
     }
   }
 
-  // Merge seeds + keyword bullets + bank, de-dupe, enforce target count
+  // Prefer master-resume bullets first, then JD keyword weave, then bank
   const merged: string[] = [];
   const seen = new Set<string>();
-  for (const line of [...keywordBullets, ...bullets, ...bank]) {
+  const cap = Math.min(28, Math.max(target + 4, bullets.length + 4));
+  for (const line of [...bullets, ...keywordBullets, ...bank]) {
     const t = line.trim();
     if (!t || seen.has(t.toLowerCase())) continue;
     seen.add(t.toLowerCase());
     merged.push(t);
-    if (merged.length >= target + 2) break;
+    if (merged.length >= cap) break;
   }
   // Pad if still short
   let pad = 1;
