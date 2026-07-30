@@ -19,6 +19,7 @@ import {
 import {
   detectDomain,
   domainSkillPack,
+  sanitizeSkillList,
   type DomainHint,
 } from "./jd-parse";
 import {
@@ -934,10 +935,12 @@ function buildSkillsSection(
   const half = Math.ceil(functional.length / 2);
   return [
     `Core skills: ${functional.slice(0, half).join(separator)}`,
-    `JD-aligned skills (continued): ${functional.slice(half).join(separator)}`,
+    functional.slice(half).length
+      ? `Additional skills: ${functional.slice(half).join(separator)}`
+      : "",
     `Tools & platforms: ${tools.join(separator)}`,
     `Delivery skills: ${soft.join(separator)}`,
-  ];
+  ].filter(Boolean);
 }
 
 /** Force every JD keyword into structured first-page content (DOCX/PDF, not only plain text). */
@@ -955,18 +958,25 @@ function ensureStructuredJdCoverage(
     .slice(0, 30);
   if (!inject.length) return;
 
-  // Inject as a plain skills line — no meta labels like "JD keyword alignment"
-  const skillsLine = inject.join(" · ");
+  // Inject clean skills only — never labels with "JD" / "Role" / rates
+  const cleanInject = sanitizeSkillList(inject, 28);
+  if (!cleanInject.length) return;
+  const skillsLine = cleanInject.join(" · ");
   const skillIdx = sections.findIndex((s) =>
-    /competenc|skill|matrix|focus|keyword|toolkit|method|technical/i.test(s.heading)
+    /competenc|skill|matrix|focus|toolkit|method|technical|capability/i.test(s.heading)
   );
   if (skillIdx >= 0) {
     const lines = [...sections[skillIdx].lines];
-    if (!lines.some((l) => inject.slice(0, 3).every((k) => l.includes(k)))) {
-      lines.unshift(skillsLine);
-      sections[skillIdx] = { ...sections[skillIdx], lines };
+    // Prefer filling PRIMARY/Core skills line rather than prepending meta
+    const coreIdx = lines.findIndex((l) =>
+      /^(PRIMARY|Core skills|Additional skills)/i.test(l)
+    );
+    if (coreIdx >= 0 && !cleanInject.slice(0, 2).every((k) => lines[coreIdx].includes(k))) {
+      lines[coreIdx] = `${lines[coreIdx]}  |  ${skillsLine}`;
+    } else if (!lines.some((l) => cleanInject.slice(0, 2).every((k) => l.includes(k)))) {
+      lines.push(skillsLine);
     }
-    return;
+    sections[skillIdx] = { ...sections[skillIdx], lines };
   }
   void jobTitle;
 }
@@ -1006,15 +1016,11 @@ export async function progressiveTailor(opts: {
   const domain = detectDomain(opts.jd, jobTitle);
   const keywords = extractJdKeywords(opts.jd, 55);
   const domainPack = domainSkillPack(domain);
-  // Clean skill list: JD keywords first, drop staffing/rate chatter tokens
-  const skillNoise =
-    /^(rate|rates|bill|c2c|w2|1099|ctc|salary|budget|remote|hybrid|onsite|asap|immediate|interview|visa|h1b|gc)$/i;
-  const cleanSkills = Array.from(
-    new Set([
-      ...keywords.filter((k) => k.length > 2 && !skillNoise.test(k)),
-      ...domainPack,
-    ])
-  ).slice(0, 42);
+  // Clean skill list: keywords + domain pack, sanitized (no rate / JD meta / broken SAP S)
+  const cleanSkills = sanitizeSkillList(
+    [...keywords, ...domainPack, ...extractSkillsFromMaster(opts.master, domain)],
+    42
+  );
 
   const projects = parseMasterProjects(opts.master, domain, jobTitle);
 

@@ -338,31 +338,31 @@ export function extractJdKeywords(jd: string, limit = 35): string[] {
   const seen = new Set<string>();
 
   function push(s: string) {
+    if (!isValidSkillToken(s)) return;
     const key = s.toLowerCase();
     if (seen.has(key)) return;
-    if (JD_NOISE.has(key)) return;
-    if (STOP.has(key)) return;
     seen.add(key);
-    out.push(s);
+    out.push(normalizeSkill(s));
   }
 
   for (const p of phrases) push(p);
   for (const w of words) {
     if (out.length >= limit) break;
-    // Prefer skill-like tokens
-    if (SKILLISH.test(w) || /SAP|ATTP|Fiori|HANA|GS1|EPCIS|DSCSA|ABAP|BTP/i.test(w)) {
+    // Prefer skill-like tokens — never bare "80/hr" style paths
+    if (w.includes("/") && !/^(S\/4|FI\/CO|PI\/PO|GS1)/i.test(w) && /\d/.test(w)) continue;
+    if (SKILLISH.test(w) || /SAP|ATTP|Fiori|HANA|GS1|EPCIS|DSCSA|ABAP|BTP|MDG|RAR/i.test(w)) {
       push(w);
     }
   }
-  // Fill remaining with non-noise words that look technical
   for (const w of words) {
     if (out.length >= limit) break;
-    if (/^[A-Z]{2,}$/.test(w) || /[A-Z][a-z]+[A-Z]/.test(w) || w.includes("/")) {
+    if (w.includes("/") && /\d/.test(w)) continue;
+    if (/^[A-Z]{2,}$/.test(w) || /[A-Z][a-z]+[A-Z]/.test(w)) {
       push(w);
     }
   }
 
-  return out.slice(0, limit);
+  return sanitizeSkillList(out, limit);
 }
 
 function normalizeSkill(s: string) {
@@ -370,6 +370,67 @@ function normalizeSkill(s: string) {
     .replace(/\s+/g, " ")
     .replace(/[.,;:]+$/g, "")
     .trim();
+}
+
+/** Reject rate / meta / broken tokens that must never appear on a resume */
+export function isValidSkillToken(raw: string): boolean {
+  const s = normalizeSkill(raw);
+  if (!s || s.length < 2) return false;
+  const lower = s.toLowerCase();
+
+  // Rates & compensation
+  if (/\$/.test(s)) return false;
+  if (/\d+\s*\/\s*(hr|hour|hrs|day|mo|month|yr|year)\b/i.test(s)) return false;
+  if (/\/\s*hr\b/i.test(s) || /\bper\s*hour\b/i.test(s)) return false;
+  if (/^\d+\s*\/\s*hr/i.test(s) || /^80\s*\/\s*hr/i.test(s)) return false;
+  if (/^\d+(\.\d+)?$/.test(s)) return false;
+
+  // Meta / staffing labels
+  if (
+    /^(jd|job|role|title|position|match|keyword|keywords|coverage|primary|secondary|extended|domain|tenure|rate|rates|bill|c2c|w2|ctc|salary|budget|remote|hybrid|onsite|offshore|onshore|interview|available|availability|asap)$/i.test(
+      s
+    )
+  )
+    return false;
+  if (/\b(jd|job description)\b/i.test(s) && s.length < 20) return false;
+
+  // Broken SAP fragments from slash-splitting S/4HANA etc.
+  if (/^sap\s*s$/i.test(s)) return false;
+  if (/^s\/?4?$/i.test(s)) return false;
+  if (/^sap\s*certified/i.test(s) && s.length < 18) return false;
+  if (/^[–—\-]+$/.test(s)) return false;
+  if (/certified\s*[–—\-]\s*s$/i.test(s)) return false;
+
+  // Generic noise leftovers
+  if (/^(close|open|new|end|impl|client|vendor|logistics|finance)$/i.test(s)) return false;
+  if (JD_NOISE.has(lower) || STOP.has(lower)) return false;
+
+  return true;
+}
+
+/** Normalize + dedupe skill list for resume display */
+export function sanitizeSkillList(skills: string[], limit = 40): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of skills) {
+    let s = normalizeSkill(raw);
+    // Prefer canonical S/4HANA when fragments appear
+    if (/^s\/4/i.test(s) && !/hana/i.test(s)) s = "S/4HANA";
+    if (/^sap\s*s\/4/i.test(s)) s = "SAP S/4HANA";
+    if (!isValidSkillToken(s)) continue;
+    const key = s.toLowerCase();
+    if (seen.has(key)) continue;
+    // Drop if already covered by longer phrase
+    let covered = false;
+    seen.forEach((k) => {
+      if (k.includes(key) && k !== key) covered = true;
+    });
+    if (covered) continue;
+    seen.add(key);
+    out.push(s);
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 export type DomainHint =

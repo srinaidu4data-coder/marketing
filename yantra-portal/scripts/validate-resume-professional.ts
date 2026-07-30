@@ -35,10 +35,25 @@ async function main() {
     [r.structured.headline.includes("MDG"), "role title from JD"],
     [!/SITUATION:|COMPLICATION:|QUESTION:|PREVIEW:/i.test(text), "no SCQA sales chatter"],
     [!/OP-\d+/i.test(text), "no OP-01 labels"],
-    [!/\$80|Rate:|Who is available/i.test(text), "no rate/interview noise"],
-    [!/near-100%|first-pass recruiter/i.test(text), "no meta marketing phrases"],
+    [!/\$80|Rate:|Who is available|80\s*\/\s*hr/i.test(text), "no rate/interview noise"],
+    [!/near-100%|first-pass recruiter|JD MATCH|JD-aligned|\bROLE\s*::/i.test(text), "no JD/ROLE meta labels"],
+    [!/\bSAP\s+S\b(?!\/)/i.test(text), "no broken SAP S token"],
     [r.structured.sections.some((s) => s.heading === "Key Achievements"), "Key Achievements section"],
   ];
+
+  const tech = await progressiveTailor({
+    master,
+    jd,
+    vendorName: "IT",
+    candidateName: "Sri Naidu",
+    layoutId: "technical_dense",
+    email: "srinaidu582@gmail.com",
+  });
+  const techText = tech.text;
+  checks.push(
+    [!/JD MATCH|Near-100%|ROLE\s*::|80\s*\/\s*hr|JD-aligned/i.test(techText), "tech layout clean of noise"],
+    [!/\bSAP\s+S\b(?!\/4)/i.test(techText), "tech layout no SAP S fragment"]
+  );
   let fails = 0;
   for (const [ok, label] of checks) {
     console.log(ok ? "PASS" : "FAIL", label);

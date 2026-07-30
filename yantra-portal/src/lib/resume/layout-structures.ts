@@ -357,24 +357,31 @@ function buildExecutivePyramid(ctx: StructureCtx): ResumeSection[] {
  * Distinct: matrix opens; no prose summary block at all.
  */
 function buildTechModular(ctx: StructureCtx): ResumeSection[] {
-  const third = Math.ceil(ctx.cleanSkills.length / 3);
+  const third = Math.ceil(ctx.cleanSkills.length / 3) || 1;
+  const primary = ctx.cleanSkills.slice(0, third).join("  |  ");
+  const secondary = ctx.cleanSkills.slice(third, third * 2).join("  |  ");
+  const extended = ctx.cleanSkills.slice(third * 2).join("  |  ");
   return [
     {
       heading: "Capability Matrix",
       lines: [
-        `ROLE  ::  ${ctx.headline}  |  DOMAIN  ::  ${ctx.domain.toUpperCase()}  |  TENURE  ::  ~${ctx.yearsHint}+ yrs`,
-        `PRIMARY  ::  ${ctx.cleanSkills.slice(0, third).join("  |  ")}`,
-        `SECONDARY  ::  ${ctx.cleanSkills.slice(third, third * 2).join("  |  ")}`,
-        `EXTENDED  ::  ${ctx.cleanSkills.slice(third * 2).join("  |  ")}`,
-        `JD MATCH  ::  Near-100% keyword coverage across matrix, metrics, and deep-dives`,
-      ],
+        // No "ROLE" / "JD" meta labels — professional matrix only
+        `${ctx.headline}  ·  ~${ctx.yearsHint}+ years progressive SAP delivery`,
+        primary ? `PRIMARY  ::  ${primary}` : "",
+        secondary ? `SECONDARY  ::  ${secondary}` : "",
+        extended ? `EXTENDED  ::  ${extended}` : "",
+      ].filter(Boolean),
     },
     {
       heading: "Systems & Integration Surface",
       lines: [
         ctx.skillLines.find((l) => /Tools|platforms/i.test(l)) ||
           "Platforms: SAP GUI · integration monitoring · ALM/Jira · documentation suites",
-        ...ctx.skillLines.filter((l) => !/Tools|platforms/i.test(l)),
+        ...ctx.skillLines.filter(
+          (l) =>
+            !/Tools|platforms/i.test(l) &&
+            !/\bJD\b|near-100%|keyword coverage|80\s*\/\s*hr/i.test(l)
+        ),
         "Interfaces: IDoc / RFC / EDI patterns as applicable to engagement scope.",
         "Quality gates: unit → SIT → UAT traceability; transport discipline; peer review on critical objects.",
       ].filter(Boolean),
