@@ -157,7 +157,6 @@ export async function generateChainResumes(
   const { chainId, userId, rawJobText, vendorName, candidateIds, onProgress } =
     input;
   const errors: GenerateChainResult["errors"] = [];
-  let succeeded = 0;
   let timedOut = false;
   const deadline = generationDeadlineMs();
   const emit: ProgressReporter = async (ev) => {
@@ -457,7 +456,6 @@ export async function generateChainResumes(
           candidateName: c.name,
           ok: true,
         });
-        succeeded++;
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         console.error(`[chain ${chainId}] candidate ${c.id} failed`, e);
