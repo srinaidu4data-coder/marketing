@@ -209,13 +209,11 @@ export function inspectPackShipReady(opts: {
       "generation_blocked",
     ].includes(i.code)
   );
-  const scoresOk =
-    (!ats || ats.score === 100) && (!psych || psych.score === 100);
   // When JD provided, require both scores present and 100
   const dualRequired = !!(opts.jd && master);
-  const ok =
-    structuralOk &&
-    (!dualRequired || (!!ats && !!psych && ats.score === 100 && psych.score === 100));
+  const dualOk =
+    !dualRequired || (!!ats && !!psych && ats.score === 100 && psych.score === 100);
+  const ok = structuralOk && dualOk;
   const best = ok && !!ats && !!psych && ats.score === 100 && psych.score === 100;
 
   return {

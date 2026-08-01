@@ -18,7 +18,6 @@
  */
 
 import {
-  extractJdKeywords,
   extractJobTitle,
   skillFingerprint,
   skillsHonestFromSources,
@@ -49,7 +48,7 @@ import {
   formatContactLine,
 } from "./extract-contact";
 import type { StructuredResume } from "./templates";
-import { isLowOverlap, scrubSummaryHonesty } from "./resume-honesty";
+import { scrubSummaryHonesty } from "./resume-honesty";
 import {
   parseMasterProfile,
   parseStoredMasterProfile,
