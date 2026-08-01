@@ -72,24 +72,35 @@ function sectionLines(
     case "summary":
       return c.summaryLines.slice(0, 12);
     case "skills": {
+      // Strip accidental section prefixes from skill tokens (avoid "Core: Core: …")
+      const clean = skills
+        .map((s) =>
+          String(s)
+            .replace(
+              /^(core|platforms?\s*&\s*integration|methods?|primary|secondary|extended|jd keywords)\s*:\s*/i,
+              ""
+            )
+            .trim()
+        )
+        .filter(Boolean);
       if (cfg.id === "technical_dense" || cfg.id === "skills_first") {
-        const third = Math.ceil(skills.length / 3) || 1;
+        const third = Math.ceil(clean.length / 3) || 1;
         return [
           c.yearsHint > 0
             ? `${c.headline}  ·  ~${c.yearsHint}+ years progressive delivery`
             : c.headline,
-          `PRIMARY  ::  ${skills.slice(0, third).join(sep)}`,
-          `SECONDARY  ::  ${skills.slice(third, third * 2).join(sep)}`,
-          `EXTENDED  ::  ${skills.slice(third * 2).join(sep)}`,
+          `PRIMARY  ::  ${clean.slice(0, third).join(sep)}`,
+          `SECONDARY  ::  ${clean.slice(third, third * 2).join(sep)}`,
+          `EXTENDED  ::  ${clean.slice(third * 2).join(sep)}`,
         ].filter((l) => !l.endsWith("::  "));
       }
       return [
-        `Core: ${skills.slice(0, 14).join(sep)}`,
-        skills.slice(14, 28).length
-          ? `Platforms & Integration: ${skills.slice(14, 28).join(sep)}`
+        `Core: ${clean.slice(0, 14).join(sep)}`,
+        clean.slice(14, 28).length
+          ? `Platforms & Integration: ${clean.slice(14, 28).join(sep)}`
           : "",
-        skills.slice(28).length
-          ? `Methods: ${skills.slice(28).join(sep)}`
+        clean.slice(28).length
+          ? `Methods: ${clean.slice(28).join(sep)}`
           : "",
       ].filter(Boolean);
     }

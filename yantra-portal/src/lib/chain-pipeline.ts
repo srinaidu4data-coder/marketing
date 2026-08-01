@@ -273,23 +273,25 @@ export async function generateChainResumes(
           );
         }
 
-        // Ensure masterProfileJson exists for AI path (legacy re-parse)
+        // Ensure masterProfileJson has engagements (legacy empty JSON still needs re-parse)
         let masterProfileJson = c.masterProfileJson || null;
-        if (
-          !masterProfileJson ||
-          masterProfileJson === "{}" ||
-          masterProfileJson.length < 20
-        ) {
-          masterProfileJson = serializeMasterProfile(
-            parseMasterProfile(c.masterResumeText || "")
+        {
+          const { parseStoredMasterProfile } = await import(
+            "@/lib/resume/master-profile"
           );
-          try {
-            await prisma.candidate.update({
-              where: { id: c.id },
-              data: { masterProfileJson },
-            });
-          } catch {
-            /* non-fatal */
+          const stored = parseStoredMasterProfile(masterProfileJson);
+          if (!stored || stored.engagements.length === 0) {
+            masterProfileJson = serializeMasterProfile(
+              parseMasterProfile(c.masterResumeText || "")
+            );
+            try {
+              await prisma.candidate.update({
+                where: { id: c.id },
+                data: { masterProfileJson },
+              });
+            } catch {
+              /* non-fatal */
+            }
           }
         }
 

@@ -18,16 +18,35 @@ export function shipReportsForChain(candidates: ChainCandidateRow[]): {
   id: string;
   name: string;
   ship: PackShipReport;
+  /** True when this row has no pack yet (generation failed / skipped) */
+  missingPack: boolean;
 }[] {
-  return candidates.map((cc) => ({
-    id: cc.id,
-    name: cc.candidate.name,
-    ship: inspectPackShipReady({
-      text: cc.tailoredResumeText || "",
-      masterText: cc.candidate.masterResumeText || "",
-      masterProfileJson: cc.candidate.masterProfileJson || null,
-    }),
-  }));
+  return candidates.map((cc) => {
+    const text = cc.tailoredResumeText || "";
+    const missingPack = text.trim().length < 80;
+    return {
+      id: cc.id,
+      name: cc.candidate.name,
+      missingPack,
+      ship: missingPack
+        ? {
+            ok: false,
+            issues: [
+              {
+                code: "empty" as const,
+                detail: "No pack generated for this candidate",
+              },
+            ],
+            employerBlocks: 0,
+            minBulletsSeen: null,
+          }
+        : inspectPackShipReady({
+            text,
+            masterText: cc.candidate.masterResumeText || "",
+            masterProfileJson: cc.candidate.masterProfileJson || null,
+          }),
+    };
+  });
 }
 
 export function encodeShipErrorMessage(message: string): string {

@@ -233,9 +233,19 @@ export async function sendChain(chainId: string) {
     return { error: "NO_CANDIDATES", message: "No resumes on this chain to send." };
   }
 
-  // Ship/no-ship: shared inspect (bullets, clients, cosplay, empty)
+  // Ship/no-ship: only candidates that have pack text must pass
+  // (PARTIAL chains may have missing failed candidates — block only bad packs)
   const { inspectPackShipReady } = await import("@/lib/resume/pack-ship-ready");
-  const unsendable = chain.candidates
+  const withText = chain.candidates.filter(
+    (cc) => (cc.tailoredResumeText || "").trim().length > 0
+  );
+  if (withText.length === 0) {
+    return {
+      error: "PACK_NOT_SHIP_READY",
+      message: "Cannot send: no generated packs on this chain. Retry generation.",
+    };
+  }
+  const unsendable = withText
     .map((cc) => {
       const ship = inspectPackShipReady({
         text: cc.tailoredResumeText || "",

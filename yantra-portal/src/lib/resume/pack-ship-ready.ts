@@ -51,11 +51,11 @@ export function inspectPackShipReady(opts: {
   let minBulletsSeen: number | null = null;
   if (blocks.length) {
     for (let i = 0; i < blocks.length; i++) {
-      const head = (blocks[i].split("\n")[0] || `Client ${i + 1}`)
+      const head = (blocks[i].split(/\r?\n/)[0] || `Client ${i + 1}`)
         .split(",")[0]
         .trim()
         .slice(0, 48);
-      const n = (blocks[i].match(/^[•\-–▸→\*]\s+\S/gm) || []).length;
+      const n = countBulletsInBlock(blocks[i]);
       minBulletsSeen =
         minBulletsSeen == null ? n : Math.min(minBulletsSeen, n);
       if (n < min) {
@@ -89,8 +89,10 @@ export function inspectPackShipReady(opts: {
     }
   }
 
+  // Cosplay only in summary (not skills bank / JD keyword lines)
+  const summarySlice = extractSummaryRegion(text);
   const master = opts.masterText || "";
-  const cosplay = packHasIndustryCosplay(text, master);
+  const cosplay = packHasIndustryCosplay(summarySlice, master);
   for (const c of cosplay) {
     issues.push({ code: "industry_cosplay", detail: c });
   }
@@ -103,6 +105,33 @@ export function inspectPackShipReady(opts: {
   };
 }
 
+/** Summary body only — avoid flagging skill tokens like "Pharmaceutical". */
+function extractSummaryRegion(text: string): string {
+  const t = text || "";
+  const m = t.match(
+    /professional summary\s*\n([\s\S]*?)(?:\n\s*\n[A-Z][A-Z \/\-]{3,}|core competencies|technical skills|selected impact|professional experience)/i
+  );
+  if (m) return m[1].slice(0, 2000);
+  // Fallback: top of doc before experience
+  const exp = t.search(/professional experience|work experience/i);
+  return (exp > 0 ? t.slice(0, exp) : t.slice(0, 1800));
+}
+
+/** Count bullets in a block — tolerate •, -, en/em dash, and common bullets. */
+export function countBulletsInBlock(block: string): number {
+  const lines = (block || "").split(/\r?\n/);
+  let n = 0;
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) continue;
+    // Stop at next role-ish header (title line without bullet)
+    if (/^employer\s*\/\s*client:/i.test(t)) continue;
+    if (/^[•●○▪▸→‣\-\u2013\u2014\*]\s+\S/.test(t)) n++;
+    else if (/^[\u2022]\s+\S/.test(t)) n++;
+  }
+  return n;
+}
+
 /** True when stored pack must be regenerated before download/send. */
 export function mustRegeneratePack(opts: {
   text: string;
@@ -112,7 +141,7 @@ export function mustRegeneratePack(opts: {
 }): boolean {
   const ship = inspectPackShipReady(opts);
   if (!ship.ok) return true;
-  // Legacy non-AI packs
-  if (opts.text && !/Role Forge AI|OPENAI|gpt-/i.test(opts.text)) return true;
+  // Accept AI or deterministic Role Forge footers (not only OpenAI marker)
+  if (opts.text && !/Role Forge/i.test(opts.text)) return true;
   return false;
 }

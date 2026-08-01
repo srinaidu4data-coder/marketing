@@ -512,14 +512,34 @@ export function validatePackAgainstMaster(opts: {
       group: "pack",
     });
 
-    const bulletLines = (text.match(/^[•\-–]\s+\S/gm) || []).length;
+    // Count bullets only under experience blocks (not impact/summary)
+    const blocks = text.split(/Employer\s*\/\s*Client:\s*/i).slice(1);
+    let thinBlocks = 0;
+    let totalExpBullets = 0;
+    for (const b of blocks) {
+      const n = (b.match(/^[•●○▪▸→\-\u2013\u2014\*]\s+\S/gm) || []).length;
+      totalExpBullets += n;
+      if (n < 8) thinBlocks++;
+    }
     if (text.length > 200) {
-      const per = bulletLines / Math.max(expected, 1);
+      const per =
+        blocks.length > 0
+          ? totalExpBullets / blocks.length
+          : totalExpBullets / Math.max(expected, 1);
       checks.push({
         id: "pack_bullets_per_project",
         label: "Bullets per project (~8–10 target)",
-        severity: per >= 8 ? "pass" : per >= 6 ? "warn" : "fail",
-        detail: `${bulletLines} bullet lines / ${expected} clients ≈ ${per.toFixed(1)} each`,
+        severity:
+          thinBlocks === 0 && per >= 8
+            ? "pass"
+            : thinBlocks === 0 && per >= 6
+              ? "warn"
+              : thinBlocks > 0
+                ? "fail"
+                : per >= 6
+                  ? "warn"
+                  : "fail",
+        detail: `${totalExpBullets} exp bullets / ${blocks.length || expected} clients ≈ ${per.toFixed(1)} each · thin blocks ${thinBlocks}`,
         group: "pack",
       });
     }

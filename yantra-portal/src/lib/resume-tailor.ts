@@ -23,10 +23,7 @@ import {
 } from "./resume/master-pack-validate";
 import { parseStoredMasterProfile } from "./resume/master-profile";
 import { MIN_BULLETS_PER_PROJECT } from "./resume/assemble-pack";
-import {
-  assertAllMasterClientsPresent,
-  packHasIndustryCosplay,
-} from "./resume/resume-honesty";
+import { inspectPackShipReady } from "./resume/pack-ship-ready";
 
 export { renderEmailTemplate } from "./resume/email-render";
 export { getOpenAiConfig } from "./resume/openai-config";
@@ -50,55 +47,19 @@ export type TailorResumeResult = {
   packValidation?: PackValidationReport;
 };
 
-/**
- * Final delivery gates: clients + bullets + industry cosplay.
- * Fail = full resume not returned (engine throws).
- */
-function assertDeliveredBulletDensity(text: string): void {
-  const blocks = text.split(/Employer\s*\/\s*Client:\s*/i).slice(1);
-  if (!blocks.length) {
-    const bullets = (text.match(/^[•\-–▸→\*]\s+\S/gm) || []).length;
-    if (bullets < MIN_BULLETS_PER_PROJECT) {
-      throw new Error(
-        `Resume generation blocked: mandatory ${MIN_BULLETS_PER_PROJECT}–10 bullets per project/client/employer. No employer blocks found and only ${bullets} bullets total.`
-      );
-    }
-    return;
-  }
-  const thin: string[] = [];
-  for (let i = 0; i < blocks.length; i++) {
-    const head = (blocks[i].split("\n")[0] || `Client ${i + 1}`)
-      .split(",")[0]
-      .trim()
-      .slice(0, 60);
-    const n = (blocks[i].match(/^[•\-–▸→\*]\s+\S/gm) || []).length;
-    if (n < MIN_BULLETS_PER_PROJECT) {
-      thin.push(`${head}: ${n}/${MIN_BULLETS_PER_PROJECT}`);
-    }
-  }
-  if (thin.length) {
-    throw new Error(
-      `Resume generation blocked: every project/client/employer requires ${MIN_BULLETS_PER_PROJECT}–10 bullets (mandatory). Insufficient: ${thin.join("; ")}. Full resume was not generated.`
-    );
-  }
-}
-
 function attachPackValidation(
   result: Omit<TailorResumeResult, "packValidation">,
   opts: { masterProfileJson?: string | null; master: string }
 ): TailorResumeResult {
-  // Hard gates — no DOCX/PDF payload if any fail
-  assertAllMasterClientsPresent({
-    masterProfileJson: opts.masterProfileJson,
+  // Single ship-ready gate (clients + bullets + summary cosplay)
+  const ship = inspectPackShipReady({
+    text: result.text,
     masterText: opts.master,
-    tailoredText: result.text,
+    masterProfileJson: opts.masterProfileJson,
   });
-  assertDeliveredBulletDensity(result.text);
-
-  const cosplay = packHasIndustryCosplay(result.text, opts.master);
-  if (cosplay.length) {
+  if (!ship.ok) {
     throw new Error(
-      `Resume generation blocked: industry/career claims not supported by master (${cosplay.join(", ")}). Full resume was not generated.`
+      `Resume generation blocked: ${ship.issues.map((i) => i.detail).join("; ")}. Full resume was not generated.`
     );
   }
 
@@ -116,28 +77,12 @@ function attachPackValidation(
     expectedYears: span,
   });
 
-  if (packValidation.clientsMissing.length) {
-    throw new Error(
-      `Resume generation blocked: missing master employers in pack: ${packValidation.clientsMissing
-        .map((c) => c.split(",")[0])
-        .join("; ")}. Full resume was not generated.`
-    );
-  }
-
-  const bulletCheck = packValidation.checks.find(
-    (c) => c.id === "pack_bullets_per_project"
-  );
-  if (bulletCheck && bulletCheck.severity === "fail") {
-    throw new Error(
-      `Resume generation blocked: mandatory ${MIN_BULLETS_PER_PROJECT}–10 bullets per project/client. ${bulletCheck.detail}. Full resume was not generated.`
-    );
-  }
-
   result.structured.meta.progressiveNotes = [
     ...result.structured.meta.progressiveNotes,
     `Ground-truth: ${packValidation.ok ? "PASS" : "REVIEW"} ${packValidation.score}% · clients ${packValidation.clientsFound.length}/${packValidation.engagementCount} · fail ${packValidation.summary.fail} warn ${packValidation.summary.warn}`,
     `Bullet density: PASS · mandatory ≥${MIN_BULLETS_PER_PROJECT} per project/client (hard gate)`,
-    `Honesty: no unsupported industry cosplay`,
+    `Honesty: no unsupported industry cosplay in summary`,
+    `Ship-ready: OK · min bullets/block ${ship.minBulletsSeen ?? "?"}`,
   ];
   return { ...result, packValidation };
 }
