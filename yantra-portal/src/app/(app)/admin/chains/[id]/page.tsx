@@ -41,12 +41,16 @@ export default async function AdminChainDetailPage({
 
   const sent = chain.candidates.filter((c) => c.sendStatus === "SENT").length;
   const shipReports = shipReportsForChain(chain.candidates);
+  const badPacks = shipReports.filter((r) => !r.missingPack && !r.ship.ok);
+  const missingPacks = shipReports.filter((r) => r.missingPack);
+  const goodPacks = shipReports.filter((r) => !r.missingPack && r.ship.ok);
   const notShipReady = shipReports.filter((r) => !r.ship.ok);
   const stuck = chain.status === "GENERATING" || chain.status === "SENDING";
   const emptyFailed = chain.status === "FAILED" && chain.candidates.length === 0;
   const canSend =
-    chain.candidates.length > 0 &&
-    notShipReady.length === 0 &&
+    goodPacks.length > 0 &&
+    badPacks.length === 0 &&
+    !stuck &&
     (chain.status === "READY" ||
       chain.status === "PARTIAL" ||
       chain.status === "FAILED" ||
@@ -111,17 +115,23 @@ export default async function AdminChainDetailPage({
                 </Button>
               </form>
             ) : null}
-            {chain.status === "FAILED" || emptyFailed ? (
+            {!stuck &&
+            (emptyFailed ||
+              chain.status === "FAILED" ||
+              chain.status === "PARTIAL" ||
+              missingPacks.length > 0 ||
+              badPacks.length > 0) ? (
               <form action={retryAction}>
                 <Button type="submit" variant="outline">
-                  Retry generation
+                  Retry failed packs
                 </Button>
               </form>
             ) : null}
-            {canSend && !stuck ? (
+            {canSend ? (
               <form action={sendAction}>
-                <Button type="submit" disabled={chain.candidates.length === 0}>
-                  Send all
+                <Button type="submit">
+                  Send ready packs
+                  {goodPacks.length ? ` (${goodPacks.length})` : ""}
                 </Button>
               </form>
             ) : null}

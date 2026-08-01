@@ -91,12 +91,18 @@ export default async function ChainDetailPage({
   const total = chain.candidates.length;
   const lowAts = chain.candidates.filter((c) => c.atsScore < 95);
   const shipReports = shipReportsForChain(chain.candidates);
+  // Bad packs (have text but fail quality) block send; missing packs are PARTIAL noise
+  const badPacks = shipReports.filter((r) => !r.missingPack && !r.ship.ok);
+  const missingPacks = shipReports.filter((r) => r.missingPack);
+  const goodPacks = shipReports.filter((r) => !r.missingPack && r.ship.ok);
   const notShipReady = shipReports.filter((r) => !r.ship.ok);
   const stuck = chain.status === "GENERATING" || chain.status === "SENDING";
   const emptyFailed = chain.status === "FAILED" && total === 0;
+  // Send when at least one good pack and zero bad packs (missing = partial, use Retry)
   const canSend =
-    total > 0 &&
-    notShipReady.length === 0 &&
+    goodPacks.length > 0 &&
+    badPacks.length === 0 &&
+    !stuck &&
     (chain.status === "READY" ||
       chain.status === "PARTIAL" ||
       chain.status === "FAILED" ||
@@ -154,18 +160,24 @@ export default async function ChainDetailPage({
                 </Button>
               </form>
             ) : null}
-            {emptyFailed || chain.status === "FAILED" ? (
+            {!stuck &&
+            (emptyFailed ||
+              chain.status === "FAILED" ||
+              chain.status === "PARTIAL" ||
+              missingPacks.length > 0 ||
+              badPacks.length > 0) ? (
               <form action={retryAction}>
                 <Button type="submit" variant="outline">
-                  Retry generation
+                  Retry failed packs
                 </Button>
               </form>
             ) : null}
-            {canSend && !stuck ? (
+            {canSend ? (
               <form action={sendAction}>
-                <Button type="submit" variant="soft" disabled={total === 0}>
+                <Button type="submit" variant="soft">
                   <Mail className="h-4 w-4" />
                   Send to vendor
+                  {goodPacks.length ? ` (${goodPacks.length})` : ""}
                 </Button>
               </form>
             ) : null}
@@ -289,11 +301,17 @@ export default async function ChainDetailPage({
       {total > 0 && notShipReady.length > 0 ? (
         <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-900">
           <p className="font-medium">
-            {notShipReady.length} pack(s) not ship-ready — Send blocked until
-            regenerate.
+            {missingPacks.length > 0
+              ? `${missingPacks.length} missing pack(s)`
+              : ""}
+            {missingPacks.length > 0 && badPacks.length > 0 ? " · " : ""}
+            {badPacks.length > 0
+              ? `${badPacks.length} pack(s) fail quality`
+              : ""}
+            {" — use Retry failed packs."}
           </p>
           <ul className="mt-1 list-disc pl-5 text-xs">
-            {notShipReady.slice(0, 6).map((r) => (
+            {notShipReady.slice(0, 8).map((r) => (
               <li key={r.id}>
                 {r.name}: {r.ship.issues.map((i) => i.detail).join("; ")}
               </li>

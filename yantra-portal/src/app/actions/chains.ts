@@ -233,41 +233,45 @@ export async function sendChain(chainId: string) {
     return { error: "NO_CANDIDATES", message: "No resumes on this chain to send." };
   }
 
-  // Ship/no-ship: only candidates that have pack text must pass
-  // (PARTIAL chains may have missing failed candidates — block only bad packs)
+  // Only send ship-ready packs; skip empty failure placeholders
   const { inspectPackShipReady } = await import("@/lib/resume/pack-ship-ready");
-  const withText = chain.candidates.filter(
-    (cc) => (cc.tailoredResumeText || "").trim().length > 0
-  );
-  if (withText.length === 0) {
+  const readyToSend = chain.candidates.filter((cc) => {
+    const text = (cc.tailoredResumeText || "").trim();
+    if (text.length < 200) return false;
+    const ship = inspectPackShipReady({
+      text,
+      masterText: cc.candidate.masterResumeText || "",
+      masterProfileJson: cc.candidate.masterProfileJson || null,
+    });
+    return ship.ok;
+  });
+  if (readyToSend.length === 0) {
     return {
       error: "PACK_NOT_SHIP_READY",
-      message: "Cannot send: no generated packs on this chain. Retry generation.",
+      message:
+        "Cannot send: no ship-ready packs. Fix masters and use Retry failed packs.",
     };
   }
-  const unsendable = withText
-    .map((cc) => {
-      const ship = inspectPackShipReady({
-        text: cc.tailoredResumeText || "",
-        masterText: cc.candidate.masterResumeText || "",
-        masterProfileJson: cc.candidate.masterProfileJson || null,
-      });
-      return { cc, ship };
-    })
-    .filter((x) => !x.ship.ok);
-  if (unsendable.length) {
+  const badPacks = chain.candidates.filter((cc) => {
+    const text = (cc.tailoredResumeText || "").trim();
+    if (text.length < 200) return false;
+    const ship = inspectPackShipReady({
+      text,
+      masterText: cc.candidate.masterResumeText || "",
+      masterProfileJson: cc.candidate.masterProfileJson || null,
+    });
+    return !ship.ok;
+  });
+  if (badPacks.length) {
     return {
       error: "PACK_NOT_SHIP_READY",
-      message: `Cannot send: ${unsendable.length} pack(s) fail mandatory quality. ${unsendable
-        .map(
-          (x) =>
-            `${x.cc.candidate.name}: ${x.ship.issues.map((i) => i.detail).join("; ")}`
-        )
-        .join(" | ")}`,
+      message: `Cannot send while ${badPacks.length} pack(s) fail quality (retry those first): ${badPacks
+        .map((c) => c.candidate.name)
+        .join(", ")}`,
     };
   }
 
-  const lowAts = chain.candidates.filter((c) => c.atsScore < 95);
+  const lowAts = readyToSend.filter((c) => c.atsScore < 95);
 
   await prisma.chain.update({ where: { id: chainId }, data: { status: "SENDING" } });
   await audit("chain.send_requested", user.id, {
@@ -290,7 +294,7 @@ export async function sendChain(chainId: string) {
       skillFingerprint: string;
     }[] = [];
 
-    for (const cc of chain.candidates) {
+    for (const cc of readyToSend) {
       // Heartbeat during send so stale sweeper won't kill live sends
       await prisma.chain.update({
         where: { id: chainId },

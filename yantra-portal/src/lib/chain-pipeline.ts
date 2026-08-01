@@ -462,6 +462,43 @@ export async function generateChainResumes(
         const message = e instanceof Error ? e.message : String(e);
         console.error(`[chain ${chainId}] candidate ${c.id} failed`, e);
         errors.push({ candidateId: c.id, name: c.name, message });
+        // Persist failure row so retry knows who to regenerate (don't lose them)
+        try {
+          const existingFail = await prisma.chainCandidate.findFirst({
+            where: { chainId, candidateId: c.id },
+          });
+          const failData = {
+            tailoredResumeText: "",
+            tailoredResumePath: null as string | null,
+            docxPath: null as string | null,
+            pdfPath: null as string | null,
+            layoutId: c.layoutId,
+            jobTitle: "",
+            skillFingerprint: "",
+            atsScore: 0,
+            atsReady: false,
+            atsBreakdownJson: JSON.stringify({
+              error: message,
+              failedAt: new Date().toISOString(),
+            }),
+            sendStatus: "FAILED",
+          };
+          if (existingFail) {
+            await prisma.chainCandidate.update({
+              where: { id: existingFail.id },
+              data: failData,
+            });
+          } else {
+            await prisma.chainCandidate.create({
+              data: { chainId, candidateId: c.id, ...failData },
+            });
+          }
+        } catch (persistErr) {
+          console.error(
+            `[chain ${chainId}] could not persist failure for ${c.id}`,
+            persistErr
+          );
+        }
         await emit({
           type: "candidate_done",
           candidateId: c.id,
@@ -477,13 +514,19 @@ export async function generateChainResumes(
       }
     }
 
-    const packCount = await prisma.chainCandidate.count({ where: { chainId } });
+    const packRows = await prisma.chainCandidate.findMany({
+      where: { chainId },
+      select: { tailoredResumeText: true },
+    });
+    const goodPackCount = packRows.filter(
+      (p) => (p.tailoredResumeText || "").trim().length > 200
+    ).length;
     const selected = candidateIds.length;
-    // READY = every selected candidate got a pack; PARTIAL = some; FAILED = none
+    // READY = every selected candidate got a good pack; PARTIAL = some; FAILED = none
     const status: "READY" | "PARTIAL" | "FAILED" =
-      packCount === 0
+      goodPackCount === 0
         ? "FAILED"
-        : packCount >= selected && errors.length === 0
+        : goodPackCount >= selected && errors.length === 0
           ? "READY"
           : "PARTIAL";
 
@@ -494,7 +537,7 @@ export async function generateChainResumes(
     await audit("chain.status_changed", userId, {
       chainId,
       status,
-      succeeded,
+      succeeded: goodPackCount,
       failed: errors.length,
       timedOut,
       errors: errors.slice(0, 8),
@@ -504,7 +547,7 @@ export async function generateChainResumes(
       type: "chain_done",
       chainId,
       status,
-      succeeded,
+      succeeded: goodPackCount,
       failed: errors.length,
       errors: errors.map((e) => ({ name: e.name, message: e.message })),
     });
@@ -512,7 +555,7 @@ export async function generateChainResumes(
     return {
       chainId,
       status,
-      succeeded,
+      succeeded: goodPackCount,
       failed: errors.length,
       errors,
       timedOut,
@@ -520,11 +563,17 @@ export async function generateChainResumes(
   } catch (fatal) {
     console.error(`[chain ${chainId}] fatal generation error`, fatal);
     try {
-      const packCount = await prisma.chainCandidate.count({ where: { chainId } });
+      const packRows = await prisma.chainCandidate.findMany({
+        where: { chainId },
+        select: { tailoredResumeText: true },
+      });
+      const goodPackCount = packRows.filter(
+        (p) => (p.tailoredResumeText || "").trim().length > 200
+      ).length;
       const status: GenerateChainResult["status"] =
-        packCount === 0
+        goodPackCount === 0
           ? "FAILED"
-          : packCount >= candidateIds.length
+          : goodPackCount >= candidateIds.length
             ? "READY"
             : "PARTIAL";
       await prisma.chain.update({
@@ -540,7 +589,7 @@ export async function generateChainResumes(
       return {
         chainId,
         status,
-        succeeded: packCount,
+        succeeded: goodPackCount,
         failed: errors.length + 1,
         errors: [
           ...errors,
@@ -599,6 +648,7 @@ export async function createAndGenerateChain(opts: {
     chainId: chain.id,
     vendorName: opts.vendorName,
     count: opts.candidateIds.length,
+    candidateIds: opts.candidateIds,
   });
   await audit("chain.status_changed", opts.userId, {
     chainId: chain.id,
@@ -618,8 +668,8 @@ export async function createAndGenerateChain(opts: {
 }
 
 /**
- * Re-run generation for a FAILED/READY chain that has missing packs
- * (e.g. partial time-budget or empty failure).
+ * Re-run generation only for missing / failed / non-ship-ready packs.
+ * Does not re-burn tokens on packs that already pass ship-ready.
  */
 export async function retryGenerateChain(
   chainId: string,
@@ -628,7 +678,9 @@ export async function retryGenerateChain(
 ): Promise<GenerateChainResult> {
   const chain = await prisma.chain.findUnique({
     where: { id: chainId },
-    include: { candidates: true },
+    include: {
+      candidates: { include: { candidate: true } },
+    },
   });
   if (!chain) {
     return {
@@ -640,18 +692,82 @@ export async function retryGenerateChain(
     };
   }
 
-  let ids = candidateIds;
-  if (!ids?.length) {
-    // Prefer original selection via allocations if empty packs
-    if (chain.candidates.length === 0) {
+  let ids = candidateIds?.length ? [...candidateIds] : [];
+
+  if (!ids.length) {
+    // 1) Prefer IDs stored at create time
+    try {
+      const createLogs = await prisma.auditLog.findMany({
+        where: { action: "chain.create" },
+        orderBy: { createdAt: "desc" },
+        take: 40,
+      });
+      for (const row of createLogs) {
+        try {
+          const meta = JSON.parse(row.meta || "{}") as {
+            chainId?: string;
+            candidateIds?: string[];
+          };
+          if (meta.chainId === chainId && meta.candidateIds?.length) {
+            ids = meta.candidateIds;
+            break;
+          }
+        } catch {
+          /* next */
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    // 2) All rows on chain (includes failure placeholders)
+    if (!ids.length) {
+      ids = chain.candidates.map((c) => c.candidateId);
+    }
+
+    // 3) Last resort: employee allocations (legacy empty chains)
+    if (!ids.length) {
       const alloc = await prisma.allocation.findMany({
         where: { employeeId: chain.employeeId },
         select: { candidateId: true },
       });
       ids = alloc.map((a) => a.candidateId);
-    } else {
-      ids = chain.candidates.map((c) => c.candidateId);
     }
+  }
+
+  // Only regenerate missing/empty/non-ship-ready
+  const { inspectPackShipReady } = await import("@/lib/resume/pack-ship-ready");
+  const needRetry: string[] = [];
+  for (const id of ids) {
+    const row = chain.candidates.find((c) => c.candidateId === id);
+    const text = row?.tailoredResumeText || "";
+    if (text.trim().length < 200) {
+      needRetry.push(id);
+      continue;
+    }
+    const ship = inspectPackShipReady({
+      text,
+      masterText: row?.candidate?.masterResumeText || "",
+      masterProfileJson: row?.candidate?.masterProfileJson || null,
+    });
+    if (!ship.ok) needRetry.push(id);
+  }
+
+  if (!needRetry.length) {
+    // Nothing to do — recompute terminal status
+    const good = chain.candidates.filter(
+      (c) => (c.tailoredResumeText || "").trim().length > 200
+    ).length;
+    const status: GenerateChainResult["status"] =
+      good === 0 ? "FAILED" : good >= ids.length ? "READY" : "PARTIAL";
+    await prisma.chain.update({ where: { id: chainId }, data: { status } });
+    return {
+      chainId,
+      status,
+      succeeded: good,
+      failed: 0,
+      errors: [],
+    };
   }
 
   await prisma.chain.update({
@@ -664,6 +780,6 @@ export async function retryGenerateChain(
     userId,
     rawJobText: chain.rawJobText,
     vendorName: chain.vendorName,
-    candidateIds: ids,
+    candidateIds: needRetry,
   });
 }
