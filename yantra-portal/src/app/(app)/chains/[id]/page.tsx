@@ -12,14 +12,18 @@ import { formatDateTime } from "@/lib/utils";
 import { getLayout } from "@/lib/resume/templates";
 import { getResendConfig } from "@/lib/email/resend";
 import { Mail, AlertTriangle, CheckCircle2, Download } from "lucide-react";
-import { inspectPackShipReady } from "@/lib/resume/pack-ship-ready";
+import {
+  decodeShipErrorMessage,
+  encodeShipErrorMessage,
+  shipReportsForChain,
+} from "@/lib/chain-ship-ui";
 
 export default async function ChainDetailPage({
   params,
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { failed?: string; sent?: string };
+  searchParams?: { failed?: string; sent?: string; ship?: string };
 }) {
   const user = await requireUser();
   if (user.role === "ADMIN") redirect(`/admin/chains/${params.id}`);
@@ -80,16 +84,7 @@ export default async function ChainDetailPage({
   const sent = chain.candidates.filter((c) => c.sendStatus === "SENT").length;
   const total = chain.candidates.length;
   const lowAts = chain.candidates.filter((c) => c.atsScore < 95);
-  const shipReports = chain.candidates.map((cc) => ({
-    id: cc.id,
-    ship: inspectPackShipReady({
-      text: cc.tailoredResumeText || "",
-      masterText: cc.candidate.masterResumeText || "",
-      masterProfileJson:
-        (cc.candidate as { masterProfileJson?: string }).masterProfileJson ||
-        null,
-    }),
-  }));
+  const shipReports = shipReportsForChain(chain.candidates);
   const notShipReady = shipReports.filter((r) => !r.ship.ok);
   const stuck = chain.status === "GENERATING" || chain.status === "SENDING";
   const emptyFailed = chain.status === "FAILED" && total === 0;
@@ -99,16 +94,27 @@ export default async function ChainDetailPage({
     (chain.status === "READY" ||
       chain.status === "FAILED" ||
       chain.status === "SENT");
+  const shipErrorMsg = decodeShipErrorMessage(searchParams?.ship);
 
   async function sendAction() {
     "use server";
     const result = await sendChain(params.id);
-    if (result && "error" in result && result.error === "VENDOR_SKILL_CONFLICT") {
-      const payload = Buffer.from(
-        JSON.stringify(result.conflicts || []),
-        "utf8"
-      ).toString("base64url");
-      redirect(`/chains/new?blocked=1&conflicts=${payload}`);
+    if (result && "error" in result) {
+      if (result.error === "VENDOR_SKILL_CONFLICT") {
+        const payload = Buffer.from(
+          JSON.stringify(result.conflicts || []),
+          "utf8"
+        ).toString("base64url");
+        redirect(`/chains/new?blocked=1&conflicts=${payload}`);
+      }
+      if (result.error === "PACK_NOT_SHIP_READY") {
+        redirect(
+          `/chains/${params.id}?failed=1&ship=${encodeShipErrorMessage(
+            result.message || "Packs not ship-ready"
+          )}`
+        );
+      }
+      redirect(`/chains/${params.id}?failed=1`);
     }
     if (result && "ok" in result && result.ok) {
       redirect(`/chains/${params.id}?sent=1`);
@@ -221,8 +227,13 @@ export default async function ChainDetailPage({
             <AlertTriangle className="h-4 w-4" />
             {emptyFailed
               ? "No resumes generated."
-              : "Chain did not finish cleanly."}
+              : shipErrorMsg
+                ? "Send blocked — pack quality"
+                : "Chain did not finish cleanly."}
           </p>
+          {shipErrorMsg ? (
+            <p className="text-xs text-red-900">{shipErrorMsg}</p>
+          ) : null}
           {uniqueHints.length > 0 ? (
             <ul className="list-disc pl-5 text-xs text-red-900">
               {uniqueHints.map((h) => (
@@ -252,16 +263,11 @@ export default async function ChainDetailPage({
             regenerate.
           </p>
           <ul className="mt-1 list-disc pl-5 text-xs">
-            {notShipReady.slice(0, 6).map((r) => {
-              const name =
-                chain.candidates.find((c) => c.id === r.id)?.candidate.name ||
-                r.id;
-              return (
-                <li key={r.id}>
-                  {name}: {r.ship.issues.map((i) => i.detail).join("; ")}
-                </li>
-              );
-            })}
+            {notShipReady.slice(0, 6).map((r) => (
+              <li key={r.id}>
+                {r.name}: {r.ship.issues.map((i) => i.detail).join("; ")}
+              </li>
+            ))}
           </ul>
         </div>
       ) : null}

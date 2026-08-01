@@ -225,9 +225,7 @@ export async function sendChain(chainId: string) {
       const ship = inspectPackShipReady({
         text: cc.tailoredResumeText || "",
         masterText: cc.candidate.masterResumeText || "",
-        masterProfileJson:
-          (cc.candidate as { masterProfileJson?: string }).masterProfileJson ||
-          null,
+        masterProfileJson: cc.candidate.masterProfileJson || null,
       });
       return { cc, ship };
     })

@@ -26,9 +26,7 @@ export default async function CandidateDetailPage({ params }: { params: { id: st
   await requireAdmin();
   const c = await prisma.candidate.findUnique({ where: { id: params.id } });
   if (!c) notFound();
-  const profile = parseStoredMasterProfile(
-    (c as { masterProfileJson?: string }).masterProfileJson
-  );
+  const profile = parseStoredMasterProfile(c.masterProfileJson);
   const uploadReport = validateMasterProfile(profile);
 
   // Latest tailored pack for this candidate (if any chain ran)
@@ -43,7 +41,8 @@ export default async function CandidateDetailPage({ params }: { params: { id: st
   const packReport =
     latestPack?.tailoredResumeText && profile
       ? validatePackAgainstMaster({
-          masterProfileJson: (c as { masterProfileJson?: string }).masterProfileJson,
+          masterProfileJson: c.masterProfileJson,
+          masterText: c.masterResumeText || "",
           tailoredText: latestPack.tailoredResumeText,
           expectedYears: uploadReport.careerSpanYears,
         })

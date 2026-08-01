@@ -102,9 +102,7 @@ export default async function AdminCandidatesPage() {
             </thead>
             <tbody>
               {candidates.map((c) => {
-                const profile = parseStoredMasterProfile(
-                  (c as { masterProfileJson?: string }).masterProfileJson
-                );
+                const profile = parseStoredMasterProfile(c.masterProfileJson);
                 const report = validateMasterProfile(profile);
                 const n = report.engagementCount;
                 return (
