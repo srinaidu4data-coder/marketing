@@ -80,6 +80,37 @@ export async function POST(req: Request) {
     );
   }
 
+  // Preflight: only generate for candidates with a usable master profile
+  const { assessCandidateReady } = await import("@/lib/candidate-ready");
+  const candRows = await prisma.candidate.findMany({
+    where: { id: { in: candidateIds } },
+  });
+  const readyIds: string[] = [];
+  const notReady: { id: string; name: string; reason: string }[] = [];
+  for (const c of candRows) {
+    const r = assessCandidateReady(c);
+    if (r.ok) readyIds.push(c.id);
+    else
+      notReady.push({
+        id: c.id,
+        name: c.name,
+        reason: r.reason || "Not ready",
+      });
+  }
+  if (readyIds.length === 0) {
+    return NextResponse.json(
+      {
+        error: "NO_READY_CANDIDATES",
+        message:
+          "None of the selected candidates have a parsed master resume. Upload/replace master .docx on each candidate first.",
+        notReady,
+      },
+      { status: 400 }
+    );
+  }
+  // Generate only for ready; unready become chain errors via partial
+  candidateIds = readyIds;
+
   const conflicts = await checkVendorConflicts({
     candidateIds,
     vendorEmail,

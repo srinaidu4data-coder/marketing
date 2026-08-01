@@ -17,6 +17,10 @@ type PoolCandidate = {
   email: string;
   layoutId: string;
   exportFormat: string;
+  /** Preflight from server */
+  ready?: boolean;
+  readyReason?: string;
+  engagementCount?: number;
 };
 
 export function NewChainForm({
@@ -30,8 +34,8 @@ export function NewChainForm({
   const [vendorName, setVendorName] = useState("");
   const [vendorEmail, setVendorEmail] = useState("");
   const [employeeNote, setEmployeeNote] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(pool.map((c) => c.id))
+  const [selected, setSelected] = useState<Set<string>>(() =>
+    new Set(pool.filter((c) => c.ready !== false).map((c) => c.id))
   );
   const [filter, setFilter] = useState("");
   const [error, setError] = useState("");
@@ -56,7 +60,9 @@ export function NewChainForm({
   const selectedCount = selected.size;
 
   function selectAll() {
-    setSelected(new Set(pool.map((c) => c.id)));
+    setSelected(
+      new Set(pool.filter((c) => c.ready !== false).map((c) => c.id))
+    );
   }
   function selectNone() {
     setSelected(new Set());
@@ -165,7 +171,16 @@ export function NewChainForm({
       return;
     }
     if (selected.size === 0) {
-      setError("Select at least one candidate.");
+      setError("Select at least one candidate with a ready master resume.");
+      return;
+    }
+    const notReadySel = pool.filter(
+      (c) => selected.has(c.id) && c.ready === false
+    );
+    if (notReadySel.length) {
+      setError(
+        `Remove not-ready candidates first: ${notReadySel.map((c) => c.name).join(", ")}. Upload master on Candidates.`
+      );
       return;
     }
 
@@ -253,7 +268,12 @@ export function NewChainForm({
 
       if (finalId) {
         const admin = cancelHref.startsWith("/admin");
-        const q = finalStatus === "FAILED" ? "?failed=1" : "";
+        const q =
+          finalStatus === "FAILED"
+            ? "?failed=1"
+            : finalStatus === "PARTIAL"
+              ? "?partial=1"
+              : "?ready=1";
         window.location.href = admin
           ? `/admin/chains/${finalId}${q}`
           : `/chains/${finalId}${q}`;
@@ -374,18 +394,22 @@ export function NewChainForm({
             {filtered.map((c) => {
               const layout = getLayout(c.layoutId);
               const on = selected.has(c.id);
+              const ready = c.ready !== false;
               return (
                 <label
                   key={c.id}
                   className={`flex cursor-pointer items-start gap-3 rounded-xl p-3 transition-colors ${
-                    on
-                      ? "bg-indigo-50/80 ring-1 ring-indigo-100"
-                      : "hover:bg-zinc-50"
+                    !ready
+                      ? "cursor-not-allowed opacity-60"
+                      : on
+                        ? "bg-indigo-50/80 ring-1 ring-indigo-100"
+                        : "hover:bg-zinc-50"
                   }`}
                 >
                   <input
                     type="checkbox"
-                    checked={on}
+                    checked={on && ready}
+                    disabled={!ready}
                     onChange={(e) => toggle(c.id, e.target.checked)}
                     className="mt-1 h-4 w-4 accent-indigo-600"
                     aria-label={`Select ${c.name}`}
@@ -400,6 +424,18 @@ export function NewChainForm({
                     <span className="mt-0.5 block text-[11px] text-zinc-400">
                       {layout.name} · {c.exportFormat}
                     </span>
+                    {ready ? (
+                      <span className="mt-0.5 block text-[11px] font-medium text-emerald-700">
+                        Master ready
+                        {c.engagementCount
+                          ? ` · ${c.engagementCount} engagement(s)`
+                          : ""}
+                      </span>
+                    ) : (
+                      <span className="mt-0.5 block text-[11px] font-medium text-amber-800">
+                        Not ready: {c.readyReason || "upload master first"}
+                      </span>
+                    )}
                   </span>
                 </label>
               );

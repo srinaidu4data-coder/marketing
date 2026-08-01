@@ -21,7 +21,13 @@ export default async function AdminChainDetailPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { failed?: string; sent?: string; ship?: string };
+  searchParams?: {
+    failed?: string;
+    sent?: string;
+    ship?: string;
+    partial?: string;
+    ready?: string;
+  };
 }) {
   await requireAdmin();
   const chain = await prisma.chain.findUnique({
@@ -42,6 +48,7 @@ export default async function AdminChainDetailPage({
     chain.candidates.length > 0 &&
     notShipReady.length === 0 &&
     (chain.status === "READY" ||
+      chain.status === "PARTIAL" ||
       chain.status === "FAILED" ||
       chain.status === "SENT");
 
@@ -121,6 +128,19 @@ export default async function AdminChainDetailPage({
           </>
         }
       />
+
+      {searchParams?.ready === "1" ? (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+          Packs generated. Review ship-ready → download → Send.
+        </div>
+      ) : null}
+
+      {searchParams?.partial === "1" || chain.status === "PARTIAL" ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          Partial generation — some candidates failed. Fix masters or Retry;
+          Send stays blocked until every pack is ship-ready.
+        </div>
+      ) : null}
 
       {searchParams?.sent === "1" ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">

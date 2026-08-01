@@ -62,7 +62,7 @@ export type ProgressEvent =
   | {
       type: "chain_done";
       chainId: string;
-      status: "READY" | "FAILED";
+      status: "READY" | "PARTIAL" | "FAILED";
       succeeded: number;
       failed: number;
       errors?: { name: string; message: string }[];

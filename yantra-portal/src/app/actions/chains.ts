@@ -75,6 +75,21 @@ export async function createChain(formData: FormData): Promise<void> {
     if (allowedIds.length === 0) throw new Error("No candidates allocated");
   }
 
+  // Preflight masters (same as API stream path)
+  const { assessCandidateReady } = await import("@/lib/candidate-ready");
+  const candRows = await prisma.candidate.findMany({
+    where: { id: { in: allowedIds } },
+  });
+  const readyIds = candRows
+    .filter((c) => assessCandidateReady(c).ok)
+    .map((c) => c.id);
+  if (readyIds.length === 0) {
+    throw new Error(
+      "No candidates have a parsed master resume. Upload/replace master .docx first."
+    );
+  }
+  allowedIds = readyIds;
+
   const conflicts = await checkVendorConflicts({
     candidateIds: allowedIds,
     vendorEmail,
@@ -167,7 +182,7 @@ export async function retryGenerateChainAction(chainId: string) {
   revalidatePath("/chains");
   revalidatePath("/admin/chains");
   return {
-    ok: result.status === "READY",
+    ok: result.status === "READY" || result.status === "PARTIAL",
     status: result.status,
     succeeded: result.succeeded,
     failed: result.failed,

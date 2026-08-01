@@ -21,6 +21,9 @@ import {
   stepLabel,
   type ProgressReporter,
 } from "@/lib/resume/generation-progress";
+import { assessCandidateReady } from "@/lib/candidate-ready";
+import { inspectPackShipReady } from "@/lib/resume/pack-ship-ready";
+import { serializeMasterProfile, parseMasterProfile } from "@/lib/resume/master-profile";
 
 /** Chains older than this in GENERATING/SENDING are considered abandoned. */
 export const STALE_CHAIN_MS = 10 * 60 * 1000; // 10 minutes (OpenAI multi-candidate)
@@ -46,7 +49,8 @@ export type GenerateChainInput = {
 
 export type GenerateChainResult = {
   chainId: string;
-  status: "READY" | "FAILED";
+  /** READY = all selected packs ok; PARTIAL = some ok; FAILED = none */
+  status: "READY" | "PARTIAL" | "FAILED";
   succeeded: number;
   failed: number;
   errors: { candidateId: string; name: string; message: string }[];
@@ -260,9 +264,47 @@ export async function generateChainResumes(
           total: candidates.length,
         });
 
+        // Preflight: master must be parseable before calling AI
+        const ready = assessCandidateReady(c);
+        if (!ready.ok) {
+          throw new Error(
+            ready.reason ||
+              "Candidate not ready for pack generation (master missing or unparsed)."
+          );
+        }
+
+        // Ensure masterProfileJson exists for AI path (legacy re-parse)
+        let masterProfileJson = c.masterProfileJson || null;
+        if (
+          !masterProfileJson ||
+          masterProfileJson === "{}" ||
+          masterProfileJson.length < 20
+        ) {
+          masterProfileJson = serializeMasterProfile(
+            parseMasterProfile(c.masterResumeText || "")
+          );
+          try {
+            await prisma.candidate.update({
+              where: { id: c.id },
+              data: { masterProfileJson },
+            });
+          } catch {
+            /* non-fatal */
+          }
+        }
+
+        await emit({
+          type: "step",
+          candidateId: c.id,
+          candidateName: c.name,
+          stepId: "parse_master",
+          label: stepLabel("parse_master"),
+          status: "done",
+        });
+
         const tailored = await tailorResume({
           master: c.masterResumeText || "",
-          masterProfileJson: c.masterProfileJson || null,
+          masterProfileJson,
           jd: rawJobText,
           vendorName,
           candidateName: c.name,
@@ -280,6 +322,18 @@ export async function generateChainResumes(
             });
           },
         });
+
+        // Postflight: do not persist non-ship-ready packs as success
+        const ship = inspectPackShipReady({
+          text: tailored.text,
+          masterText: c.masterResumeText || "",
+          masterProfileJson,
+        });
+        if (!ship.ok) {
+          throw new Error(
+            `Pack not ship-ready: ${ship.issues.map((i) => i.detail).join("; ")}`
+          );
+        }
 
         await prisma.chain.update({
           where: { id: chainId },
@@ -422,7 +476,14 @@ export async function generateChainResumes(
     }
 
     const packCount = await prisma.chainCandidate.count({ where: { chainId } });
-    const status: "READY" | "FAILED" = packCount > 0 ? "READY" : "FAILED";
+    const selected = candidateIds.length;
+    // READY = every selected candidate got a pack; PARTIAL = some; FAILED = none
+    const status: "READY" | "PARTIAL" | "FAILED" =
+      packCount === 0
+        ? "FAILED"
+        : packCount >= selected && errors.length === 0
+          ? "READY"
+          : "PARTIAL";
 
     await prisma.chain.update({
       where: { id: chainId },
@@ -458,7 +519,12 @@ export async function generateChainResumes(
     console.error(`[chain ${chainId}] fatal generation error`, fatal);
     try {
       const packCount = await prisma.chainCandidate.count({ where: { chainId } });
-      const status = packCount > 0 ? "READY" : "FAILED";
+      const status: GenerateChainResult["status"] =
+        packCount === 0
+          ? "FAILED"
+          : packCount >= candidateIds.length
+            ? "READY"
+            : "PARTIAL";
       await prisma.chain.update({
         where: { id: chainId },
         data: { status },

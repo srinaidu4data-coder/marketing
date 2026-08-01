@@ -23,7 +23,13 @@ export default async function ChainDetailPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { failed?: string; sent?: string; ship?: string };
+  searchParams?: {
+    failed?: string;
+    sent?: string;
+    ship?: string;
+    partial?: string;
+    ready?: string;
+  };
 }) {
   const user = await requireUser();
   if (user.role === "ADMIN") redirect(`/admin/chains/${params.id}`);
@@ -92,6 +98,7 @@ export default async function ChainDetailPage({
     total > 0 &&
     notShipReady.length === 0 &&
     (chain.status === "READY" ||
+      chain.status === "PARTIAL" ||
       chain.status === "FAILED" ||
       chain.status === "SENT");
   const shipErrorMsg = decodeShipErrorMessage(searchParams?.ship);
@@ -207,6 +214,29 @@ export default async function ChainDetailPage({
           To: <strong className="text-zinc-800">{chain.vendorEmail}</strong>
         </div>
       </Card>
+
+      {searchParams?.ready === "1" ? (
+        <div className="flex items-start gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-medium">Packs generated</p>
+            <p className="mt-0.5 text-xs text-emerald-800/80">
+              Review ship-ready below, download DOCX, then Send to vendor.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {searchParams?.partial === "1" || chain.status === "PARTIAL" ? (
+        <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-medium">Partial generation</p>
+          <p className="mt-0.5 text-xs">
+            Some candidates failed (missing master, density, or AI). Fix masters
+            or Retry generation. Send only includes ship-ready packs if all rows
+            pass — regenerate failed ones first.
+          </p>
+        </div>
+      ) : null}
 
       {searchParams?.sent === "1" ? (
         <div className="flex items-start gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">

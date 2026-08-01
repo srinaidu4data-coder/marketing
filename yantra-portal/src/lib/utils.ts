@@ -32,6 +32,8 @@ export function statusBadgeClass(status: string) {
     return "bg-emerald-500/10 text-emerald-700 ring-1 ring-inset ring-emerald-500/15";
   if (s === "READY")
     return "bg-sky-500/10 text-sky-800 ring-1 ring-inset ring-sky-500/15";
+  if (s === "PARTIAL")
+    return "bg-amber-500/10 text-amber-900 ring-1 ring-inset ring-amber-500/20";
   if (s === "FAILED")
     return "bg-red-500/10 text-red-700 ring-1 ring-inset ring-red-500/15";
   if (s === "GENERATING" || s === "SENDING")
