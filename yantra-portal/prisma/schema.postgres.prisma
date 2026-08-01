@@ -32,6 +32,8 @@ model Candidate {
   email             String
   masterResumeText  String             @default("") @db.Text
   masterResumePath  String?
+  /// Structured ground truth from master — parse-on-upload
+  masterProfileJson String             @default("{}") @db.Text
   layoutId          String             @default("ats_classic")
   exportFormat      String             @default("DOCX")
   createdAt         DateTime           @default(now())

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+/** Layout preview uses deterministic assemble-pack (same buildProjects as production). */
 import { progressiveTailor } from "@/lib/resume/progressive-tailor";
 import { renderDocxBuffer } from "@/lib/resume/render-docx";
 import { renderPdfBuffer } from "@/lib/resume/render-pdf";

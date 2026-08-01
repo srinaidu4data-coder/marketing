@@ -91,6 +91,29 @@ export function scoreResume(opts: {
   ).length;
   const titleRatio = titleTokens.length ? titleHits / titleTokens.length : 1;
   roleMatch = Math.round(12 * titleRatio);
+  // Bonus: full job title string appears (schema match / primacy of role)
+  if (
+    opts.jobTitle &&
+    opts.jobTitle.length > 8 &&
+    new RegExp(
+      opts.jobTitle.slice(0, 48).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      "i"
+    ).test(text)
+  ) {
+    roleMatch = Math.min(14, roleMatch + 2);
+  }
+  // Employer attribution (costly honest signal)
+  const empLines = (text.match(/Employer\s*\/\s*Client\s*:/gi) || []).length;
+  if (empLines >= 2) roleMatch = Math.min(16, roleMatch + 2);
+  else if (empLines === 0) {
+    roleMatch = Math.max(0, roleMatch - 4);
+    warnings.push("No Employer / Client attribution lines");
+  }
+  // Duplicate summary = parse/UX failure
+  if ((text.match(/^\s*PROFESSIONAL SUMMARY\s*$/gim) || []).length > 1) {
+    parseSafety = Math.max(0, parseSafety - 6);
+    warnings.push("Duplicate Professional Summary headings");
+  }
   const respHints = [
     "implement",
     "configure",

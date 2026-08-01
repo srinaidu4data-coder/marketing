@@ -28,6 +28,8 @@ model Candidate {
   email            String
   masterResumeText String            @default("")
   masterResumePath String?
+  /// Structured ground truth from master (engagements, dates, skills) — parse-on-upload
+  masterProfileJson String           @default("{}")
   /// Resume layout template id (see RESUME_LAYOUTS)
   layoutId         String            @default("ats_classic")
   /// DOCX | DOCX_PDF

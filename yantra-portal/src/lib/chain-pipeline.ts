@@ -17,18 +17,22 @@ import { tailorResume } from "@/lib/resume-tailor";
 import { renderDocxBuffer } from "@/lib/resume/render-docx";
 import { renderPdfBuffer } from "@/lib/resume/render-pdf";
 import { chainUploadDir } from "@/lib/paths";
+import {
+  stepLabel,
+  type ProgressReporter,
+} from "@/lib/resume/generation-progress";
 
 /** Chains older than this in GENERATING/SENDING are considered abandoned. */
-export const STALE_CHAIN_MS = 3 * 60 * 1000; // 3 minutes
+export const STALE_CHAIN_MS = 10 * 60 * 1000; // 10 minutes (OpenAI multi-candidate)
 
 /** Soft time budget so we finish before serverless kill (leave margin for response). */
 function generationDeadlineMs(): number {
   if (process.env.VERCEL) {
-    // Hobby often 60s max; leave ~12s for wrap-up. Override via CHAIN_BUDGET_MS.
-    const raw = Number(process.env.CHAIN_BUDGET_MS || 48_000);
-    return Date.now() + (Number.isFinite(raw) && raw > 5_000 ? raw : 48_000);
+    // OpenAI path: ~20–50s per candidate. Prefer CHAIN_BUDGET_MS; default ~4.5 min on Pro maxDuration 300.
+    const raw = Number(process.env.CHAIN_BUDGET_MS || 270_000);
+    return Date.now() + (Number.isFinite(raw) && raw > 10_000 ? raw : 270_000);
   }
-  return Date.now() + Number(process.env.CHAIN_BUDGET_MS || 280_000);
+  return Date.now() + Number(process.env.CHAIN_BUDGET_MS || 600_000);
 }
 
 export type GenerateChainInput = {
@@ -37,6 +41,7 @@ export type GenerateChainInput = {
   rawJobText: string;
   vendorName: string;
   candidateIds: string[];
+  onProgress?: ProgressReporter;
 };
 
 export type GenerateChainResult = {
@@ -145,11 +150,19 @@ async function safeWriteFile(
 export async function generateChainResumes(
   input: GenerateChainInput
 ): Promise<GenerateChainResult> {
-  const { chainId, userId, rawJobText, vendorName, candidateIds } = input;
+  const { chainId, userId, rawJobText, vendorName, candidateIds, onProgress } =
+    input;
   const errors: GenerateChainResult["errors"] = [];
   let succeeded = 0;
   let timedOut = false;
   const deadline = generationDeadlineMs();
+  const emit: ProgressReporter = async (ev) => {
+    try {
+      await onProgress?.(ev);
+    } catch {
+      /* ignore UI progress errors */
+    }
+  };
 
   try {
     await prisma.chain.update({
@@ -199,7 +212,15 @@ export async function generateChainResumes(
       console.warn(`[chain ${chainId}] mkdir skipped (ephemeral FS)`, e);
     }
 
-    for (const c of candidates) {
+    await emit({
+      type: "chain_start",
+      chainId,
+      candidateCount: candidates.length,
+      candidateNames: candidates.map((x) => x.name),
+    });
+
+    for (let ci = 0; ci < candidates.length; ci++) {
+      const c = candidates[ci];
       if (Date.now() > deadline) {
         timedOut = true;
         errors.push({
@@ -214,7 +235,7 @@ export async function generateChainResumes(
           message: "time_budget",
         });
         // Mark remaining as skipped in one audit
-        const remaining = candidates.slice(candidates.indexOf(c) + 1);
+        const remaining = candidates.slice(ci + 1);
         for (const r of remaining) {
           errors.push({
             candidateId: r.id,
@@ -231,14 +252,33 @@ export async function generateChainResumes(
           data: { status: "GENERATING" },
         });
 
+        await emit({
+          type: "candidate_start",
+          candidateId: c.id,
+          candidateName: c.name,
+          index: ci,
+          total: candidates.length,
+        });
+
         const tailored = await tailorResume({
           master: c.masterResumeText || "",
+          masterProfileJson: c.masterProfileJson || null,
           jd: rawJobText,
           vendorName,
           candidateName: c.name,
           employeeId: userId,
           layoutId: c.layoutId,
           email: c.email,
+          onStep: async (stepId, status) => {
+            await emit({
+              type: "step",
+              candidateId: c.id,
+              candidateName: c.name,
+              stepId,
+              label: stepLabel(stepId),
+              status,
+            });
+          },
         });
 
         await prisma.chain.update({
@@ -254,6 +294,14 @@ export async function generateChainResumes(
         let docxPath: string | null = null;
         let pdfPath: string | null = null;
 
+        await emit({
+          type: "step",
+          candidateId: c.id,
+          candidateName: c.name,
+          stepId: "docx",
+          label: stepLabel("docx"),
+          status: "active",
+        });
         try {
           const docxBuf = await renderDocxBuffer(tailored.structured);
           const docxName = `${base}.docx`;
@@ -262,6 +310,14 @@ export async function generateChainResumes(
         } catch (e) {
           console.error(`[chain ${chainId}] DOCX render failed for ${c.name}`, e);
         }
+        await emit({
+          type: "step",
+          candidateId: c.id,
+          candidateName: c.name,
+          stepId: "docx",
+          label: stepLabel("docx"),
+          status: "done",
+        });
 
         await prisma.chain.update({
           where: { id: chainId },
@@ -280,6 +336,14 @@ export async function generateChainResumes(
         }
 
         // DB is source of truth — always persist pack even if disk writes failed
+        await emit({
+          type: "step",
+          candidateId: c.id,
+          candidateName: c.name,
+          stepId: "saved",
+          label: stepLabel("saved"),
+          status: "active",
+        });
         const existing = await prisma.chainCandidate.findFirst({
           where: { chainId, candidateId: c.id },
         });
@@ -310,11 +374,32 @@ export async function generateChainResumes(
             },
           });
         }
+        await emit({
+          type: "step",
+          candidateId: c.id,
+          candidateName: c.name,
+          stepId: "saved",
+          label: stepLabel("saved"),
+          status: "done",
+        });
+        await emit({
+          type: "candidate_done",
+          candidateId: c.id,
+          candidateName: c.name,
+          ok: true,
+        });
         succeeded++;
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         console.error(`[chain ${chainId}] candidate ${c.id} failed`, e);
         errors.push({ candidateId: c.id, name: c.name, message });
+        await emit({
+          type: "candidate_done",
+          candidateId: c.id,
+          candidateName: c.name,
+          ok: false,
+          message,
+        });
         await audit("chain.candidate_failed", userId, {
           chainId,
           candidateId: c.id,
@@ -337,6 +422,15 @@ export async function generateChainResumes(
       failed: errors.length,
       timedOut,
       errors: errors.slice(0, 8),
+    });
+
+    await emit({
+      type: "chain_done",
+      chainId,
+      status,
+      succeeded,
+      failed: errors.length,
+      errors: errors.map((e) => ({ name: e.name, message: e.message })),
     });
 
     return {
@@ -401,6 +495,7 @@ export async function createAndGenerateChain(opts: {
   rawJobText: string;
   employeeNote?: string | null;
   candidateIds: string[];
+  onProgress?: ProgressReporter;
 }): Promise<GenerateChainResult & { id: string }> {
   try {
     await recoverStaleChains();
@@ -435,6 +530,7 @@ export async function createAndGenerateChain(opts: {
     rawJobText: opts.rawJobText,
     vendorName: opts.vendorName,
     candidateIds: opts.candidateIds,
+    onProgress: opts.onProgress,
   });
 
   return { ...result, id: chain.id };

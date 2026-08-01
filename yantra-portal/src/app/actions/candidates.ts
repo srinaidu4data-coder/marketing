@@ -9,6 +9,16 @@ import path from "path";
 import { RESUME_LAYOUTS } from "@/lib/resume/templates";
 import { getSystemConfig } from "@/lib/system-settings";
 import { extractMasterText } from "@/lib/resume/extract-master";
+import {
+  parseMasterProfile,
+  parseStoredMasterProfile,
+  serializeMasterProfile,
+  type MasterProfile,
+} from "@/lib/resume/master-profile";
+import {
+  validateMasterProfile,
+  type MasterValidationReport,
+} from "@/lib/resume/master-pack-validate";
 import { masterUploadDir } from "@/lib/paths";
 
 const LAYOUT_IDS = new Set(RESUME_LAYOUTS.map((l) => l.id));
@@ -20,12 +30,18 @@ export type ReplaceResumeResult =
       chars: number;
       fileName: string;
       warning?: string;
+      engagementCount?: number;
+      profileWarnings?: string[];
+      /** Full ground-truth checklist — not just counts */
+      validation?: MasterValidationReport;
     }
   | { ok: false; error: string };
 
 async function persistMasterFile(file: File): Promise<{
   masterResumeText: string;
   masterResumePath: string;
+  masterProfileJson: string;
+  profile: MasterProfile;
   extracted: boolean;
   warning?: string;
 }> {
@@ -35,6 +51,10 @@ async function persistMasterFile(file: File): Promise<{
   }
 
   const extracted = await extractMasterText(file.name, buf);
+  // Karpathy: parse once at upload → structured ground truth
+  const profile = parseMasterProfile(extracted.text || "");
+  const masterProfileJson = serializeMasterProfile(profile);
+
   const dir = masterUploadDir();
   let masterResumePath = `uploads/masters/memory_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
   try {
@@ -52,6 +72,8 @@ async function persistMasterFile(file: File): Promise<{
   return {
     masterResumeText: extracted.text,
     masterResumePath,
+    masterProfileJson,
+    profile,
     extracted: extracted.extracted,
     warning: extracted.warning,
   };
@@ -72,11 +94,15 @@ export async function createCandidate(formData: FormData) {
 
   let masterResumeText = "";
   let masterResumePath: string | null = null;
+  let masterProfileJson = "{}";
+  let engagementCount = 0;
 
   if (file && file.size > 0) {
     const saved = await persistMasterFile(file);
     masterResumeText = saved.masterResumeText;
     masterResumePath = saved.masterResumePath;
+    masterProfileJson = saved.masterProfileJson;
+    engagementCount = saved.profile.engagements.length;
   }
 
   const c = await prisma.candidate.create({
@@ -85,16 +111,25 @@ export async function createCandidate(formData: FormData) {
       email,
       masterResumeText,
       masterResumePath,
+      masterProfileJson,
       layoutId: LAYOUT_IDS.has(layoutId as never) ? layoutId : "ats_classic",
       exportFormat: exportFormat === "DOCX_PDF" ? "DOCX_PDF" : "DOCX",
     },
   });
+  const validation = validateMasterProfile(
+    parseStoredMasterProfile(masterProfileJson)
+  );
+
   await audit("candidate.create", admin.id, {
     candidateId: c.id,
     name,
     email,
     layoutId: c.layoutId,
     exportFormat: c.exportFormat,
+    engagementCount,
+    validationScore: validation?.score,
+    validationFail: validation?.summary.fail,
+    validationWarn: validation?.summary.warn,
   });
   revalidatePath("/admin/candidates");
 }
@@ -157,8 +192,11 @@ export async function replaceMasterResume(
       data: {
         masterResumeText: saved.masterResumeText,
         masterResumePath: saved.masterResumePath,
+        masterProfileJson: saved.masterProfileJson,
       },
     });
+
+    const validation = validateMasterProfile(saved.profile);
 
     await audit("candidate.update", admin.id, {
       candidateId,
@@ -167,6 +205,12 @@ export async function replaceMasterResume(
       size: file.size,
       extracted: saved.extracted,
       chars: saved.masterResumeText.length,
+      engagementCount: saved.profile.engagements.length,
+      profileWarnings: saved.profile.warnings,
+      validationScore: validation.score,
+      validationFail: validation.summary.fail,
+      validationWarn: validation.summary.warn,
+      validationOk: validation.ok,
     });
 
     revalidatePath(`/admin/candidates/${candidateId}`);
@@ -178,6 +222,9 @@ export async function replaceMasterResume(
       chars: saved.masterResumeText.length,
       fileName: file.name,
       warning: saved.warning,
+      engagementCount: saved.profile.engagements.length,
+      profileWarnings: saved.profile.warnings,
+      validation,
     };
   } catch (e) {
     console.error("replaceMasterResume failed", e);

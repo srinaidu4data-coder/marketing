@@ -5,6 +5,7 @@ import { SystemSettingsForm } from "@/components/settings-form";
 import { getSystemConfig } from "@/lib/system-settings";
 import { RESUME_LAYOUTS } from "@/lib/resume/templates";
 import { getResendConfig } from "@/lib/email/resend";
+import { getOpenAiConfig } from "@/lib/resume/openai-config";
 
 const shortcuts = [
   {
@@ -48,13 +49,63 @@ export default async function AdminSettingsPage() {
   await requireAdmin();
   const config = await getSystemConfig();
   const email = getResendConfig();
+  const openai = getOpenAiConfig();
 
   return (
     <div className="space-y-8 p-2 lg:p-4">
       <PageHeader
         title="System settings"
-        description="Organization, resume defaults, Resend email, cost policy, and configuration shortcuts."
+        description="Organization, resume defaults, resume engine policy (domain rules & templates), OpenAI, Resend email, and cost policy."
       />
+
+      <Card className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-medium">OpenAI resume engine (required)</h2>
+          <Badge status={openai.configured ? "SENT" : "FAILED"}>
+            {openai.configured ? "configured" : "missing key"}
+          </Badge>
+        </div>
+        <p className="text-sm text-slate-500">
+          Every tailored resume is generated with the{" "}
+          <strong>ACTIVE admin prompt</strong> +{" "}
+          <strong>OpenAI Chat Completions</strong>. Without a real{" "}
+          <code className="rounded bg-slate-100 px-1 text-xs">OPENAI_API_KEY</code>, chain
+          generation will fail on purpose (no silent non-AI output).
+        </p>
+        <dl className="grid gap-2 text-sm sm:grid-cols-2">
+          <div className="rounded border bg-slate-50 p-3">
+            <dt className="text-xs uppercase text-slate-500">OPENAI_API_KEY</dt>
+            <dd className="mt-1 font-medium">
+              {openai.configured
+                ? "Configured (hidden)"
+                : openai.reason || "Not set"}
+            </dd>
+          </div>
+          <div className="rounded border bg-slate-50 p-3">
+            <dt className="text-xs uppercase text-slate-500">Model / base URL</dt>
+            <dd className="mt-1 font-mono text-xs">
+              {openai.model}
+              <br />
+              {openai.baseUrl}
+            </dd>
+          </div>
+        </dl>
+        <pre className="overflow-x-auto rounded-md bg-slate-900 p-3 text-[11px] text-slate-100">
+{`# Vercel → Project → Settings → Environment Variables → Production
+OPENAI_API_KEY=sk-proj-...your real key...
+OPENAI_MODEL=gpt-4o-mini
+# Optional Azure/proxy:
+# OPENAI_BASE_URL=https://api.openai.com/v1
+# Emergency only (not recommended):
+# ALLOW_DETERMINISTIC_FALLBACK=true`}
+        </pre>
+        <Link
+          href="/admin/prompt"
+          className="inline-block text-sm font-medium text-sky-700 underline underline-offset-2"
+        >
+          Edit ACTIVE prompt template →
+        </Link>
+      </Card>
 
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">

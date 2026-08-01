@@ -146,6 +146,73 @@ export function SystemSettingsForm({
         </label>
       </fieldset>
 
+      <fieldset className="space-y-3 rounded-lg border border-sky-200 bg-sky-50/40 p-4">
+        <legend className="px-1 text-sm font-semibold text-slate-800">
+          Resume engine sequence
+        </legend>
+        <p className="text-xs text-slate-600">
+          Order engines try top-to-bottom. If the first fails (e.g. no OpenAI key or API
+          error), the next runs.{" "}
+          <strong>AI Tailor</strong> = OpenAI pack.{" "}
+          <strong>Progressive Rules</strong> = rules backup (same assembly, no model).
+        </p>
+        <div className="space-y-1">
+          <Label htmlFor="resumeEngineSequence">Sequence (comma-separated)</Label>
+          <Input
+            id="resumeEngineSequence"
+            name="resumeEngineSequence"
+            defaultValue={config.resumeEngineSequenceRaw}
+            placeholder="ai-tailor,progressive-rules"
+          />
+          <p className="text-xs text-slate-500">
+            Allowed ids:{" "}
+            <code className="rounded bg-white px-1">ai-tailor</code>,{" "}
+            <code className="rounded bg-white px-1">progressive-rules</code>
+            . Examples:{" "}
+            <code className="rounded bg-white px-1">ai-tailor,progressive-rules</code>{" "}
+            (recommended) ·{" "}
+            <code className="rounded bg-white px-1">progressive-rules,ai-tailor</code>{" "}
+            ·{" "}
+            <code className="rounded bg-white px-1">ai-tailor</code> only.
+          </p>
+        </div>
+      </fieldset>
+
+      <fieldset className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/40 p-4">
+        <legend className="px-1 text-sm font-semibold text-slate-800">
+          Resume engine policy (admin-maintained)
+        </legend>
+        <p className="text-xs text-slate-600">
+          Domain detection rules, off-domain bans, bullet/skill caps, progressive title templates,
+          emergency fill lines, and critical phrase patterns.{" "}
+          <strong>No domain packs are hardcoded in code</strong> — edit this JSON and Save.
+          Invalid regex patterns are rejected on save.
+        </p>
+        <div className="space-y-1">
+          <Label htmlFor="resumeEnginePolicyJson">Policy JSON</Label>
+          <textarea
+            id="resumeEnginePolicyJson"
+            name="resumeEnginePolicyJson"
+            rows={18}
+            spellCheck={false}
+            defaultValue={config.resumeEnginePolicyJson}
+            className="w-full rounded-xl border border-black/[0.08] bg-white px-3.5 py-3 font-mono text-[12px] leading-relaxed text-[#1d1d1f] shadow-soft focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#0071e3]/25"
+          />
+          <p className="text-xs text-slate-500">
+            Keys include{" "}
+            <code className="rounded bg-white px-1">domainRules</code>,{" "}
+            <code className="rounded bg-white px-1">offDomainRules</code>,{" "}
+            <code className="rounded bg-white px-1">bullets</code>,{" "}
+            <code className="rounded bg-white px-1">skillCaps</code>,{" "}
+            <code className="rounded bg-white px-1">progressiveTitleTemplates</code>,{" "}
+            <code className="rounded bg-white px-1">emergencyBullets</code>,{" "}
+            <code className="rounded bg-white px-1">criticalPhrasePatterns</code>,{" "}
+            <code className="rounded bg-white px-1">methodologyDefaults</code>,{" "}
+            <code className="rounded bg-white px-1">educationDefaults</code>.
+          </p>
+        </div>
+      </fieldset>
+
       <Button type="submit" className="w-fit" disabled={pending}>
         {pending ? "Saving…" : "Save settings"}
       </Button>

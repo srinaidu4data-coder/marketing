@@ -1,5 +1,12 @@
 import { prisma } from "@/lib/db";
 import { RESUME_LAYOUTS } from "@/lib/resume/templates";
+import {
+  DEFAULT_RESUME_ENGINE_POLICY,
+  parseResumeEnginePolicy,
+  RESUME_POLICY_SETTING_KEY,
+  serializeResumeEnginePolicy,
+  type ResumeEnginePolicy,
+} from "@/lib/resume/resume-engine-policy";
 
 export const SETTING_KEYS = {
   COMPANY_NAME: "company_name",
@@ -8,9 +15,56 @@ export const SETTING_KEYS = {
   DEFAULT_LAYOUT_ID: "default_layout_id",
   DEFAULT_EXPORT_FORMAT: "default_export_format",
   ALLOW_EMPLOYEE_SELF_CHAINS: "allow_employee_self_chains",
+  RESUME_ENGINE_POLICY: RESUME_POLICY_SETTING_KEY,
+  /** Comma-separated engine order, e.g. ai-tailor,progressive-rules */
+  RESUME_ENGINE_SEQUENCE: "resume_engine_sequence",
 } as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];
+
+/** Production engines admin can sequence */
+export type ResumeEngineId = "ai-tailor" | "progressive-rules";
+
+export const RESUME_ENGINE_OPTIONS: {
+  id: ResumeEngineId;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: "ai-tailor",
+    label: "AI Tailor (OpenAI)",
+    description: "Primary: full OpenAI JSON pack + rules gate",
+  },
+  {
+    id: "progressive-rules",
+    label: "Progressive Rules (backup)",
+    description: "Rules engine: same assembly, no OpenAI — master + policy soft-fill",
+  },
+];
+
+export const DEFAULT_ENGINE_SEQUENCE: ResumeEngineId[] = [
+  "ai-tailor",
+  "progressive-rules",
+];
+
+export function parseEngineSequence(raw: string | null | undefined): ResumeEngineId[] {
+  if (!raw || !raw.trim()) return [...DEFAULT_ENGINE_SEQUENCE];
+  const allowed = new Set<string>(["ai-tailor", "progressive-rules"]);
+  const parts = raw
+    .split(/[,|;\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => allowed.has(s)) as ResumeEngineId[];
+  // Dedupe preserve order
+  const out: ResumeEngineId[] = [];
+  for (const p of parts) {
+    if (!out.includes(p)) out.push(p);
+  }
+  return out.length ? out : [...DEFAULT_ENGINE_SEQUENCE];
+}
+
+export function serializeEngineSequence(seq: ResumeEngineId[]): string {
+  return (seq.length ? seq : DEFAULT_ENGINE_SEQUENCE).join(",");
+}
 
 export type SystemConfig = {
   companyName: string;
@@ -19,6 +73,13 @@ export type SystemConfig = {
   defaultLayoutId: string;
   defaultExportFormat: "DOCX" | "DOCX_PDF";
   allowEmployeeSelfChains: boolean;
+  /** Admin-maintained resume engine policy (domain rules, caps, templates) */
+  resumeEnginePolicy: ResumeEnginePolicy;
+  /** Pretty JSON for admin textarea */
+  resumeEnginePolicyJson: string;
+  /** Ordered engines: try first, then backup on failure */
+  resumeEngineSequence: ResumeEngineId[];
+  resumeEngineSequenceRaw: string;
 };
 
 export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
@@ -28,6 +89,10 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   defaultLayoutId: "ats_classic",
   defaultExportFormat: "DOCX",
   allowEmployeeSelfChains: true,
+  resumeEnginePolicy: DEFAULT_RESUME_ENGINE_POLICY,
+  resumeEnginePolicyJson: serializeResumeEnginePolicy(DEFAULT_RESUME_ENGINE_POLICY),
+  resumeEngineSequence: [...DEFAULT_ENGINE_SEQUENCE],
+  resumeEngineSequenceRaw: serializeEngineSequence(DEFAULT_ENGINE_SEQUENCE),
 };
 
 const LAYOUT_IDS = new Set(RESUME_LAYOUTS.map((l) => l.id));
@@ -41,6 +106,12 @@ export async function getSystemConfig(): Promise<SystemConfig> {
     map.get(SETTING_KEYS.DEFAULT_EXPORT_FORMAT) || DEFAULT_SYSTEM_CONFIG.defaultExportFormat;
   const capRaw = map.get(SETTING_KEYS.DAILY_AI_COST_CAP_USD);
   const cap = capRaw != null ? Number(capRaw) : DEFAULT_SYSTEM_CONFIG.dailyAiCostCapUsd;
+  const policyRaw = map.get(SETTING_KEYS.RESUME_ENGINE_POLICY);
+  const resumeEnginePolicy = parseResumeEnginePolicy(policyRaw);
+  const seqRaw =
+    map.get(SETTING_KEYS.RESUME_ENGINE_SEQUENCE) ||
+    DEFAULT_SYSTEM_CONFIG.resumeEngineSequenceRaw;
+  const resumeEngineSequence = parseEngineSequence(seqRaw);
 
   return {
     companyName: map.get(SETTING_KEYS.COMPANY_NAME) || DEFAULT_SYSTEM_CONFIG.companyName,
@@ -50,7 +121,33 @@ export async function getSystemConfig(): Promise<SystemConfig> {
     defaultExportFormat: exportFmt === "DOCX_PDF" ? "DOCX_PDF" : "DOCX",
     allowEmployeeSelfChains:
       (map.get(SETTING_KEYS.ALLOW_EMPLOYEE_SELF_CHAINS) ?? "true") !== "false",
+    resumeEnginePolicy,
+    resumeEnginePolicyJson: policyRaw?.trim()
+      ? serializeResumeEnginePolicy(resumeEnginePolicy)
+      : serializeResumeEnginePolicy(DEFAULT_RESUME_ENGINE_POLICY),
+    resumeEngineSequence,
+    resumeEngineSequenceRaw: serializeEngineSequence(resumeEngineSequence),
   };
+}
+
+/** Ordered engines for tailorResume failover (defaults if DB down) */
+export async function getResumeEngineSequence(): Promise<ResumeEngineId[]> {
+  try {
+    const cfg = await getSystemConfig();
+    return cfg.resumeEngineSequence;
+  } catch {
+    return [...DEFAULT_ENGINE_SEQUENCE];
+  }
+}
+
+/** Convenience for resume generation paths (defaults if DB down) */
+export async function getResumeEnginePolicy(): Promise<ResumeEnginePolicy> {
+  try {
+    const cfg = await getSystemConfig();
+    return cfg.resumeEnginePolicy;
+  } catch {
+    return DEFAULT_RESUME_ENGINE_POLICY;
+  }
 }
 
 export async function setSystemSettings(

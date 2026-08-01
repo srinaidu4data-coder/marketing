@@ -4,6 +4,13 @@
  * into Technical Skills.
  */
 
+import {
+  DEFAULT_RESUME_ENGINE_POLICY,
+  detectDomainWithPolicy,
+  progressiveTitlesFromPolicy,
+  type ResumeEnginePolicy,
+} from "./resume-engine-policy";
+
 const STOP = new Set(
   `the and for with that this from have will your our are you all any can not but into a an of to in on as by or be is was were been being at it its we they them their there here who what when where which while than then also only such both each few more most other some such no nor so too very just about above after again against all am between both during each few further once over own same than too under until up very`.split(
     " "
@@ -242,6 +249,17 @@ const PHRASE_PATTERNS: RegExp[] = [
   /SAP\s+PM/gi,
   /SAP\s+BASIS/gi,
   /SAP\s+ABAP/gi,
+  /SAP\s+RAR/gi,
+  /Revenue\s+Accounting(?:\s+and\s+Reporting)?/gi,
+  /Revenue\s+Accounting\s*&\s*Reporting/gi,
+  /\bRAR\b/g,
+  /IFRS\s*15/gi,
+  /ASC\s*606/gi,
+  /FI-?LA/gi,
+  /Contract\s+Liability/gi,
+  /Performance\s+Obligation/gi,
+  /SAP\s+Leasing/gi,
+  /Lease\s+Accounting/gi,
   /SAP\s+BW/gi,
   /SAP\s+BTP/gi,
   /SAP\s+CPI/gi,
@@ -290,7 +308,20 @@ export function extractJobTitle(jd: string): string {
     if (m) return cleanTitle(m[1]);
   }
 
-  // Prefer SAP … title line
+  // First-line / early-line job titles (non-SAP OK): "Senior Clinical Data Manager"
+  const titleWord =
+    /\b(manager|director|consultant|analyst|engineer|developer|architect|lead|specialist|officer|scientist|administrator|coordinator)\b/i;
+  for (const line of lines.slice(0, 6)) {
+    if (line.length < 8 || line.length > 100) continue;
+    if (/^(rate|location|remote|hybrid|onsite|duration|we are|seeking|about|key responsibilities|required|preferred)\b/i.test(line))
+      continue;
+    if (/\$|\/\s*hr|c2c|w2|contract length/i.test(line)) continue;
+    if (titleWord.test(line) || /^[A-Z][A-Za-z0-9/.\- &+]{6,90}$/.test(line)) {
+      return cleanTitle(line);
+    }
+  }
+
+  // Prefer SAP … title line when present
   for (const line of lines.slice(0, 15)) {
     if (/SAP\s+/i.test(line) && line.length <= 120 && !/location|duration|interview/i.test(line)) {
       return cleanTitle(line.replace(/^(job\s*title|role)\s*[:\-]\s*/i, ""));
@@ -300,7 +331,12 @@ export function extractJobTitle(jd: string): string {
   const sap = jd.match(
     /SAP\s+[A-Za-z0-9/.\-]+(?:\s+[A-Za-z0-9/.\-&]+){0,6}/i
   );
-  return cleanTitle(sap?.[0] || "SAP Consultant");
+  if (sap?.[0]) return cleanTitle(sap[0]);
+  // Last resort: first short line of JD, not a generic SAP invent
+  if (lines[0] && lines[0].length >= 6 && lines[0].length <= 100) {
+    return cleanTitle(lines[0]);
+  }
+  return "Consultant";
 }
 
 function cleanTitle(t: string) {
@@ -433,124 +469,147 @@ export function sanitizeSkillList(skills: string[], limit = 40): string[] {
   return out;
 }
 
-export type DomainHint =
-  | "attp"
-  | "fico"
-  | "mm"
-  | "sd"
-  | "abap"
-  | "basis"
-  | "ewm"
-  | "generic";
+/** Domain id string — rules come from admin Resume Engine Policy */
+export type DomainHint = string;
 
-export function detectDomain(jd: string, title: string): DomainHint {
-  const t = `${title} ${jd}`.toLowerCase();
-  if (/attp|track\s*(&|and)\s*trace|serialization|epcis|dscsa|gs1|pharma|life\s*science/.test(t))
-    return "attp";
-  if (/fico|fi\/co|finance|asset accounting|general ledger|controlling/.test(t))
-    return "fico";
-  if (/\bmm\b|materials management|procure|p2p|purchasing/.test(t)) return "mm";
-  if (/\bsd\b|sales|order.to.cash|otc|order management/.test(t)) return "sd";
-  if (/abap|rap\b|cds|odata|btp.*dev|developer/.test(t)) return "abap";
-  if (/basis|security|authorization|transport|system admin/.test(t)) return "basis";
-  if (/ewm|warehouse|wm\b/.test(t)) return "ewm";
-  return "generic";
+/**
+ * Detect domain using admin policy rules (System Settings → Resume engine policy).
+ * Pass policy from getResumeEnginePolicy() in request path; falls back to factory defaults
+ * only when policy is omitted (legacy callers).
+ */
+export function detectDomain(
+  jd: string,
+  title: string,
+  policy: ResumeEnginePolicy = DEFAULT_RESUME_ENGINE_POLICY
+): DomainHint {
+  return detectDomainWithPolicy(jd, title, policy);
 }
 
-export function domainSkillPack(domain: DomainHint): string[] {
-  switch (domain) {
-    case "attp":
-      return [
-        "SAP ATTP",
-        "Track & Trace",
-        "Serialization",
-        "GS1",
-        "EPCIS",
-        "DSCSA",
-        "Batch Management",
-        "Event Repository",
-        "Supply Chain Visibility",
-        "Regulatory Compliance",
-        "SAP S/4HANA",
-        "Integration (IDoc/RFC)",
-        "Master Data",
-        "Rule Configuration",
-        "Exception Handling",
-      ];
-    case "fico":
-      return [
-        "SAP FICO",
-        "General Ledger",
-        "Accounts Payable",
-        "Accounts Receivable",
-        "Asset Accounting",
-        "Controlling",
-        "Cost Center Accounting",
-        "Profit Center",
-        "Month-end Close",
-        "SAP S/4HANA Finance",
-        "Integration FI-MM/SD",
-      ];
-    case "abap":
-      return [
-        "SAP ABAP",
-        "RAP",
-        "CDS Views",
-        "OData",
-        "AMDP",
-        "BAPI",
-        "IDoc",
-        "Enhancements",
-        "SAP BTP",
-        "Fiori",
-      ];
-    case "mm":
-      return [
-        "SAP MM",
-        "Procure-to-Pay",
-        "Purchase Orders",
-        "Inventory Management",
-        "MRP",
-        "Vendor Master",
-        "Invoice Verification",
-      ];
-    case "sd":
-      return [
-        "SAP SD",
-        "Order-to-Cash",
-        "Pricing",
-        "Shipping",
-        "Billing",
-        "Customer Master",
-        "ATP",
-      ];
-    case "ewm":
-      return [
-        "SAP EWM",
-        "Warehouse Management",
-        "Inbound/Outbound",
-        "HU Management",
-        "RF Framework",
-      ];
-    case "basis":
-      return [
-        "SAP Basis",
-        "Transports",
-        "System Monitoring",
-        "Authorizations",
-        "Client Administration",
-      ];
-    default:
-      return [
-        "SAP",
-        "Configuration",
-        "Integration",
-        "Testing",
-        "Cutover",
-        "Documentation",
-        "Stakeholder Management",
-      ];
+/**
+ * Skills bank derived ONLY from the job description (+ optional master).
+ * Never invents domain canned lists (EWM pack, FICO pack, etc.) irrespective of JD.
+ */
+export function skillsFromJdAndMaster(
+  jd: string,
+  master = "",
+  limit = 40
+): string[] {
+  return skillsHonestFromSources(jd, master, limit).all;
+}
+
+export type HonestSkillBank = {
+  /** JD skills that also appear in master text (safe to claim ownership) */
+  grounded: string[];
+  /** JD-only keywords (ATS page-1 only — not forced onto early project modules) */
+  jdOnly: string[];
+  /** master-extracted skills not necessarily on JD */
+  masterOnly: string[];
+  /** grounded first, then masterOnly, then light jdOnly */
+  all: string[];
+};
+
+/**
+ * Honest skill split: prefer intersection of JD × master before JD-only stuffing.
+ */
+export function skillsHonestFromSources(
+  jd: string,
+  master = "",
+  limit = 40
+): HonestSkillBank {
+  const fromJd = extractJdKeywords(jd || "", Math.min(45, limit + 10));
+  const sapHits = (jd || "").match(
+    /SAP\s+[A-Za-z0-9/.\-]{2,28}(?:\s+[A-Za-z0-9/.\-+]{2,24}){0,4}/gi
+  ) || [];
+  const titleTokens = (extractJobTitle(jd || "") || "")
+    .split(/[\s,/|–—\-]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 2 && t.length < 40)
+    .filter(
+      (t) =>
+        !/^(senior|junior|lead|principal|consultant|analyst|developer|engineer|the|and|for)$/i.test(
+          t
+        )
+    );
+
+  const masterSkillsRaw: string[] = [];
+  if (master) {
+    const skillLine = master
+      .split(/\r?\n/)
+      .find((l) => /skills|technical|competenc/i.test(l) && l.length < 500);
+    const blob = skillLine || "";
+    for (const part of blob.split(/[,|·•;]/)) {
+      const s = part.replace(/technical skills[:\s]*/i, "").trim();
+      if (s.length > 1 && s.length < 50) masterSkillsRaw.push(s);
+    }
   }
+
+  const jdBank = sanitizeSkillList(
+    [...sapHits.map((s) => s.trim()), ...fromJd, ...titleTokens],
+    limit
+  );
+  const masterBank = sanitizeSkillList(masterSkillsRaw, limit);
+  const masterLc = (master || "").toLowerCase();
+
+  const grounded: string[] = [];
+  const jdOnly: string[] = [];
+  for (const s of jdBank) {
+    const token = s.toLowerCase();
+    const inMasterText =
+      masterLc.includes(token) ||
+      (token.length > 4 && masterLc.includes(token.slice(0, Math.min(12, token.length))));
+    const inMasterSkills = masterBank.some(
+      (m) =>
+        m.toLowerCase() === token ||
+        m.toLowerCase().includes(token) ||
+        token.includes(m.toLowerCase())
+    );
+    if (inMasterText || inMasterSkills) grounded.push(s);
+    else jdOnly.push(s);
+  }
+
+  const masterOnly = masterBank.filter(
+    (m) => !grounded.some((g) => g.toLowerCase() === m.toLowerCase())
+  );
+
+  const all = sanitizeSkillList([...grounded, ...masterOnly, ...jdOnly], limit);
+  return {
+    grounded: grounded.slice(0, limit),
+    jdOnly: jdOnly.slice(0, limit),
+    masterOnly: masterOnly.slice(0, limit),
+    all,
+  };
+}
+
+/**
+ * Years of experience from master text or career span — never invent "12".
+ * Returns 0 when unknown (callers must not print fake years).
+ */
+export function yearsFromMasterAndProjects(
+  master: string,
+  projectStartYears: number[] = []
+): number {
+  const starts = projectStartYears.filter((y) => y >= 1980 && y <= 2100);
+  if (starts.length) {
+    const span = new Date().getFullYear() - Math.min(...starts);
+    if (span >= 1 && span <= 45) return span;
+  }
+  const m = (master || "").match(/(\d{1,2})\+?\s*years?/i);
+  if (m) {
+    const n = Number(m[1]);
+    if (n >= 1 && n <= 45) return n;
+  }
+  return 0;
+}
+
+/**
+ * Progressive older-role titles from admin policy templates ({core}, {jobTitle}, …).
+ */
+export function progressiveTitlesFromJobTitle(
+  jobTitle: string,
+  count = 8,
+  policy: ResumeEnginePolicy = DEFAULT_RESUME_ENGINE_POLICY
+): string[] {
+  return progressiveTitlesFromPolicy(jobTitle, policy, count);
 }
 
 export function skillFingerprint(jd: string, jobTitle: string): string {

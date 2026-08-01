@@ -9,10 +9,10 @@
 export const PRODUCT_NAME = "Role Forge";
 /** Compact mark for tight UI chrome */
 export const PRODUCT_NAME_SHORT = "RoleForge";
-export const PRODUCT_TAGLINE = "Marketing & matching co-pilot";
+export const PRODUCT_TAGLINE = "AI resumes for SAP staffing";
 export const PRODUCT_TITLE = `${PRODUCT_NAME} — ${PRODUCT_TAGLINE}`;
 export const PRODUCT_DESCRIPTION =
-  "AI-powered staffing operations: progressive resume packs, vendor-safe submissions, and role–candidate matching for SAP C2C/CTC.";
+  "Simple AI resume packs for SAP C2C marketing: match every candidate to the job, pick a layout, send to vendors.";
 
 /** PDF/DOCX creator metadata */
 export const PRODUCT_AUTHOR = `${PRODUCT_NAME} Co-Pilot`;

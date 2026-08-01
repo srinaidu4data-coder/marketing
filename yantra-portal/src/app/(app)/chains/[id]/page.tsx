@@ -10,13 +10,15 @@ import {
 import { Badge, Button, Card, PageHeader } from "@/components/ui";
 import { formatDateTime } from "@/lib/utils";
 import { getLayout } from "@/lib/resume/templates";
+import { getResendConfig } from "@/lib/email/resend";
+import { Mail, AlertTriangle, CheckCircle2, Download } from "lucide-react";
 
 export default async function ChainDetailPage({
   params,
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { failed?: string };
+  searchParams?: { failed?: string; sent?: string };
 }) {
   const user = await requireUser();
   if (user.role === "ADMIN") redirect(`/admin/chains/${params.id}`);
@@ -30,15 +32,19 @@ export default async function ChainDetailPage({
   });
   if (!chain || chain.employeeId !== user.id) notFound();
 
+  const emailCfg = getResendConfig();
+
   const genErrors = await prisma.auditLog.findMany({
     where: {
       OR: [
         { action: "chain.candidate_failed", meta: { contains: chain.id } },
         { action: "chain.status_changed", meta: { contains: chain.id } },
+        { action: "chain.email_failed", meta: { contains: chain.id } },
+        { action: "chain.email_sent", meta: { contains: chain.id } },
       ],
     },
     orderBy: { createdAt: "desc" },
-    take: 12,
+    take: 16,
   });
 
   const errorHints: string[] = [];
@@ -51,10 +57,12 @@ export default async function ChainDetailPage({
         errors?: { name?: string; message?: string }[];
         reason?: string;
         timedOut?: boolean;
+        error?: string;
       };
       if (meta.chainId && meta.chainId !== chain.id) continue;
       if (meta.fatal) errorHints.push(meta.fatal);
       if (meta.message) errorHints.push(meta.message);
+      if (meta.error) errorHints.push(meta.error);
       if (meta.reason) errorHints.push(String(meta.reason));
       if (meta.timedOut) errorHints.push("Generation hit serverless time budget");
       if (meta.errors?.length) {
@@ -73,16 +81,26 @@ export default async function ChainDetailPage({
   const lowAts = chain.candidates.filter((c) => c.atsScore < 95);
   const stuck = chain.status === "GENERATING" || chain.status === "SENDING";
   const emptyFailed = chain.status === "FAILED" && total === 0;
+  const canSend =
+    total > 0 &&
+    (chain.status === "READY" ||
+      chain.status === "FAILED" ||
+      chain.status === "SENT");
 
   async function sendAction() {
     "use server";
     const result = await sendChain(params.id);
     if (result && "error" in result && result.error === "VENDOR_SKILL_CONFLICT") {
-      const payload = Buffer.from(JSON.stringify(result.conflicts || []), "utf8").toString(
-        "base64url"
-      );
+      const payload = Buffer.from(
+        JSON.stringify(result.conflicts || []),
+        "utf8"
+      ).toString("base64url");
       redirect(`/chains/new?blocked=1&conflicts=${payload}`);
     }
+    if (result && "ok" in result && result.ok) {
+      redirect(`/chains/${params.id}?sent=1`);
+    }
+    redirect(`/chains/${params.id}?failed=1`);
   }
 
   async function recoverAction() {
@@ -96,37 +114,32 @@ export default async function ChainDetailPage({
   }
 
   return (
-    <div className="space-y-6 p-2 lg:p-4">
+    <div className="space-y-6">
       <PageHeader
-        title={
-          <>
-            Chain <span className="text-slate-400">{chain.id.slice(0, 8)}</span>
-          </>
-        }
-        description={`${formatDateTime(chain.createdAt)} · ${sent} of ${total} sent`}
+        title="Chain"
+        description={`${formatDateTime(chain.createdAt)} · ${sent}/${total} emailed · ${chain.id.slice(0, 8)}`}
         actions={
           <>
-            <Badge status={chain.status}>
-              {chain.status.charAt(0) + chain.status.slice(1).toLowerCase()}
-            </Badge>
+            <Badge status={chain.status}>{chain.status}</Badge>
             {stuck ? (
               <form action={recoverAction}>
                 <Button type="submit" variant="destructive">
-                  Recover stuck chain
+                  Recover
                 </Button>
               </form>
             ) : null}
-            {emptyFailed || (chain.status === "FAILED" && total === 0) || chain.status === "FAILED" ? (
+            {emptyFailed || chain.status === "FAILED" ? (
               <form action={retryAction}>
                 <Button type="submit" variant="outline">
                   Retry generation
                 </Button>
               </form>
             ) : null}
-            {chain.status === "READY" || (chain.status === "FAILED" && total > 0) ? (
+            {canSend && !stuck ? (
               <form action={sendAction}>
-                <Button type="submit" disabled={total === 0}>
-                  Send all
+                <Button type="submit" variant="soft" disabled={total === 0}>
+                  <Mail className="h-4 w-4" />
+                  Send to vendor
                 </Button>
               </form>
             ) : null}
@@ -134,17 +147,68 @@ export default async function ChainDetailPage({
         }
       />
 
+      {/* Email transport status */}
+      <Card className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span
+            className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+              emailCfg.mode === "resend"
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-amber-50 text-amber-800"
+            }`}
+          >
+            <Mail className="h-4 w-4" />
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-zinc-900">Email delivery</p>
+            <p className="mt-0.5 text-xs text-zinc-500">
+              Mode: <strong className="text-zinc-800">{emailCfg.mode}</strong>
+              {" · "}
+              From: <span className="font-mono text-[11px]">{emailCfg.from}</span>
+            </p>
+            {emailCfg.mode === "simulated" ? (
+              <p className="mt-1 text-xs text-amber-800">
+                No <code className="rounded bg-amber-100 px-1">RESEND_API_KEY</code> on
+                the server — sends are logged only, not delivered. Add the key in Vercel
+                → Environment Variables.
+              </p>
+            ) : emailCfg.mode === "dry_run" ? (
+              <p className="mt-1 text-xs text-amber-800">
+                <code className="rounded bg-amber-100 px-1">EMAIL_DRY_RUN=true</code> —
+                no real delivery.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-emerald-700">
+                Live Resend — emails go to the vendor inbox (domain must be verified).
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="text-xs text-zinc-500">
+          To: <strong className="text-zinc-800">{chain.vendorEmail}</strong>
+        </div>
+      </Card>
+
+      {searchParams?.sent === "1" ? (
+        <div className="flex items-start gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-medium">Send finished</p>
+            <p className="mt-0.5 text-xs text-emerald-800/80">
+              Check send status per candidate below. If mode is{" "}
+              <strong>simulated</strong>, nothing hit a real inbox.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       {searchParams?.failed === "1" || chain.status === "FAILED" ? (
-        <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-          <p>
+        <div className="space-y-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <p className="flex items-center gap-2 font-medium">
+            <AlertTriangle className="h-4 w-4" />
             {emptyFailed
-              ? "Generation produced no resumes (timeout, empty selection, or server error)."
-              : "This chain did not finish cleanly (failed or recovered from a stuck state)."}{" "}
-            You can{" "}
-            <Link href="/chains/new" className="underline">
-              create a new chain
-            </Link>
-            {total > 0 ? " or send packs that did generate." : " or retry generation below."}
+              ? "No resumes generated."
+              : "Chain did not finish cleanly."}
           </p>
           {uniqueHints.length > 0 ? (
             <ul className="list-disc pl-5 text-xs text-red-900">
@@ -152,74 +216,62 @@ export default async function ChainDetailPage({
                 <li key={h}>{h}</li>
               ))}
             </ul>
-          ) : (
-            <p className="text-xs">
-              Tip: On production, start with 1–2 candidates. Dense packs can hit serverless time
-              limits.
-            </p>
-          )}
+          ) : null}
         </div>
       ) : null}
 
       {stuck ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          This chain is still in <strong>{chain.status}</strong>. If generation/send appears
-          frozen, click <strong>Recover stuck chain</strong> (moves to READY if any resumes
-          already exist, otherwise FAILED). New chains are never blocked by this state.
+        <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Still <strong>{chain.status}</strong>. Use <strong>Recover</strong> if frozen.
         </div>
       ) : null}
 
-      {total === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-          No resume packs on this chain yet. Use <strong>Retry generation</strong> or create a
-          new chain with fewer candidates.
+      {total > 0 && lowAts.length > 0 ? (
+        <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {lowAts.length} resume(s) below ATS 95 — review before sending.
         </div>
-      ) : lowAts.length > 0 ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          {lowAts.length} resume(s) scored below internal ATS 95. Review before send. Progressive
-          tailor already reinforced keywords; consider refining the JD or master resume.
-        </div>
-      ) : (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-          All resumes meet internal ATS target (≥ 95).
-        </div>
-      )}
+      ) : null}
 
       <Card className="space-y-2 text-sm">
         <div>
-          <span className="text-slate-500">Vendor: </span>
-          <span className="font-medium">{chain.vendorName}</span> ({chain.vendorEmail})
+          <span className="text-zinc-500">Vendor </span>
+          <span className="font-medium text-zinc-900">{chain.vendorName}</span>
+          <span className="text-zinc-500"> · {chain.vendorEmail}</span>
         </div>
         <div>
-          <span className="text-slate-500">Job requirement</span>
-          <pre className="mt-1 whitespace-pre-wrap rounded bg-slate-50 p-3 text-xs">
+          <span className="text-xs font-medium uppercase tracking-wider text-zinc-400">
+            Job requirement
+          </span>
+          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-zinc-50 p-3 text-xs text-zinc-700">
             {chain.rawJobText}
           </pre>
         </div>
       </Card>
 
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
         <table className="w-full text-left text-sm">
-          <thead className="border-b bg-slate-50">
+          <thead className="border-b border-zinc-100 bg-zinc-50/80">
             <tr>
-              <th className="px-4 py-3 font-medium">Candidate</th>
-              <th className="px-4 py-3 font-medium">Layout</th>
-              <th className="px-4 py-3 font-medium">ATS</th>
-              <th className="px-4 py-3 font-medium">Send Status</th>
-              <th className="px-4 py-3 font-medium">Actions</th>
+              <th className="px-4 py-3 text-xs font-medium text-zinc-500">Candidate</th>
+              <th className="px-4 py-3 text-xs font-medium text-zinc-500">Layout</th>
+              <th className="px-4 py-3 text-xs font-medium text-zinc-500">ATS</th>
+              <th className="px-4 py-3 text-xs font-medium text-zinc-500">Email</th>
+              <th className="px-4 py-3 text-xs font-medium text-zinc-500">Files</th>
             </tr>
           </thead>
           <tbody>
             {chain.candidates.map((cc) => (
-              <tr key={cc.id} className="border-b last:border-0">
+              <tr key={cc.id} className="border-b border-zinc-50 last:border-0">
                 <td className="px-4 py-3">
-                  <div className="font-medium">{cc.candidate.name}</div>
-                  <div className="text-xs text-slate-500">{cc.candidate.email}</div>
+                  <div className="font-medium text-zinc-900">{cc.candidate.name}</div>
+                  <div className="text-xs text-zinc-500">{cc.candidate.email}</div>
                   {cc.jobTitle ? (
-                    <div className="text-[11px] text-slate-400">{cc.jobTitle}</div>
+                    <div className="text-[11px] text-zinc-400">{cc.jobTitle}</div>
                   ) : null}
                 </td>
-                <td className="px-4 py-3 text-xs">{getLayout(cc.layoutId).name}</td>
+                <td className="px-4 py-3 text-xs text-zinc-600">
+                  {getLayout(cc.layoutId).name}
+                </td>
                 <td className="px-4 py-3">
                   <span
                     className={
@@ -230,47 +282,36 @@ export default async function ChainDetailPage({
                   >
                     {cc.atsScore}
                   </span>
-                  <span className="text-xs text-slate-400"> / 100</span>
+                  <span className="text-xs text-zinc-400"> / 100</span>
                 </td>
                 <td className="px-4 py-3">
                   <Badge status={cc.sendStatus}>{cc.sendStatus}</Badge>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-2">
-                    <details className="text-sm">
-                      <summary className="cursor-pointer text-slate-700 hover:underline">
-                        Preview
-                      </summary>
-                      <pre className="mt-2 max-h-64 max-w-xl overflow-auto rounded border bg-slate-50 p-3 text-xs">
-                        {cc.tailoredResumeText.slice(0, 4000)}
-                      </pre>
-                    </details>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
                     <Link
                       href={`/api/chains/${chain.id}/candidates/${cc.id}/download?fmt=txt`}
-                      className="text-sm text-slate-700 hover:underline"
+                      className="inline-flex items-center gap-1 text-indigo-600 hover:underline"
                     >
-                      TXT
+                      <Download className="h-3 w-3" /> TXT
                     </Link>
-                    {cc.docxPath ? (
-                      <Link
-                        href={`/api/chains/${chain.id}/candidates/${cc.id}/download?fmt=docx`}
-                        className="text-sm text-slate-700 hover:underline"
-                      >
-                        DOCX
-                      </Link>
-                    ) : null}
-                    {cc.pdfPath ? (
-                      <Link
-                        href={`/api/chains/${chain.id}/candidates/${cc.id}/download?fmt=pdf`}
-                        className="text-sm text-slate-700 hover:underline"
-                      >
-                        PDF
-                      </Link>
-                    ) : null}
+                    <Link
+                      href={`/api/chains/${chain.id}/candidates/${cc.id}/download?fmt=docx`}
+                      className="inline-flex items-center gap-1 text-indigo-600 hover:underline"
+                    >
+                      <Download className="h-3 w-3" /> DOCX
+                    </Link>
                   </div>
                 </td>
               </tr>
             ))}
+            {total === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-zinc-400">
+                  No resume packs yet
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>

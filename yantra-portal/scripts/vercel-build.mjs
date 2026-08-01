@@ -35,6 +35,12 @@ if (isPg) {
   } catch (e) {
     console.warn("prisma db push failed (continuing build):", e?.message || e);
   }
+  // Keep ACTIVE admin prompt aligned with research DEFAULT_PROMPT on each deploy
+  try {
+    run("npx tsx scripts/sync-prompt-brand.ts", env);
+  } catch (e) {
+    console.warn("prompt sync skipped:", e?.message || e);
+  }
 } else {
   console.log("Using SQLite schema");
   run("npx prisma generate");

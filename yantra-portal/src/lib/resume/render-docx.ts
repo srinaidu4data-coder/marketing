@@ -12,6 +12,136 @@ import {
   convertInchesToTwip,
 } from "docx";
 import { getLayout, hexNoHash, type LayoutDef, type StructuredResume } from "./templates";
+
+/**
+ * Build a clean DOCX from stored tailored plain text (for email attach when /tmp is gone).
+ */
+export async function renderDocxFromPlainText(opts: {
+  candidateName: string;
+  jobTitle?: string;
+  text: string;
+}): Promise<Buffer> {
+  const lines = (opts.text || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .filter((l) => !/^— Role Forge/i.test(l.trim()));
+
+  const children: Paragraph[] = [];
+  // Header
+  children.push(
+    new Paragraph({
+      spacing: { after: 80 },
+      children: [
+        new TextRun({
+          text: (opts.candidateName || "Candidate").toUpperCase(),
+          bold: true,
+          size: 36,
+          font: "Calibri",
+        }),
+      ],
+    })
+  );
+  if (opts.jobTitle) {
+    children.push(
+      new Paragraph({
+        spacing: { after: 120 },
+        children: [
+          new TextRun({
+            text: opts.jobTitle,
+            size: 22,
+            font: "Calibri",
+            color: "334155",
+          }),
+        ],
+      })
+    );
+  }
+  children.push(
+    new Paragraph({
+      border: {
+        bottom: { style: BorderStyle.SINGLE, size: 12, color: "0f172a", space: 1 },
+      },
+      spacing: { after: 200 },
+      children: [],
+    })
+  );
+
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (!line.trim()) {
+      children.push(new Paragraph({ spacing: { after: 60 }, children: [] }));
+      continue;
+    }
+    // Skip duplicate name/title lines at top of stored text
+    if (
+      opts.candidateName &&
+      line.toUpperCase() === opts.candidateName.toUpperCase()
+    ) {
+      continue;
+    }
+    if (opts.jobTitle && line === opts.jobTitle) continue;
+    if (/^-{3,}|^={3,}/.test(line.trim())) continue;
+
+    const isHeading =
+      line === line.toUpperCase() &&
+      line.length < 80 &&
+      !/^[•▸→–\-\*]/.test(line) &&
+      /[A-Z]/.test(line);
+
+    if (isHeading) {
+      children.push(
+        new Paragraph({
+          spacing: { before: 240, after: 80 },
+          children: [
+            new TextRun({
+              text: line,
+              bold: true,
+              size: 20,
+              font: "Calibri",
+              color: "0f172a",
+            }),
+          ],
+        })
+      );
+      continue;
+    }
+
+    const bullet = /^[•▸→–\-\*]\s*/.test(line.trim());
+    const body = line.replace(/^[•▸→–\-\*]\s*/, "");
+    children.push(
+      new Paragraph({
+        spacing: { after: 60 },
+        indent: bullet ? { left: convertInchesToTwip(0.2) } : undefined,
+        children: [
+          new TextRun({
+            text: bullet ? `• ${body}` : body,
+            size: 20,
+            font: "Calibri",
+          }),
+        ],
+      })
+    );
+  }
+
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: {
+              top: convertInchesToTwip(0.6),
+              bottom: convertInchesToTwip(0.6),
+              left: convertInchesToTwip(0.7),
+              right: convertInchesToTwip(0.7),
+            },
+          },
+        },
+        children,
+      },
+    ],
+  });
+  return Buffer.from(await Packer.toBuffer(doc));
+}
 import {
   isBullet,
   isEmployerClientLine,
@@ -189,17 +319,22 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
         })
       );
     }
-    if (layout.id === "technical_dense") {
+    // Layout badge from style (TECH PACK, PORTFOLIO, etc.)
+    const badge = (layout.style as { badge?: string }).badge;
+    if (badge) {
       children.push(
         new Paragraph({
           spacing: { after: 80 },
-          shading: { type: ShadingType.CLEAR, fill: "0e7490" },
+          shading: {
+            type: ShadingType.CLEAR,
+            fill: hexNoHash(layout.style.accent),
+          },
           children: [
             new TextRun({
-              text: "  TECH PACK  ",
+              text: `  ${badge}  `,
               size: 16,
               color: "FFFFFF",
-              font: "Consolas",
+              font: layout.id === "technical_dense" ? "Consolas" : bodyFont(layout),
               bold: true,
             }),
           ],

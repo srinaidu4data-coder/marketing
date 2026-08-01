@@ -5,9 +5,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { checkVendorConflicts } from "@/lib/resume/vendor-guard";
 import { createAndGenerateChain, recoverStaleChains } from "@/lib/chain-pipeline";
+import type { ProgressEvent } from "@/lib/resume/generation-progress";
 
-// Vercel: Pro up to 300s; Hobby often caps lower. Budget in pipeline stops early.
-export const maxDuration = 60;
+// AI OpenAI generation needs headroom. Pro: up to 300s. Hobby may still hard-cap lower.
+export const maxDuration = 300;
 
 const schema = z.object({
   rawJobText: z.string().min(1),
@@ -15,6 +16,8 @@ const schema = z.object({
   vendorEmail: z.string().email(),
   candidateIds: z.array(z.string()).min(1).optional(),
   employeeNote: z.string().optional(),
+  /** When true, respond with NDJSON progress stream */
+  stream: z.boolean().optional(),
 });
 
 export async function POST(req: Request) {
@@ -23,7 +26,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Always free abandoned work before accepting new work (non-blocking for healthy jobs)
   try {
     await recoverStaleChains();
   } catch (e) {
@@ -53,12 +55,15 @@ export async function POST(req: Request) {
   }
 
   const user = session.user;
-  const { rawJobText, vendorName, vendorEmail, employeeNote } = parsed.data;
+  const { rawJobText, vendorName, vendorEmail, employeeNote, stream } =
+    parsed.data;
   let candidateIds = parsed.data.candidateIds || [];
 
   if (user.role === "EMPLOYEE") {
     if (candidateIds.length === 0) {
-      const pool = await prisma.allocation.findMany({ where: { employeeId: user.id } });
+      const pool = await prisma.allocation.findMany({
+        where: { employeeId: user.id },
+      });
       candidateIds = pool.map((p) => p.candidateId);
     } else {
       const pool = await prisma.allocation.findMany({
@@ -69,16 +74,11 @@ export async function POST(req: Request) {
   }
 
   if (candidateIds.length === 0) {
-    return NextResponse.json({ error: "No candidates allocated" }, { status: 400 });
+    return NextResponse.json(
+      { error: "No candidates allocated" },
+      { status: 400 }
+    );
   }
-
-  // Soft notice only — never hard-block create because another chain is generating
-  const inFlight = await prisma.chain.count({
-    where: {
-      employeeId: user.id,
-      status: { in: ["GENERATING", "SENDING"] },
-    },
-  });
 
   const conflicts = await checkVendorConflicts({
     candidateIds,
@@ -97,6 +97,57 @@ export async function POST(req: Request) {
     );
   }
 
+  // ── Streaming path: NDJSON progress events for granular green-check UI ──
+  if (stream) {
+    const encoder = new TextEncoder();
+    const streamBody = new ReadableStream({
+      async start(controller) {
+        const send = (ev: ProgressEvent | Record<string, unknown>) => {
+          controller.enqueue(encoder.encode(JSON.stringify(ev) + "\n"));
+        };
+        try {
+          const result = await createAndGenerateChain({
+            userId: user.id,
+            vendorName,
+            vendorEmail,
+            rawJobText,
+            employeeNote: employeeNote || null,
+            candidateIds,
+            onProgress: async (ev) => {
+              send(ev);
+            },
+          });
+          // Ensure final payload even if pipeline already sent chain_done
+          send({
+            type: "complete",
+            id: result.id,
+            status: result.status,
+            succeeded: result.succeeded,
+            failed: result.failed,
+            errors: result.errors,
+          });
+        } catch (e) {
+          send({
+            type: "error",
+            message:
+              e instanceof Error ? e.message : "Unexpected error creating chain",
+          });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(streamBody, {
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
+    });
+  }
+
+  // ── Classic JSON response (non-stream) ──
   try {
     const result = await createAndGenerateChain({
       userId: user.id,
@@ -118,10 +169,6 @@ export async function POST(req: Request) {
               ? `Generation failed for all candidates: ${result.errors.map((e) => e.name).join(", ")}`
               : "Generation failed with no resumes produced.",
           errors: result.errors,
-          note:
-            inFlight > 0
-              ? "Other in-flight chains for your account were left running; stale ones were auto-recovered."
-              : undefined,
         },
         { status: 422 }
       );
@@ -139,7 +186,8 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error: "CHAIN_CREATE_FAILED",
-        message: e instanceof Error ? e.message : "Unexpected error creating chain",
+        message:
+          e instanceof Error ? e.message : "Unexpected error creating chain",
       },
       { status: 500 }
     );
@@ -147,7 +195,6 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
-  // Opportunistic stale sweep when queues poll
   try {
     await recoverStaleChains();
   } catch {

@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/db";
-import { PageHeader, Card, Badge } from "@/components/ui";
+import { PageHeader, Card, Badge, StatCard, SectionLabel } from "@/components/ui";
 import { getSystemConfig } from "@/lib/system-settings";
 import { formatDateTime } from "@/lib/utils";
+import { ChevronRight } from "lucide-react";
 
 type Tile = {
   href: string;
@@ -75,7 +76,7 @@ export default async function AdminHomePage() {
     {
       href: "/admin/prompt",
       title: "Prompt template",
-      description: "Active progressive-tailor prompt, test mode, promote / rollback.",
+      description: "Active AI resume prompt, test mode, promote / rollback.",
       stat: activePrompt ? `Active · ${activePrompt.id.slice(0, 8)}` : "No active prompt",
       badge: "Content",
     },
@@ -128,26 +129,28 @@ export default async function AdminHomePage() {
 
   function Section({ title, tiles }: { title: string; tiles: Tile[] }) {
     return (
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{title}</h2>
+      <section>
+        <SectionLabel>{title}</SectionLabel>
         <nav className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {tiles.map((t) => (
             <Link
               key={t.href}
               href={t.href}
-              className="group rounded-lg border p-4 transition-colors hover:border-slate-400 hover:bg-slate-50"
+              className="group rf-surface rf-surface-hover block p-5"
             >
               <div className="flex items-start justify-between gap-2">
-                <h3 className="font-medium group-hover:text-slate-900">{t.title}</h3>
-                {t.badge ? (
-                  <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
-                    {t.badge}
-                  </span>
-                ) : null}
+                <h3 className="text-[15px] font-semibold tracking-tight text-[#1d1d1f]">
+                  {t.title}
+                </h3>
+                <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-[#c7c7cc] transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-[#86868b]" />
               </div>
-              <p className="mt-1 text-sm text-slate-500">{t.description}</p>
+              <p className="mt-1.5 text-[13.5px] leading-relaxed text-[#6e6e73]">
+                {t.description}
+              </p>
               {t.stat ? (
-                <p className="mt-3 text-xs font-medium text-slate-700">{t.stat}</p>
+                <p className="mt-3 text-[12.5px] font-semibold tracking-tight text-[#1d1d1f]">
+                  {t.stat}
+                </p>
               ) : null}
             </Link>
           ))}
@@ -157,38 +160,39 @@ export default async function AdminHomePage() {
   }
 
   return (
-    <div className="space-y-8 p-2 lg:p-4">
+    <div className="space-y-10">
       <PageHeader
-        title={<>Admin console — {admin.name}</>}
-        description={`${config.companyName} · manage people, candidates, templates, and system policy.`}
+        title="Overview"
+        description={`${config.companyName} · signed in as ${admin.name}`}
       />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <div className="text-xs uppercase text-slate-500">Active employees</div>
-          <div className="mt-1 text-2xl font-semibold">{employeeCount}</div>
-        </Card>
-        <Card>
-          <div className="text-xs uppercase text-slate-500">Candidates</div>
-          <div className="mt-1 text-2xl font-semibold">{candidateCount}</div>
-        </Card>
-        <Card>
-          <div className="text-xs uppercase text-slate-500">Chains</div>
-          <div className="mt-1 text-2xl font-semibold">{chainCount}</div>
-        </Card>
-        <Card>
-          <div className="text-xs uppercase text-slate-500">AI cost today</div>
-          <div className="mt-1 text-2xl font-semibold">${todayCost.toFixed(2)}</div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className={`h-full rounded-full ${capPct >= 90 ? "bg-red-500" : capPct >= 70 ? "bg-amber-500" : "bg-emerald-500"}`}
-              style={{ width: `${capPct}%` }}
-            />
-          </div>
-          <p className="mt-1 text-[11px] text-slate-500">
-            {capPct}% of ${cap} daily cap
-          </p>
-        </Card>
+        <StatCard label="Employees" value={employeeCount} />
+        <StatCard label="Candidates" value={candidateCount} />
+        <StatCard label="Chains" value={chainCount} />
+        <StatCard
+          label="AI cost today"
+          value={`$${todayCost.toFixed(2)}`}
+          hint={
+            <>
+              <div className="mt-1 h-1 overflow-hidden rounded-full bg-black/[0.06]">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    capPct >= 90
+                      ? "bg-[#ff3b30]"
+                      : capPct >= 70
+                        ? "bg-[#ff9f0a]"
+                        : "bg-[#0071e3]"
+                  }`}
+                  style={{ width: `${capPct}%` }}
+                />
+              </div>
+              <span className="mt-1.5 block">
+                {capPct}% of ${cap} daily cap
+              </span>
+            </>
+          }
+        />
       </div>
 
       <Section title="People & access" tiles={people} />
@@ -196,32 +200,41 @@ export default async function AdminHomePage() {
       <Section title="Operations" tiles={operations} />
       <Section title="System" tiles={system} />
 
-      <Card className="space-y-3">
+      <Card className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-medium">Recent audit activity</h2>
-          <Link href="/admin/analytics" className="text-sm text-sky-700 underline underline-offset-2">
-            Analytics →
+          <h2 className="text-[15px] font-semibold tracking-tight text-[#1d1d1f]">
+            Recent activity
+          </h2>
+          <Link
+            href="/admin/analytics"
+            className="text-[13px] font-semibold text-[#0071e3] hover:text-[#0077ed]"
+          >
+            Analytics
           </Link>
         </div>
         {recentAudit.length === 0 ? (
-          <p className="text-sm text-slate-500">No audit events yet.</p>
+          <p className="text-[14px] text-[#86868b]">No audit events yet.</p>
         ) : (
-          <ul className="divide-y rounded-md border">
+          <ul className="divide-y divide-black/[0.05] overflow-hidden rounded-xl bg-black/[0.02]">
             {recentAudit.map((a) => (
               <li
                 key={a.id}
-                className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
+                className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
               >
-                <span className="font-mono text-xs">{a.action}</span>
-                <span className="text-xs text-slate-500">{formatDateTime(a.createdAt)}</span>
+                <span className="font-mono text-[12.5px] font-medium text-[#1d1d1f]">
+                  {a.action}
+                </span>
+                <span className="text-[12px] text-[#86868b]">
+                  {formatDateTime(a.createdAt)}
+                </span>
               </li>
             ))}
           </ul>
         )}
       </Card>
 
-      <p className="text-xs text-slate-400">
-        Signed in as {admin.email} · defaults: layout{" "}
+      <p className="text-[12px] text-[#86868b]">
+        {admin.email} · layout{" "}
         <Badge status="READY">{config.defaultLayoutId}</Badge> · export{" "}
         <Badge status="READY">{config.defaultExportFormat}</Badge>
       </p>

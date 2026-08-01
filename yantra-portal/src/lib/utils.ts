@@ -17,7 +17,7 @@ export function formatDate(d: Date | string) {
 export function formatDateTime(d: Date | string) {
   const date = typeof d === "string" ? new Date(d) : d;
   return date.toLocaleString("en-US", {
-    month: "numeric",
+    month: "short",
     day: "numeric",
     year: "numeric",
     hour: "numeric",
@@ -25,13 +25,18 @@ export function formatDateTime(d: Date | string) {
   });
 }
 
+/** Soft Apple-like status pills */
 export function statusBadgeClass(status: string) {
   const s = status.toUpperCase();
-  if (s === "SENT") return "bg-emerald-100 text-emerald-800";
-  if (s === "READY") return "bg-blue-100 text-blue-800";
-  if (s === "FAILED") return "bg-red-100 text-red-800";
-  if (s === "GENERATING" || s === "SENDING") return "bg-amber-100 text-amber-800";
-  if (s === "ACTIVE") return "bg-emerald-100 text-emerald-800";
-  if (s === "DRAFT") return "bg-slate-100 text-slate-700";
-  return "bg-slate-100 text-slate-700";
+  if (s === "SENT" || s === "ACTIVE")
+    return "bg-emerald-500/10 text-emerald-700 ring-1 ring-inset ring-emerald-500/15";
+  if (s === "READY")
+    return "bg-sky-500/10 text-sky-800 ring-1 ring-inset ring-sky-500/15";
+  if (s === "FAILED")
+    return "bg-red-500/10 text-red-700 ring-1 ring-inset ring-red-500/15";
+  if (s === "GENERATING" || s === "SENDING")
+    return "bg-amber-500/10 text-amber-800 ring-1 ring-inset ring-amber-500/15";
+  if (s === "DRAFT" || s === "PENDING")
+    return "bg-black/[0.04] text-[#6e6e73] ring-1 ring-inset ring-black/[0.06]";
+  return "bg-black/[0.04] text-[#6e6e73] ring-1 ring-inset ring-black/[0.06]";
 }

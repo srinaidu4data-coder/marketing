@@ -92,6 +92,10 @@ export async function loadChainAttachments(opts: {
   pdfPath?: string | null;
   textPath?: string | null;
   baseName: string;
+  /** When disk files missing (Vercel /tmp), rebuild DOCX from this */
+  tailoredResumeText?: string | null;
+  candidateName?: string;
+  jobTitle?: string | null;
 }): Promise<EmailAttachment[]> {
   const out: EmailAttachment[] = [];
   const tryRead = async (
@@ -109,11 +113,46 @@ export async function loadChainAttachments(opts: {
   };
 
   const safe = opts.baseName.replace(/[^a-zA-Z0-9._-]/g, "_");
-  await tryRead(opts.docxPath, `${safe}.docx`, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  await tryRead(
+    opts.docxPath,
+    `${safe}.docx`,
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  );
   await tryRead(opts.pdfPath, `${safe}.pdf`, "application/pdf");
-  // Prefer binary resume; skip raw txt if docx present
-  if (!opts.docxPath && !opts.pdfPath) {
+
+  // Vercel: generation files often gone after cold start — rebuild DOCX from DB text
+  const hasDocx = out.some((a) => a.filename.endsWith(".docx"));
+  if (!hasDocx && opts.tailoredResumeText && opts.tailoredResumeText.length > 80) {
+    try {
+      const { renderDocxFromPlainText } = await import("@/lib/resume/render-docx");
+      const buf = await renderDocxFromPlainText({
+        candidateName: opts.candidateName || safe,
+        jobTitle: opts.jobTitle || undefined,
+        text: opts.tailoredResumeText,
+      });
+      out.unshift({
+        filename: `${safe}.docx`,
+        content: buf,
+        contentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
+    } catch (e) {
+      console.warn("[email] rebuild DOCX from text failed", e);
+      // Last resort: attach plain text from DB
+      out.push({
+        filename: `${safe}.txt`,
+        content: Buffer.from(opts.tailoredResumeText, "utf8"),
+        contentType: "text/plain; charset=utf-8",
+      });
+    }
+  } else if (!out.length && opts.textPath) {
     await tryRead(opts.textPath, `${safe}.txt`, "text/plain");
+  } else if (!out.length && opts.tailoredResumeText) {
+    out.push({
+      filename: `${safe}.txt`,
+      content: Buffer.from(opts.tailoredResumeText, "utf8"),
+      contentType: "text/plain; charset=utf-8",
+    });
   }
   return out;
 }

@@ -14,6 +14,7 @@
 
 import type { ResumeLayoutId, ResumeSection } from "./templates";
 import type { DomainHint } from "./jd-parse";
+import { LAYOUT_RHETORIC } from "./research-foundations";
 
 /** Minimal project shape — avoids circular import with progressive-tailor */
 export type StructureProject = {
@@ -74,12 +75,13 @@ export const STRUCTURE_CATALOG: StructureDef[] = [
     name: "ATS Classic",
     structureName: "Canonical Linear Checklist",
     feel: "Strict corporate order recruiters and parsers expect — no surprises.",
-    spine: "Summary → Skills → Full Experience → Education",
+    spine: LAYOUT_RHETORIC.ats_classic.spine + " · Summary → Skills → Impact → Experience → Education",
     literature: [
-      "Schema matching (job category accessibility; Bartlett tradition)",
-      "Processing fluency (Schwarz; Reber & Schwarz)",
-      "Within-list serial position for bullet priority (not the sole spine engine)",
-      "Business: standard HR resume taxonomy (summary–skills–experience–edu)",
+      "Schema matching + processing fluency (System-1 6s scan)",
+      "Serial position: JD proof primacy on page 1",
+      "TF–IDF / ATS keyword gate density",
+      "Standard HR taxonomy (summary–skills–experience–edu)",
+      LAYOUT_RHETORIC.ats_classic.principle,
     ],
     expectedHeadings: [
       "Professional Summary",
@@ -94,10 +96,11 @@ export const STRUCTURE_CATALOG: StructureDef[] = [
     name: "Executive Serif",
     structureName: "Minto Pyramid Brief",
     feel: "Answer-first leadership memo — conclusion before evidence.",
-    spine: "Executive Answer → Supporting Wins → Leadership Detail → Competencies → Credentials",
+    spine: LAYOUT_RHETORIC.executive_serif.spine + " · Answer → Wins → Engagements → Competencies → Credentials",
     literature: [
       "Barbara Minto pyramid principle (top-down argument)",
       "Construal level: abstract → concrete (Trope & Liberman)",
+      LAYOUT_RHETORIC.executive_serif.principle,
       "Signaling theory for credentials / claim specificity (Spence)",
       "Dual-process: System-1 fit then System-2 proof (Kahneman)",
     ],
@@ -392,9 +395,10 @@ function buildTechModular(ctx: StructureCtx): ResumeSection[] {
     },
     {
       heading: "Deep-Dive Engagements",
+      // ALL master projects — never recentOnly (that dropped mid/early history)
       lines: expLines(ctx.projects, ctx.cleanSkills, "▸", "  |  ", {
         stackLabel: "Modules",
-        maxBullets: 20,
+        maxBullets: 18,
       }),
     },
     {
@@ -420,11 +424,10 @@ function buildTimelineNarrative(ctx: StructureCtx): ResumeSection[] {
     {
       heading: "Career Arc",
       lines: [
-        `${fn}'s path is a progressive narrative: foundation skills → expanding ownership → recent leadership on ${ctx.headline}-aligned programs.`,
-        `Chapter emphasis matches JD themes (${ctx.cleanSkills.slice(0, 12).join(", ")}) most strongly in the latest two chapters.`,
-        `Near-total JD coverage packed into recent chapters: ${ctx.cleanSkills.slice(0, 18).join(ctx.skillSeparator)}`,
-        `Story constraint: early chapters stay balanced; peak complexity and keywords concentrate in recent chapters (peak–end + progressive identity).`,
-        ...ctx.summaryLines.slice(3, 6),
+        `${fn} progressed from foundation delivery to expanding ownership to recent leadership as ${ctx.headline}.`,
+        `Core focus across the arc: ${ctx.cleanSkills.slice(0, 12).join(", ")}.`,
+        `Recent chapters concentrate specialized depth; earlier chapters establish fundamentals without oversell.`,
+        ...ctx.summaryLines.slice(0, 4),
       ].filter(Boolean),
     },
     {

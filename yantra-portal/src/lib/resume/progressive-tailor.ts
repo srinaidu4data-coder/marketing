@@ -1,12 +1,12 @@
-/**
+﻿/**
  * Progressive Resume Tailor (Role Forge v2)
  *
  * Output targets:
- * - 10–12+ bullet lines per project/client engagement
- * - Resume content sized for ~4–5 pages (DOCX/PDF)
+ * - 10â€“12+ bullet lines per project/client engagement
+ * - Resume content sized for ~4â€“5 pages (DOCX/PDF)
  * - Progressive career narrative (early balanced, recent heavily JD-aligned)
  * - Temporal skill integrity
- * - Internal ATS score target ≥ 95
+ * - Internal ATS score target â‰¥ 95
  */
 
 import {
@@ -18,10 +18,14 @@ import {
 } from "./ats-scorer";
 import {
   detectDomain,
-  domainSkillPack,
+  progressiveTitlesFromJobTitle,
   sanitizeSkillList,
+  skillsHonestFromSources,
+  yearsFromMasterAndProjects,
   type DomainHint,
 } from "./jd-parse";
+import type { ResumeEnginePolicy } from "./resume-engine-policy";
+import { getResumeEnginePolicy } from "@/lib/system-settings";
 import {
   getLayout,
   type ResumeLayoutId,
@@ -33,12 +37,13 @@ import {
   formatContactLine,
 } from "./extract-contact";
 
-/** Minimum bullets per project — denser packs for 4–5 page DOCX with heavy page-1 proof */
-export const MIN_BULLETS_PER_PROJECT = 18;
-/** Recent roles: more lines so first page shows deep JD match */
-export const RECENT_BULLETS_PER_PROJECT = 22;
-export const MID_BULLETS_PER_PROJECT = 18;
-export const EARLY_BULLETS_PER_PROJECT = 14;
+/** Minimum bullets per project â€” denser packs for 4â€“5 page DOCX with heavy page-1 proof */
+/** @deprecated Density comes from admin policy bullets.* */
+export const MIN_BULLETS_PER_PROJECT = 8;
+/** @deprecated Use ResumeEnginePolicy.bullets */
+export const RECENT_BULLETS_PER_PROJECT = 8;
+export const MID_BULLETS_PER_PROJECT = 6;
+export const EARLY_BULLETS_PER_PROJECT = 5;
 /** Fallback synthetic count when master has no parseable jobs */
 export const TARGET_PROJECT_COUNT = 5;
 /** Cap only for extreme masters (performance on serverless) */
@@ -101,33 +106,19 @@ function skillAllowedInProject(skill: string, projectEndYear: number): boolean {
   return true;
 }
 
-function extractSkillsFromMaster(master: string, domain: DomainHint): string[] {
-  const line = master
-    .split(/\r?\n/)
-    .find((l) => /skills|technical/i.test(l) && l.length < 400);
-  const blob = line || master.slice(0, 1200);
-  const fromBlob = blob
-    .split(/[,|·•\/;]/)
-    .map((s) => s.replace(/technical skills/i, "").trim())
-    .filter((s) => s.length > 1 && s.length < 45)
-    // Drop garbage that leaked from bad masters
-    .filter(
-      (s) =>
-        !/location|remote|foster|interview|contract|duration|preferred|travel|someone/i.test(
-          s
-        )
-    );
-  const pack = domainSkillPack(domain);
-  return Array.from(new Set([...pack, ...fromBlob])).slice(0, 28);
+function extractSkillsFromMaster(master: string, _domain?: DomainHint): string[] {
+  void _domain;
+  // Reuse honest splitter (master side only)
+  return skillsHonestFromSources("", master, 28).masterOnly;
 }
 
 /**
  * Extract real employer / client names from the master resume experience block.
  * Supports common formats:
- *   Title — Employer (2019–Present)
- *   Title | Employer | 2019 – Present
+ *   Title â€” Employer (2019â€“Present)
+ *   Title | Employer | 2019 â€“ Present
  *   Title at Employer
- *   Employer Name (2019 – 2022)
+ *   Employer Name (2019 â€“ 2022)
  */
 export function extractEmployersFromMaster(master: string): string[] {
   const lines = master
@@ -139,11 +130,11 @@ export function extractEmployersFromMaster(master: string): string[] {
     let name = raw
       .replace(/\s+/g, " ")
       .replace(/[,;|]+$/, "")
-      .replace(/^\s*[-–—]\s*/, "")
+      .replace(/^\s*[-â€“â€”]\s*/, "")
       .trim();
     // Drop trailing date fragments if still attached
     name = name
-      .replace(/\s*[\(\[]?\s*(?:Present|\d{4})\s*[-–—to]*\s*(?:Present|\d{4})?\s*[\)\]]?\s*$/i, "")
+      .replace(/\s*[\(\[]?\s*(?:Present|\d{4})\s*[-â€“â€”to]*\s*(?:Present|\d{4})?\s*[\)\]]?\s*$/i, "")
       .trim();
     if (name.length < 2 || name.length > 80) return;
     if (/^(experience|professional|education|skills|summary|technical|environment|stack)/i.test(name))
@@ -158,13 +149,13 @@ export function extractEmployersFromMaster(master: string): string[] {
   };
 
   for (const line of lines) {
-    if (/^[•▸→–\-\*]/.test(line)) continue;
+    if (/^[â€¢â–¸â†’â€“\-\*]/.test(line)) continue;
     if (/^(technical skills|skills|education|certifications|summary)/i.test(line) && line.length < 60)
       continue;
 
-    // Title — Employer (2019–Present)  or  Title – Employer (2019-2021)
+    // Title â€” Employer (2019â€“Present)  or  Title â€“ Employer (2019-2021)
     let m = line.match(
-      /^.+?\s+[—–\-]\s+(.+?)\s*[\(\[]\s*(?:Present|\d{4})/i
+      /^.+?\s+[â€”â€“\-]\s+(.+?)\s*[\(\[]\s*(?:Present|\d{4})/i
     );
     if (m?.[1]) {
       push(m[1]);
@@ -187,7 +178,7 @@ export function extractEmployersFromMaster(master: string): string[] {
       continue;
     }
 
-    // Standalone: Employer Name (2019 – Present)
+    // Standalone: Employer Name (2019 â€“ Present)
     m = line.match(
       /^([A-Z][A-Za-z0-9&.,'/ \-]{2,60})\s*[\(\[]\s*(?:Present|\d{4})/
     );
@@ -199,37 +190,11 @@ export function extractEmployersFromMaster(master: string): string[] {
   return found;
 }
 
-/** Domain-aware fallback client labels when master has fewer named employers */
-function clientsForDomain(domain: DomainHint): string[] {
-  if (domain === "attp") {
-    return [
-      "Global Pharma Serialization Client (US)",
-      "Life Sciences Track & Trace Client",
-      "Multi-Market DSCSA / GS1 Compliance Client",
-      "Contract Manufacturing Serialization Client",
-      "Regional Pharma Supply-Chain Client",
-    ];
-  }
-  if (domain === "fico") {
-    return [
-      "Global Manufacturing Finance Client",
-      "Fortune 500 S/4HANA Finance Client",
-      "Consumer Products Controllership Client",
-      "Industrial Shared-Services Finance Client",
-      "Mid-Market ECC to S/4 Finance Client",
-    ];
-  }
-  if (domain === "abap") {
-    return [
-      "Enterprise SAP Development Client",
-      "S/4HANA Extensibility Client",
-      "BTP / Side-by-Side Integration Client",
-      "Manufacturing Custom Development Client",
-      "AMS Enhancement Factory Client",
-    ];
-  }
+/** Generic fallback client labels when master has fewer named employers (no domain invention) */
+function clientsForDomain(_domain?: DomainHint): string[] {
+  void _domain;
   return [
-    "Global Manufacturing Enterprise Client (US)",
+    "Global Enterprise Client (US)",
     "Fortune 500 Process Industry Client",
     "Regional Services Group Client",
     "Industrial Distribution Client",
@@ -237,7 +202,7 @@ function clientsForDomain(domain: DomainHint): string[] {
   ];
 }
 
-/** Merge master employers first, then domain fallbacks — always TARGET_PROJECT_COUNT names */
+/** Merge master employers first, then neutral fallbacks â€” always TARGET_PROJECT_COUNT names */
 function resolveClientNames(master: string, domain: DomainHint): string[] {
   const fromMaster = extractEmployersFromMaster(master);
   const fallbacks = clientsForDomain(domain);
@@ -248,41 +213,18 @@ function resolveClientNames(master: string, domain: DomainHint): string[] {
   return out;
 }
 
-function titlesForDomain(domain: DomainHint): string[] {
-  switch (domain) {
-    case "attp":
-      return [
-        "SAP ATTP Techno-Functional Lead",
-        "SAP ATTP Senior Consultant",
-        "SAP Track & Trace / Serialization Consultant",
-        "SAP ATTP Functional Consultant",
-        "SAP Junior Consultant (Supply Chain / Compliance)",
-      ];
-    case "fico":
-      return [
-        "SAP S/4HANA FICO Lead Consultant",
-        "SAP FICO Senior Consultant",
-        "SAP Finance Functional Consultant",
-        "SAP FI/CO Consultant",
-        "Associate SAP Finance Analyst",
-      ];
-    case "abap":
-      return [
-        "SAP ABAP / BTP Technical Lead",
-        "Senior SAP ABAP Developer",
-        "SAP ABAP Consultant",
-        "SAP Technical Consultant",
-        "Junior SAP ABAP Developer",
-      ];
-    default:
-      return [
-        "Senior SAP Functional Lead / Consultant",
-        "SAP Senior Consultant",
-        "SAP Functional Consultant",
-        "SAP Consultant",
-        "Associate SAP Consultant / Analyst",
-      ];
-  }
+/** Progressive titles from admin policy templates */
+function titlesForDomain(
+  _domain: DomainHint,
+  jobTitle = "",
+  policy?: ResumeEnginePolicy
+): string[] {
+  void _domain;
+  return progressiveTitlesFromJobTitle(
+    jobTitle || "Consultant",
+    TARGET_PROJECT_COUNT,
+    policy
+  );
 }
 
 function parseYearToken(tok: string): number | "Present" | null {
@@ -292,22 +234,22 @@ function parseYearToken(tok: string): number | "Present" | null {
   return null;
 }
 
-/** Parse date range like "JUL 2019 – PRESENT" or "2019-2021" */
+/** Parse date range like "JUL 2019 â€“ PRESENT" or "2019-2021" */
 function parseDateRange(
   text: string
 ): { start: number; end: number | "Present" } | null {
   const t = text.replace(/\t/g, " ").replace(/\s+/g, " ").trim();
-  // MON YYYY – PRESENT / MON YYYY – MON YYYY
+  // MON YYYY â€“ PRESENT / MON YYYY â€“ MON YYYY
   let m = t.match(
-    /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.\-/]?\s*(\d{4})\s*[–—\-~to]+\s*(?:(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.\-/]?\s*)?(\d{4}|Present|Current|Now)\b/i
+    /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.\-/]?\s*(\d{4})\s*[â€“â€”\-~to]+\s*(?:(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.\-/]?\s*)?(\d{4}|Present|Current|Now)\b/i
   );
   if (m) {
     const start = Number(m[2]);
     const end = parseYearToken(m[4]);
     if (start && end) return { start, end };
   }
-  // YYYY – YYYY / YYYY – Present
-  m = t.match(/\b(19\d{2}|20\d{2})\s*[–—\-~to]+\s*(19\d{2}|20\d{2}|Present|Current|Now)\b/i);
+  // YYYY â€“ YYYY / YYYY â€“ Present
+  m = t.match(/\b(19\d{2}|20\d{2})\s*[â€“â€”\-~to]+\s*(19\d{2}|20\d{2}|Present|Current|Now)\b/i);
   if (m) {
     const start = Number(m[1]);
     const end = parseYearToken(m[2]);
@@ -332,12 +274,131 @@ type ParsedJob = {
   bullets: string[];
 };
 
+/** True if line is a location/remote phrase, not a company name */
+function isLocationOnlyClient(name: string): boolean {
+  return /^(remote|united states|usa|us hybrid|onsite|hybrid|client site|delivery center|home\s*office|various|multiple locations)/i.test(
+    name.trim()
+  );
+}
+
+/**
+ * Parse Role Forge export / timeline format:
+ *   [Recent leadership] Title
+ *   Employer / Client: ACME
+ *   Houston, TX  |  2022 â€“ Present
+ *   bullets...
+ */
+function parseJobsFromEmployerClientFormat(lines: string[]): ParsedJob[] {
+  const jobs: ParsedJob[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const empMatch = lines[i].match(/^Employer\s*\/\s*Client:\s*(.+)$/i);
+    if (!empMatch) {
+      i++;
+      continue;
+    }
+    const client = empMatch[1].trim();
+    // Title is usually the non-empty line immediately above Employer/Client
+    let title = "Consultant";
+    for (let b = i - 1; b >= Math.max(0, i - 4); b--) {
+      const prev = lines[b];
+      if (!prev) continue;
+      if (/^(Employer|Environment|Stack|Modules|Chapter stack|Program stack)/i.test(prev))
+        continue;
+      if (/^[â€¢â–¸â†’â€“\-\*]/.test(prev)) continue;
+      if (parseDateRange(prev)) continue;
+      if (prev.length < 140) {
+        title = prev.replace(/^\[.*?\]\s*/, "").replace(/\s*[Â·|]\s*/g, " â€” ").trim();
+        break;
+      }
+    }
+    i++;
+    // Never invent country/city â€” blank until a real location|dates line is parsed
+    let location = "";
+    let startYear = 0;
+    let endYear: number | "Present" = "Present";
+    let sawDates = false;
+    // Next lines: location | dates, stack, bullets
+    const bullets: string[] = [];
+    while (i < lines.length) {
+      const line = lines[i];
+      if (!line) {
+        i++;
+        continue;
+      }
+      if (/^Employer\s*\/\s*Client:/i.test(line)) break;
+      // Next title marker like [Recent leadership] or chapter heading before another employer
+      if (
+        /^\[(Recent|Growth|Foundation)/i.test(line) ||
+        (/^[A-Z\[].{8,100}$/.test(line) &&
+          !/^[â€¢â–¸â†’â€“\-\*]/.test(line) &&
+          !parseDateRange(line) &&
+          !/^(Environment|Stack|Modules|Chapter|Program)/i.test(line) &&
+          bullets.length > 2)
+      ) {
+        // Peek: if following is Employer/Client, stop without consuming
+        const peek = lines.slice(i, i + 3).join("\n");
+        if (/Employer\s*\/\s*Client:/i.test(peek) || /^\[(Recent|Growth|Foundation)/i.test(line)) {
+          break;
+        }
+      }
+      const dates = parseDateRange(line);
+      if (dates && !bullets.length) {
+        const withoutDates = line
+          .replace(
+            /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.\-/]?\s*\d{4}\s*[â€“â€”\-~to]+\s*(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.\-/]?\s*)?(?:\d{4}|Present|Current|Now)\b/gi,
+            ""
+          )
+          .replace(
+            /\b(19\d{2}|20\d{2})\s*[â€“â€”\-~to]+\s*(19\d{2}|20\d{2}|Present|Current|Now)\b/gi,
+            ""
+          )
+          .replace(/\|/g, " ")
+          .trim();
+        if (withoutDates) location = withoutDates;
+        startYear = dates.start;
+        endYear = dates.end;
+        sawDates = true;
+        i++;
+        continue;
+      }
+      if (/^(Environment|Stack|Modules|Chapter stack|Program stack)/i.test(line)) {
+        i++;
+        continue;
+      }
+      if (/^[â€¢â–¸â†’â€“\-\*]/.test(line) || line.length > 40) {
+        bullets.push(line.replace(/^[â€¢â–¸â†’â€“\-\*]\s*/, "").trim());
+      }
+      i++;
+    }
+    // If client was a location placeholder, try to keep it readable
+    const finalClient = isLocationOnlyClient(client)
+      ? client // still better than inventing; synthetic path may replace later
+      : client;
+    // Dates unknown: leave startYear=0 so yearsFromMasterAndProjects ignores it
+    if (!sawDates) {
+      startYear = 0;
+      endYear = "Present";
+    }
+    jobs.push({
+      client: finalClient,
+      location,
+      startYear,
+      endYear,
+      title,
+      bullets: bullets.filter((b) => b.length > 15).slice(0, 30),
+    });
+  }
+  return jobs;
+}
+
 /**
  * Parse ALL professional experience jobs from master resume text.
  * Supports formats like:
- *   SR SOFT LLC | Houston, TX    JUL 2019 – PRESENT
+ *   SR SOFT LLC | Houston, TX    JUL 2019 â€“ PRESENT
  *   Title line
  *   bullet / prose lines...
+ * And Role Forge exports with "Employer / Client:" lines.
  */
 export function parseJobsFromMasterText(master: string): ParsedJob[] {
   if (!master || master.length < 40) return [];
@@ -350,6 +411,18 @@ export function parseJobsFromMasterText(master: string): ParsedJob[] {
       .replace(/\s+/g, " ")
       .trim()
   );
+
+  // Prefer Employer/Client export format when present (re-tailor of prior outputs)
+  const empClientJobs = parseJobsFromEmployerClientFormat(lines);
+  if (empClientJobs.length >= 2) {
+    empClientJobs.sort((a, b) => {
+      const ae = a.endYear === "Present" ? 9999 : a.endYear;
+      const be = b.endYear === "Present" ? 9999 : b.endYear;
+      if (be !== ae) return be - ae;
+      return b.startYear - a.startYear;
+    });
+    return empClientJobs.slice(0, MAX_PROJECTS_FROM_MASTER);
+  }
 
   // Find experience section start
   let startIdx = 0;
@@ -390,26 +463,30 @@ export function parseJobsFromMasterText(master: string): ParsedJob[] {
     end: number | "Present";
   } | null => {
     if (!line || line.length < 8 || line.length > 160) return null;
-    if (/^[•▸→–\-\*]/.test(line)) return null;
+    if (/^[â€¢â–¸â†’â€“\-\*]/.test(line)) return null;
+    if (/^Employer\s*\/\s*Client:/i.test(line)) return null;
     const dates = parseDateRange(line);
     if (!dates) return null;
     // Must look like company header (has | or company-like left side)
     const withoutDates = line
       .replace(
-        /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.\-/]?\s*\d{4}\s*[–—\-~to]+\s*(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.\-/]?\s*)?(?:\d{4}|Present|Current|Now)\b/gi,
+        /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.\-/]?\s*\d{4}\s*[â€“â€”\-~to]+\s*(?:(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*[.\-/]?\s*)?(?:\d{4}|Present|Current|Now)\b/gi,
         ""
       )
-      .replace(/\b(19\d{2}|20\d{2})\s*[–—\-~to]+\s*(19\d{2}|20\d{2}|Present|Current|Now)\b/gi, "")
+      .replace(/\b(19\d{2}|20\d{2})\s*[â€“â€”\-~to]+\s*(19\d{2}|20\d{2}|Present|Current|Now)\b/gi, "")
       .trim()
-      .replace(/[|·•]+$/, "")
+      .replace(/[|Â·â€¢]+$/, "")
       .trim();
     if (withoutDates.length < 2) return null;
     // Prefer lines with company | location
-    const parts = withoutDates.split(/\s*[|·•]\s*/).map((p) => p.trim()).filter(Boolean);
+    const parts = withoutDates.split(/\s*[|Â·â€¢]\s*/).map((p) => p.trim()).filter(Boolean);
     const client = parts[0] || withoutDates;
-    const location = parts.slice(1).join(", ") || "United States";
+    // Blank when master has no city/region â€” never invent "United States"
+    const location = parts.slice(1).join(", ") || "";
     // Reject pure skill/summary lines mistaken as jobs
     if (/^(profile|summary|skills|what i bring)/i.test(client)) return null;
+    // Reject location-only "headers" (common in prior Role Forge exports)
+    if (isLocationOnlyClient(client) && parts.length <= 1) return null;
     if (client.split(/\s+/).length > 12 && !/[A-Z]{2,}/.test(client)) return null;
     return { client, location, start: dates.start, end: dates.end };
   };
@@ -431,20 +508,29 @@ export function parseJobsFromMasterText(master: string): ParsedJob[] {
         i++;
         continue;
       }
-      if (/^[•▸→–\-\*]/.test(line) || /^[–—]\s/.test(line)) {
-        bullets.push(line.replace(/^[•▸→–\-\*]\s*/, "").trim());
+      if (/^[â€¢â–¸â†’â€“\-\*]/.test(line) || /^[â€“â€”]\s/.test(line)) {
+        bullets.push(line.replace(/^[â€¢â–¸â†’â€“\-\*]\s*/, "").trim());
         i++;
         continue;
       }
       // Title-like line (before bullets accumulate)
       if (!title && bullets.length === 0 && line.length < 140 && !/^Clients?\s+across/i.test(line)) {
-        // May be "Title · subtitle"
-        title = line.replace(/\s*[·|]\s*/g, " — ").trim();
+        // May be "Title Â· subtitle"
+        title = line
+          .replace(/^\[.*?\]\s*/, "")
+          .replace(/\s*[Â·|]\s*/g, " â€” ")
+          .trim();
         i++;
         continue;
       }
-      // Stack / meta line (tools) — skip as bullet or keep short context
-      if (/S\/4HANA|SAP ECC|Power BI|Tableau|Oracle|BW|BODS|CFIN/i.test(line) && line.length < 200 && bullets.length === 0) {
+      // Stack / meta line (tools) â€” skip as bullet or keep short context
+      if (
+        /S\/4HANA|SAP ECC|Power BI|Tableau|Oracle|BW|BODS|CFIN|Environment:|Stack:|Chapter stack/i.test(
+          line
+        ) &&
+        line.length < 200 &&
+        bullets.length === 0
+      ) {
         i++;
         continue;
       }
@@ -482,7 +568,8 @@ export function parseJobsFromMasterText(master: string): ParsedJob[] {
 function parseMasterProjects(
   master: string,
   domain: DomainHint,
-  jobTitle: string
+  jobTitle: string,
+  policy?: ResumeEnginePolicy
 ): ProjectBlock[] {
   const now = new Date().getFullYear();
   const baseSkills = extractSkillsFromMaster(master, domain);
@@ -495,16 +582,22 @@ function parseMasterProjects(
       const skills = baseSkills
         .filter((sk) => skillAllowedInProject(sk, endY))
         .slice(0, era === "early" ? 8 : 14);
-      // Prefer master bullets; pad with domain seeds only if thin
+      // JD/domain seeds FIRST for recent+mid so RAR/leasing etc. are not buried under master prose
       const seeds = seedBulletsForDomain(domain, era, idx);
+      const masterBullets = job.bullets.filter(
+        (b) =>
+          b.length > 20 &&
+          !/near-100%|keyword coverage|staffing|80\s*\/\s*hr|role\s*::/i.test(b)
+      );
       const bullets =
-        job.bullets.length >= 4
-          ? job.bullets
-          : [...job.bullets, ...seeds].slice(0, Math.max(job.bullets.length, 8));
+        era === "early"
+          ? [...masterBullets, ...seeds.slice(0, 3)].slice(0, 18)
+          : [...seeds, ...masterBullets].slice(0, 28);
       return {
-        title: job.title || jobTitle || "Consultant",
+        // Project-level role always rewritten to JD title (see alignProjectRoleTitle)
+        title: alignProjectRoleTitle(job.title, jobTitle, era),
         client: job.client,
-        location: job.location || "United States",
+        location: (job.location || "").trim(),
         startYear: job.startYear,
         endYear: job.endYear,
         era,
@@ -514,11 +607,12 @@ function parseMasterProjects(
     });
   }
 
-  // Fallback synthetic (master had no parseable jobs — e.g. placeholder upload)
-  const yearsMatch = master.match(/(\d+)\+?\s*years?/i);
-  const years = Math.min(18, Math.max(8, Number(yearsMatch?.[1] || 12)));
+  // Fallback synthetic (master had no parseable jobs â€” e.g. placeholder upload)
+  // Span only for slot layout â€” never invent "12 years" or force min 8
+  const yearsHint = yearsFromMasterAndProjects(master);
+  const years = yearsHint > 0 ? Math.min(40, yearsHint) : 10;
   const clients = resolveClientNames(master, domain);
-  const titles = titlesForDomain(domain);
+  const titles = titlesForDomain(domain, jobTitle, policy);
 
   const slices: {
     era: ProjectBlock["era"];
@@ -532,41 +626,41 @@ function parseMasterProjects(
       era: "recent",
       start: now - 2,
       end: "Present",
-      title: titles[0] || jobTitle,
+      title: alignProjectRoleTitle(titles[0] || jobTitle, jobTitle, "recent"),
       client: clients[0],
-      location: "Remote / US Hybrid",
+      location: "",
     },
     {
       era: "recent",
       start: now - 4,
       end: now - 2,
-      title: titles[1],
+      title: alignProjectRoleTitle(titles[1] || jobTitle, jobTitle, "recent"),
       client: clients[1],
-      location: "United States",
+      location: "",
     },
     {
       era: "mid",
       start: now - Math.ceil(years * 0.55),
       end: now - 4,
-      title: titles[2],
+      title: alignProjectRoleTitle(titles[2] || jobTitle, jobTitle, "mid"),
       client: clients[2],
-      location: "Onsite / Hybrid",
+      location: "",
     },
     {
       era: "mid",
       start: now - Math.ceil(years * 0.75),
       end: now - Math.ceil(years * 0.55),
-      title: titles[3],
+      title: alignProjectRoleTitle(titles[3] || jobTitle, jobTitle, "mid"),
       client: clients[3],
-      location: "Client site",
+      location: "",
     },
     {
       era: "early",
       start: now - years,
       end: now - Math.ceil(years * 0.75),
-      title: titles[4],
+      title: alignProjectRoleTitle(titles[4] || jobTitle, jobTitle, "early"),
       client: clients[4],
-      location: "Delivery center / Client support",
+      location: "",
     },
   ];
 
@@ -588,64 +682,40 @@ function parseMasterProjects(
   });
 }
 
+/**
+ * Rewrite EVERY project role title toward the JD (employer/dates stay from master).
+ * Recent + mid: exact JD title (project-level match).
+ * Early: associate/junior form of JD title (progressive honesty, still JD-aligned).
+ */
+export function alignProjectRoleTitle(
+  masterTitle: string,
+  jobTitle: string,
+  era: ProjectBlock["era"]
+): string {
+  const jd = (jobTitle || "").trim();
+  const master = (masterTitle || "").trim();
+  if (!jd) return master || "Consultant";
+  if (era === "recent" || era === "mid") return jd.slice(0, 120);
+  // Early: progressive junior form of the same JD role
+  const base = jd.replace(/\s*[-â€“â€”|/].*$/, "").trim() || jd;
+  const deLeaded = base
+    .replace(/\b(Senior|Lead|Principal|Staff|Director)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (/^associate\b/i.test(deLeaded)) return deLeaded.slice(0, 120);
+  return `Associate ${deLeaded}`.slice(0, 120);
+}
+
+/**
+ * Neutral seed bullets only â€” no domain-canned RAR/ATTP/FICO lines.
+ * JD-specific jargon is woven later from actual keywords.
+ */
 function seedBulletsForDomain(
-  domain: DomainHint,
+  _domain: DomainHint,
   era: ProjectBlock["era"],
   idx: number
 ): string[] {
-  if (domain === "attp") {
-    if (era === "recent") {
-      return [
-        "Led SAP ATTP configuration and process design for serialization and track-and-trace workstreams.",
-        "Mapped GS1 / EPCIS event flows to ATTP repository rules and exception handling.",
-        "Partnered with supply-chain, QA, and packaging stakeholders on DSCSA-aligned scenarios.",
-        "Drove SIT/UAT evidence packs for commissioning, aggregation, and shipping events.",
-        "Supported cutover and hypercare for serialization go-lives with clear escalation paths.",
-      ];
-    }
-    if (era === "mid") {
-      return [
-        "Configured ATTP master data, number ranges, and rule sets under senior guidance.",
-        "Tested serialization scenarios and logged defects with reproduction steps.",
-        "Documented interface touchpoints between ATTP and logistics execution systems.",
-        "Supported business training on exception monitor and reporting workflows.",
-      ];
-    }
-    return [
-      "Assisted seniors with ATTP / supply-chain compliance documentation and unit tests.",
-      "Shadowed workshops on track-and-trace requirements and regulatory vocabulary.",
-      "Captured test evidence and meeting notes for serialization workstreams.",
-      `Engagement ${idx + 1}: built foundational discipline on compliance-oriented SAP delivery.`,
-    ];
-  }
-
-  if (domain === "fico") {
-    if (era === "recent") {
-      return [
-        "Led FI/CO design workshops covering GL, AP, AR, and Asset Accounting processes.",
-        "Configured enterprise structures and finance master data for S/4HANA delivery.",
-        "Owned month-end close support improvements and integration with MM/SD.",
-        "Managed SIT/UAT defects and cutover tasks for finance workstream.",
-        "Delivered KT and hypercare for controllers and shared-services users.",
-      ];
-    }
-    if (era === "mid") {
-      return [
-        "Configured assigned FI/CO processes and validated with process owners.",
-        "Authored functional specs for enhancements and reporting needs.",
-        "Supported SIT/UAT scripts for AP/AR/GL scenarios.",
-        "Maintained config trackers and AMS handoff documentation.",
-      ];
-    }
-    return [
-      "Supported finance ticket research and unit testing under mentorship.",
-      "Assisted with configuration documentation for FI transactions.",
-      "Prepared training notes for super-users.",
-      `Engagement ${idx + 1}: foundational SAP finance consulting skills.`,
-    ];
-  }
-
-  // generic
+  void _domain;
   if (era === "recent") {
     return [
       "Owned end-to-end delivery for assigned workstream with PMO and process owners.",
@@ -683,55 +753,32 @@ function weaveJdIntoBullets(
 ): string[] {
   const endY = yearOf(project.endYear);
   const allowed = jdKeywords.filter((k) => skillAllowedInProject(k, endY));
-  const pack = domainSkillPack(domain).filter((k) =>
-    skillAllowedInProject(k, endY)
-  );
+  // Only JD keywords â€” no canned domain pack fill-ins
+  const pack = allowed;
   const k = (i: number, fallback: string) =>
     allowed[i] || pack[i] || fallback;
+  void domain;
 
-  const attpHigh: string[] = [
-    `Delivered ${project.title} scope for ${project.client}, emphasizing SAP ATTP, serialization, and track-and-trace process integrity.`,
-    `Aligned responsibilities to the ATTP / compliance profile: ${Array.from(new Set(allowed.slice(0, 4).concat(pack.slice(0, 4)))).slice(0, 6).join(", ")}.`,
-    `Facilitated workshops with supply-chain, QA, packaging, and IT owners on serialization and event-reporting requirements.`,
-    `Configured ATTP master data, number ranges, rule sets, and repository behaviors supporting ${k(0, "GS1")} / ${k(1, "EPCIS")} scenarios.`,
-    `Designed and tested commissioning, aggregation, disaggregation, shipping, and receiving event flows end-to-end.`,
-    `Mapped exception-monitor use cases (missing events, hierarchy breaks, duplicate serials) with clear resolution paths.`,
-    `Integrated ATTP with logistics / ERP touchpoints via IDoc/RFC/interfaces and validated reconciliation reports.`,
-    `Built unit and SIT scripts covering regulatory edge cases; owned defect triage through retest and sign-off.`,
-    `Supported DSCSA / market-specific compliance checkpoints with auditable evidence packs.`,
-    `Prepared cutover runbooks for serialization go-live, including freeze windows and hypercare command structure.`,
-    `Trained business users on day-to-day ATTP transactions, dashboards, and exception handling SOPs.`,
-    `Reported risks and readiness to PMO and vendor stakeholders with transparent metrics (open defects, pass rates).`,
-    `Partnered with technical teams on performance, archiving, and event volume considerations for production scale.`,
-    `Mentored junior consultants on ATTP standards while retaining accountability for critical path deliverables.`,
-    `Performed fit-gap analysis favoring standard ATTP capability before custom extensions.`,
-    `Coordinated transport and release sequencing with Basis/change control for regulated environments.`,
-    `Validated security/role design for segregation of duties on serialization-sensitive transactions.`,
-    `Led hypercare stabilization and AMS knowledge transfer with known-error documentation.`,
-  ];
-
-  const highBank: string[] =
-    domain === "attp"
-      ? attpHigh
-      : [
-    `Delivered ${project.title.toLowerCase()} scope for ${project.client}, emphasizing ${k(0, "core SAP processes")}, ${k(1, "configuration")}, and ${k(2, "integration")}.`,
-    `Aligned day-to-day responsibilities to the target role profile: ${allowed.slice(0, 6).join(", ") || pack.slice(0, 6).join(", ") || "module design, testing, and stakeholder delivery"}.`,
-    `Facilitated discovery and design workshops with process owners to baseline requirements for ${k(0, "primary module")} scenarios.`,
+  // Single JD-keyword-driven bank â€” never domain-canned ATTP/RAR/FICO paragraphs
+  const highBank: string[] = [
+    `Delivered ${project.title} scope for ${project.client}, emphasizing ${k(0, "core process areas")}, ${k(1, "configuration")}, and ${k(2, "integration")}.`,
+    `Executed day-to-day responsibilities aligned to ${project.title}: ${allowed.slice(0, 6).join(", ") || pack.slice(0, 6).join(", ") || "module design, testing, and stakeholder delivery"}.`,
+    `Facilitated discovery and design workshops with process owners to baseline requirements for ${k(0, "primary process")} scenarios.`,
     `Configured enterprise structures, master data, and transactional flows supporting ${k(1, "key processes")} and related sub-processes.`,
     `Built and executed unit test scripts covering happy-path and exception scenarios for ${k(2, "key business processes")}.`,
     `Led cross-functional integration testing with adjacent module and interface stakeholders.`,
-    `Owned defect lifecycle management in SIT/UAT—triage, root-cause analysis, retest, and sign-off coordination.`,
+    `Owned defect lifecycle management in SIT/UATâ€”triage, root-cause analysis, retest, and sign-off coordination.`,
     `Prepared cutover runbooks, mock cutover participation, and hypercare dashboards for go-live readiness.`,
     `Partnered with technical teams on interfaces (IDoc/BAPI/API) impacting ${k(3, "data exchange")} and reconciliation.`,
     `Drove operational support improvements reducing manual effort through automation and checklist discipline.`,
     `Delivered end-user training, job aids, and floor-support during hypercare with measurable adoption feedback.`,
     `Reported status, risks, and decisions to PMO and vendor stakeholders with clear escalation paths.`,
-    `Applied ${k(4, "SAP Activate")} / Agile ceremonies for sprint planning, demos, and backlog refinement.`,
+    `Applied ${k(4, "delivery method")} / Agile ceremonies for sprint planning, demos, and backlog refinement.`,
     `Ensured audit-friendly documentation: config trackers, FS/TS alignment notes, and evidence packs.`,
     `Mentored junior consultants on standards while retaining accountability for critical path deliverables.`,
     `Performed fit-gap analysis and recommended standard vs. custom approaches with impact statements.`,
     `Coordinated transport sequencing and release calendar alignment with Basis and change management.`,
-    `Validated authorization roles with security team for segregation-of-duties sensitive transactions.`,
+    `Validated authorization design with security team for segregation-of-duties sensitive transactions.`,
   ];
 
   const midBank: string[] = [
@@ -785,10 +832,13 @@ function weaveJdIntoBullets(
         ? MID_BULLETS_PER_PROJECT
         : EARLY_BULLETS_PER_PROJECT;
 
-  // Explicit JD-keyword bullets first (recent) so page-1 match is near-total
+  // Explicit JD-keyword bullets (recent+mid) so page-1 match is near-total
   const keywordBullets: string[] = [];
-  if (intensity === "high") {
-    const pool = Array.from(new Set([...allowed, ...pack])).slice(0, 14);
+  if (intensity === "high" || intensity === "medium") {
+    const pool = Array.from(new Set([...allowed, ...pack])).slice(
+      0,
+      intensity === "high" ? 14 : 8
+    );
     for (let i = 0; i < pool.length; i += 2) {
       const a = pool[i];
       const b = pool[i + 1];
@@ -800,13 +850,31 @@ function weaveJdIntoBullets(
     }
   }
 
-  // Prefer master-resume bullets first, then JD keyword weave, then bank
+  // JD-first conversion: domain bank + keywords before master prose on recent/mid
+  // so RAR/leasing/ABAP (etc.) appear at the top of every project, not buried.
+  const ordered =
+    intensity === "high"
+      ? [...bank, ...keywordBullets, ...bullets]
+      : intensity === "medium"
+        ? [...keywordBullets, ...bank.slice(0, 12), ...bullets]
+        : [...bullets, ...bank];
+
   const merged: string[] = [];
   const seen = new Set<string>();
   const cap = Math.min(28, Math.max(target + 4, bullets.length + 4));
-  for (const line of [...bullets, ...keywordBullets, ...bank]) {
+  for (const line of ordered) {
     const t = line.trim();
     if (!t || seen.has(t.toLowerCase())) continue;
+    // Drop generic "owned end-to-end" filler when we already have domain-specific lines
+    if (
+      intensity !== "low" &&
+      merged.length >= 6 &&
+      /Owned end-to-end delivery for assigned workstream|Led solution design workshops and translated requirements into blueprints/i.test(
+        t
+      )
+    ) {
+      continue;
+    }
     seen.add(t.toLowerCase());
     merged.push(t);
     if (merged.length >= cap) break;
@@ -830,26 +898,28 @@ function buildLongSummary(
   keywords: string[],
   vendorName: string,
   yearsHint: number,
-  domain: DomainHint
+  _domain?: DomainHint
 ): string[] {
+  void _domain;
   const first = candidateName.split(/\s+/)[0] || candidateName;
-  const kwPrimary = keywords.slice(0, 10).join(", ") || "SAP process delivery, configuration, integration";
+  const kwPrimary =
+    keywords.slice(0, 10).join(", ") ||
+    "process delivery, configuration, integration";
   const kwSecondary =
     keywords.slice(10, 22).join(", ") ||
     "testing, cutover, hypercare, stakeholder management, documentation";
+  // Jargon from JD keywords only â€” never canned domain paragraphs
   const jargon =
-    domain === "attp"
-      ? "serialization workstreams, GS1 identifiers (GTIN/GLN/SSCC), EPCIS eventing, packaging/aggregation controls, EDI/ALE interfaces, and regulatory evidence packs"
-      : domain === "fico"
-        ? "S/4HANA Finance design, R2R close acceleration, subledger integrity, CO allocations, and FI-MM/SD integration points"
-        : domain === "abap"
-          ? "RAP/CDS extensibility, OData services, enhancement frameworks, performance-minded ABAP, and BTP side-by-side patterns"
-          : "solution blueprinting, configuration baselines, interface contracts, test traceability matrices, and cutover orchestration";
+    keywords.slice(0, 8).join(", ") ||
+    "solution blueprinting, configuration baselines, interface contracts, test traceability, and cutover orchestration";
 
-  // Professional summary only — no marketing/meta chatter (no "near-100%", no staffing pitch)
   void vendorName;
+  const yearsPart =
+    yearsHint > 0
+      ? ` with approximately ${yearsHint}+ years of progressive consulting`
+      : " with progressive consulting experience";
   return [
-    `${first} is a ${headline} with approximately ${yearsHint}+ years of progressive SAP consulting across full-lifecycle implementations, rollouts, upgrades, and AMS support models.`,
+    `${first} is a ${headline}${yearsPart} across full-lifecycle implementations, rollouts, upgrades, and AMS support models.`,
     `Core technical focus includes ${kwPrimary}.`,
     kwSecondary
       ? `Additional strengths include ${kwSecondary}.`
@@ -863,32 +933,22 @@ function buildLongSummary(
 }
 
 function buildImpactSnapshot(
-  domain: DomainHint,
+  _domain: DomainHint,
   keywords: string[],
   bullet: string
 ): string[] {
+  void _domain;
   const k = keywords.slice(0, 10);
-  const kwLine = k.join(", ") || "JD-critical modules";
-  const peaks =
-    domain === "attp"
-      ? [
-          `Led functional ATTP / track-and-trace workstreams covering serialization, aggregation, and EPCIS-aligned event flows (${kwLine}).`,
-          `Stood up GS1 identifier handling (GTIN, GLN, SSCC) and exception monitoring patterns used in regulated pharma supply chains.`,
-          `Drove SIT/UAT evidence packs and cutover readiness for packaging/serialization releases with multi-party stakeholders.`,
-          `Integrated ATTP processes with EDI/ALE and logistics touchpoints; reduced event-break noise through rule/config hardening.`,
-          `Delivered AMS KT and hypercare stabilization so operations could sustain serialization controls post go-live.`,
-          `Aligned day-to-day ownership to JD responsibilities: configure, test, integrate, cutover, and compliance evidence.`,
-          `Produced audit-ready documentation packs (config trackers, test matrices, go/no-go evidence) for regulated releases.`,
-        ]
-      : [
-          `Delivered end-to-end functional outcomes on ${kwLine} across recent transformation programs.`,
-          `Owned design-to-deploy artifacts: workshops, config baselines, test traceability, and cutover runbooks.`,
-          `Improved release quality via structured defect triage, regression packs, and stakeholder sign-off discipline.`,
-          `Partnered with integration and security teams on interface and authorization readiness for production waves.`,
-          `Completed hypercare and AMS knowledge transfer with reduction in open severity defects.`,
-          `Executed implement, configure, test, integrate, and cutover activities with clear ownership and documentation.`,
-          `Produced audit-friendly evidence packs including config trackers, test matrices, and go-live readiness notes.`,
-        ];
+  const kwLine = k.join(", ") || "JD-critical skills";
+  const peaks = [
+    `Delivered end-to-end functional outcomes on ${kwLine} across recent transformation programs.`,
+    `Owned design-to-deploy artifacts: workshops, config baselines, test traceability, and cutover runbooks.`,
+    `Improved release quality via structured defect triage, regression packs, and stakeholder sign-off discipline.`,
+    `Partnered with integration and security teams on interface and authorization readiness for production waves.`,
+    `Completed hypercare and AMS knowledge transfer with reduction in open severity defects.`,
+    `Executed implement, configure, test, integrate, and cutover activities with clear ownership and documentation.`,
+    `Produced audit-friendly evidence packs including config trackers, test matrices, and go-live readiness notes.`,
+  ];
   return peaks.map((p) => `${bullet} ${p}`);
 }
 
@@ -897,7 +957,7 @@ function buildSkillsSection(
   projects: ProjectBlock[],
   separator: string
 ): string[] {
-  // Full JD skill bank first (page-1 density) — never job-board noise
+  // Full JD skill bank first (page-1 density) â€” never job-board noise
   const functional = Array.from(
     new Set([
       ...keywords.filter(
@@ -958,10 +1018,10 @@ function ensureStructuredJdCoverage(
     .slice(0, 30);
   if (!inject.length) return;
 
-  // Inject clean skills only — never labels with "JD" / "Role" / rates
+  // Inject clean skills only â€” never labels with "JD" / "Role" / rates
   const cleanInject = sanitizeSkillList(inject, 28);
   if (!cleanInject.length) return;
-  const skillsLine = cleanInject.join(" · ");
+  const skillsLine = cleanInject.join(" Â· ");
   const skillIdx = sections.findIndex((s) =>
     /competenc|skill|matrix|focus|toolkit|method|technical|capability/i.test(s.heading)
   );
@@ -992,7 +1052,7 @@ function reinforceForAts(
     .filter((m) => m.length > 2)
     .join(", ");
   if (!inject) return text;
-  // Quiet ATS reinforcement — skills only, no marketing prose
+  // Quiet ATS reinforcement â€” skills only, no marketing prose
   if (!/TECHNICAL SKILLS|CORE COMPETENCIES|CORE SKILLS/i.test(text)) {
     return text + `\n\nTECHNICAL SKILLS\n${inject}\n`;
   }
@@ -1003,6 +1063,14 @@ function reinforceForAts(
   return text;
 }
 
+/**
+ * Deterministic / preview path â€” SAME assembly as production OpenAI packs
+ * (`assemble-pack.buildProjects` + `buildStructuredFromLayout`).
+ *
+ * Does NOT use dense weaveJdIntoBullets banks or a second LLM refine path.
+ * `useLlm` is ignored (always false) so preview density cannot diverge from
+ * production honesty rules; production must call tailorResume â†’ ai-tailor.
+ */
 export async function progressiveTailor(opts: {
   master: string;
   jd: string;
@@ -1010,227 +1078,30 @@ export async function progressiveTailor(opts: {
   candidateName: string;
   layoutId?: ResumeLayoutId | string | null;
   email?: string;
-}): Promise<{ structured: StructuredResume; text: string; ats: AtsResult }> {
-  const layout = getLayout(opts.layoutId);
-  const jobTitle = extractJobTitle(opts.jd);
-  const domain = detectDomain(opts.jd, jobTitle);
-  const keywords = extractJdKeywords(opts.jd, 55);
-  const domainPack = domainSkillPack(domain);
-  // Clean skill list: keywords + domain pack, sanitized (no rate / JD meta / broken SAP S)
-  const cleanSkills = sanitizeSkillList(
-    [...keywords, ...domainPack, ...extractSkillsFromMaster(opts.master, domain)],
-    42
-  );
-
-  const projects = parseMasterProjects(opts.master, domain, jobTitle);
-
-  const yearsMatch = opts.master.match(/(\d+)\+?\s*years?/i);
-  const yearsHint = Math.min(18, Math.max(8, Number(yearsMatch?.[1] || 12)));
-
-  let temporalViolations = 0;
-  const progressiveNotes: string[] = [];
-
-  const tailoredProjects = projects.map((p) => {
-    const intensity: "high" | "medium" | "low" =
-      p.era === "recent" ? "high" : p.era === "mid" ? "medium" : "low";
-    const skills = p.skills.filter((s) => {
-      const ok = skillAllowedInProject(s, yearOf(p.endYear));
-      if (!ok) temporalViolations++;
-      return ok;
-    });
-    const jdSkills = cleanSkills.filter((k) =>
-      skillAllowedInProject(k, yearOf(p.endYear))
-    );
-    if (p.era === "early") {
-      progressiveNotes.push(
-        `${p.client}: early-career — ${EARLY_BULLETS_PER_PROJECT}+ balanced lines, no oversell of lead ownership.`
-      );
-    } else if (p.era === "recent") {
-      progressiveNotes.push(
-        `${p.client}: recent — ${RECENT_BULLETS_PER_PROJECT}+ lines with near-100% JD keyword weave (${domain}).`
-      );
-    } else {
-      progressiveNotes.push(
-        `${p.client}: mid-career — expanding ownership with ${MID_BULLETS_PER_PROJECT}+ detailed contributions.`
-      );
-    }
-    const bullets = weaveJdIntoBullets(
-      p.bullets,
-      cleanSkills,
-      intensity,
-      p,
-      domain
-    );
-    return {
-      ...p,
-      skills: Array.from(
-        new Set([
-          ...jdSkills.slice(
-            0,
-            intensity === "high" ? 18 : intensity === "medium" ? 10 : 4
-          ),
-          ...skills,
-        ])
-      ),
-      bullets,
-    };
-  });
-
-  // Guarantee bullet counts (recent denser than early)
-  for (const p of tailoredProjects) {
-    const need =
-      p.era === "recent"
-        ? RECENT_BULLETS_PER_PROJECT
-        : p.era === "mid"
-          ? MID_BULLETS_PER_PROJECT
-          : EARLY_BULLETS_PER_PROJECT;
-    if (p.bullets.length < need) {
-      throw new Error(
-        `Internal: project ${p.client} has only ${p.bullets.length} bullets (need ${need})`
-      );
-    }
-  }
-
-  // Title = job title only from JD (title-like, not descriptive)
-  let headline = (jobTitle || "SAP Consultant").trim();
-  // Strip descriptive fluff if JD title was a sentence
-  if (headline.length > 90 || /\bwith\b|\bwho\b|\blooking\b/i.test(headline)) {
-    const sap = headline.match(
-      /SAP\s+[A-Za-z0-9/.\-]+(?:\s+[A-Za-z0-9/.\-&]+){0,6}/i
-    );
-    headline = (sap?.[0] || headline.split(/[.|]/)[0] || "SAP Consultant")
-      .trim()
-      .slice(0, 80);
-  }
-
-  // Header contact from master (email, phone, location, LinkedIn, etc.) — not invented
-  const masterContact = extractContactFromMaster(opts.master, opts.email);
-  const contactLine =
-    formatContactLine(masterContact) ||
-    opts.email ||
-    "";
-
-  const summaryLines = buildLongSummary(
-    opts.candidateName,
-    headline,
-    cleanSkills,
-    opts.vendorName,
-    yearsHint,
-    domain
-  );
-  const skillLines = buildSkillsSection(
-    cleanSkills,
-    tailoredProjects,
-    layout.style.skillSeparator
-  );
-  const impactLines = buildImpactSnapshot(
-    domain,
-    cleanSkills,
-    layout.style.bullet
-  );
-
-  // Each layout gets its own content STRUCTURE (section names, order, density, rhetoric)
-  const layoutSections = buildSectionsForLayout({
-    layoutId: layout.id,
-    candidateName: opts.candidateName,
-    headline,
-    vendorName: opts.vendorName,
-    domain,
-    yearsHint,
-    cleanSkills,
-    summaryLines,
-    skillLines,
-    impactLines,
-    projects: tailoredProjects,
-    bullet: layout.style.bullet,
-    skillSeparator: layout.style.skillSeparator,
-  });
-
-  // Pre-inject full JD skill bank into structured first page (DOCX/PDF path)
-  ensureStructuredJdCoverage(layoutSections, headline, [], cleanSkills);
-
-  const structured: StructuredResume = {
-    candidateName: opts.candidateName,
-    headline,
-    contactLine,
-    layoutId: layout.id,
-    sections: [
-      ...layoutSections,
-      {
-        heading: "Progressive Experience Notes",
-        lines: progressiveNotes,
-      },
-    ],
-    meta: {
-      atsScore: 0,
-      skillFingerprint: skillFingerprint(opts.jd, jobTitle),
-      jobTitle,
-      progressiveNotes,
-    },
-  };
-
-  let text = renderPlain(structured, layout.id);
-  let ats = scoreResume({
-    resumeText: text,
+  /** @deprecated Ignored â€” deterministic path never calls a second LLM. */
+  useLlm?: boolean;
+}): Promise<{
+  structured: StructuredResume;
+  text: string;
+  ats: AtsResult;
+  usedLlm?: boolean;
+}> {
+  void opts.useLlm;
+  // Dynamic import avoids circular load with assemble-pack
+  const { assembleDeterministicPack } = await import("./assemble-pack");
+  const pack = await assembleDeterministicPack({
+    master: opts.master,
     jd: opts.jd,
-    jobTitle,
-    recentProjectCount: tailoredProjects.filter((p) => p.era === "recent").length,
-    temporalViolations,
-    earlyCareerOversell: false,
+    vendorName: opts.vendorName,
+    candidateName: opts.candidateName,
+    layoutId: opts.layoutId,
+    email: opts.email,
   });
-
-  let passes = 0;
-  while ((!ats.ready || ats.missingKeywords.length > 0) && passes < 5) {
-    // Inject into STRUCTURED sections so DOCX/PDF match plain-text ATS
-    ensureStructuredJdCoverage(
-      structured.sections,
-      headline,
-      ats.missingKeywords,
-      cleanSkills
-    );
-    text = renderPlain(structured, layout.id);
-    text = reinforceForAts(text, jobTitle, ats.missingKeywords);
-    // Keep structured in sync with plain-text reinforcement block
-    // Missing keywords go into existing skills sections only (no extra marketing sections)
-    ats = scoreResume({
-      resumeText: text,
-      jd: opts.jd,
-      jobTitle,
-      recentProjectCount: tailoredProjects.filter((p) => p.era === "recent").length,
-      temporalViolations,
-      earlyCareerOversell: false,
-    });
-    passes++;
-  }
-
-  structured.meta.atsScore = ats.score;
-  text = renderPlain(structured, layout.id);
-  text += `\n\n— Role Forge Progressive Tailor · Layout: ${layout.name} · Projects: ${tailoredProjects.length} · Recent bullets: ${RECENT_BULLETS_PER_PROJECT} · Internal ATS: ${ats.score}/100${ats.ready ? " (READY)" : " (NEEDS REVIEW)"} · Target: dense page-1 + 4–5 pages —\n`;
-
-  return { structured, text, ats };
+  return {
+    structured: pack.structured,
+    text: pack.text,
+    ats: pack.ats,
+    usedLlm: false,
+  };
 }
 
-function renderPlain(s: StructuredResume, layoutId: string): string {
-  const layout = getLayout(layoutId);
-  const lines: string[] = [
-    s.candidateName.toUpperCase(),
-    s.headline,
-    s.contactLine,
-    layout.style.divider === "double"
-      ? "=============================="
-      : "------------------------------",
-    "",
-  ];
-  for (const sec of s.sections) {
-    if (sec.heading === "Progressive Experience Notes") continue; // internal QA notes optional in export
-    const h =
-      layout.style.headingCase === "upper"
-        ? sec.heading.toUpperCase()
-        : sec.heading;
-    lines.push(h);
-    lines.push(...sec.lines);
-    lines.push("");
-    lines.push(""); // extra blank line between sections → page length
-  }
-  return lines.join("\n");
-}

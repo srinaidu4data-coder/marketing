@@ -15,11 +15,39 @@ import {
 } from "@/components/layout-picker";
 import { getLayout } from "@/lib/resume/templates";
 import { ReplaceResumeForm } from "@/components/replace-resume-form";
+import { MasterValidationPanel } from "@/components/master-validation-panel";
+import { parseStoredMasterProfile } from "@/lib/resume/master-profile";
+import {
+  validateMasterProfile,
+  validatePackAgainstMaster,
+} from "@/lib/resume/master-pack-validate";
 
 export default async function CandidateDetailPage({ params }: { params: { id: string } }) {
   await requireAdmin();
   const c = await prisma.candidate.findUnique({ where: { id: params.id } });
   if (!c) notFound();
+  const profile = parseStoredMasterProfile(
+    (c as { masterProfileJson?: string }).masterProfileJson
+  );
+  const uploadReport = validateMasterProfile(profile);
+
+  // Latest tailored pack for this candidate (if any chain ran)
+  const latestPack = await prisma.chainCandidate.findFirst({
+    where: {
+      candidateId: c.id,
+      tailoredResumeText: { not: "" },
+    },
+    orderBy: { id: "desc" },
+    select: { tailoredResumeText: true, jobTitle: true },
+  });
+  const packReport =
+    latestPack?.tailoredResumeText && profile
+      ? validatePackAgainstMaster({
+          masterProfileJson: (c as { masterProfileJson?: string }).masterProfileJson,
+          tailoredText: latestPack.tailoredResumeText,
+          expectedYears: uploadReport.careerSpanYears,
+        })
+      : null;
 
   const submissions = await prisma.vendorSubmission.findMany({
     where: { candidateId: c.id },
@@ -89,6 +117,14 @@ export default async function CandidateDetailPage({ params }: { params: { id: st
         </details>
         <ReplaceResumeForm candidateId={c.id} />
       </section>
+
+      <MasterValidationPanel report={uploadReport} packReport={packReport} />
+      {latestPack?.jobTitle ? (
+        <p className="text-[12px] text-[#86868b]">
+          Pack validation uses latest chain output
+          {latestPack.jobTitle ? ` (${latestPack.jobTitle})` : ""}.
+        </p>
+      ) : null}
 
       <section className="space-y-3 rounded-lg border p-4">
         <h2 className="font-medium">Edit Details &amp; Resume Layout</h2>

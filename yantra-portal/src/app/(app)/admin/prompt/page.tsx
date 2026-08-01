@@ -19,7 +19,7 @@ export default async function PromptPage() {
     <div className="space-y-8 p-2 lg:p-4">
       <PageHeader
         title="Prompt Template"
-        description="Active prompt template, test runs, and rollback."
+        description="This ACTIVE prompt is sent to OpenAI with each master resume + JD. Without OPENAI_API_KEY, generation fails."
         actions={active ? <Badge status="ACTIVE">Active</Badge> : null}
       />
 

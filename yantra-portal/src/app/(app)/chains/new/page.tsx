@@ -28,14 +28,14 @@ export default async function NewChainPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-2 lg:p-4">
+    <div className="mx-auto max-w-2xl space-y-6">
       <Suspense fallback={null}>
         <VendorBlockBanner />
       </Suspense>
 
       <PageHeader
-        title="Start a New Chain"
-        description="Paste the job requirement, specify the vendor, then pick which of your allocated candidates to include."
+        title="New chain"
+        description="Paste the job. Pick candidates. AI builds resumes."
       />
 
       {pool.length === 0 ? (

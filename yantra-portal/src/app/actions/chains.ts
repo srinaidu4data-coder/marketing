@@ -278,7 +278,27 @@ export async function sendChain(chainId: string) {
           pdfPath: cc.pdfPath,
           textPath: cc.tailoredResumePath,
           baseName: cc.candidate.name,
+          tailoredResumeText: cc.tailoredResumeText,
+          candidateName: cc.candidate.name,
+          jobTitle: cc.jobTitle,
         });
+
+        if (!attachments.length) {
+          failed++;
+          await prisma.chainCandidate.update({
+            where: { id: cc.id },
+            data: { sendStatus: "FAILED" },
+          });
+          await audit("chain.email_failed", user.id, {
+            chainId,
+            candidateId: cc.candidateId,
+            to: chain.vendorEmail,
+            from: emailCfg.from,
+            error: "No resume attachment available (empty pack)",
+            emailMode: emailCfg.mode,
+          });
+          continue;
+        }
 
         const sent = await sendWithResend({
           to: chain.vendorEmail,
@@ -324,6 +344,7 @@ export async function sendChain(chainId: string) {
           resendId: sent.id,
           emailMode: sent.mode,
           attachmentCount: attachments.length,
+          attachmentNames: attachments.map((a) => a.filename),
         });
         ledgerItems.push({
           candidateId: cc.candidateId,
@@ -365,7 +386,26 @@ export async function sendChain(chainId: string) {
     revalidatePath("/chains");
     revalidatePath("/admin/chains");
     revalidatePath("/admin/queues");
-    return { ok: true, status, lowAtsCount: lowAts.length };
+    revalidatePath("/admin/email-activity");
+    const emailCfgFinal = getResendConfig();
+    return {
+      ok: true,
+      status,
+      lowAtsCount: lowAts.length,
+      sent: chain.candidates.length - failed,
+      failed,
+      emailMode: emailCfgFinal.mode,
+      to: chain.vendorEmail,
+      from: emailCfgFinal.from,
+      simulated: emailCfgFinal.mode === "simulated",
+      dryRun: emailCfgFinal.mode === "dry_run",
+      message:
+        emailCfgFinal.mode === "simulated"
+          ? "Marked sent in app, but RESEND_API_KEY is not set — no real email was delivered. Add the key in Vercel env."
+          : emailCfgFinal.mode === "dry_run"
+            ? "Dry-run mode: no real email (EMAIL_DRY_RUN=true)."
+            : `Sent ${chain.candidates.length - failed} of ${chain.candidates.length} to ${chain.vendorEmail}.`,
+    };
   } catch (e) {
     // Never leave SENDING forever
     console.error(`[sendChain ${chainId}] fatal`, e);
