@@ -1,0 +1,60 @@
+SRI NAIDU
+SAP Consultant
+sri.naidu@example.com  ·  www.linkedin.com/in/saps4/
+------------------------------
+
+PROFESSIONAL SUMMARY
+Sri is a SAP Consultant with approximately 23+ years of progressive consulting aligned to Pharmaceutical, SAP, PowerPoint, CDISC, CDASH, SDTM, facilitating workshops, SME-level guidance.
+Core focus includes Pharmaceutical, SAP, PowerPoint, CDISC, CDASH, SDTM, facilitating workshops, SME-level guidance.
+
+
+CORE COMPETENCIES
+Core: Pharmaceutical  ·  SAP  ·  PowerPoint  ·  CDISC  ·  CDASH  ·  SDTM  ·  facilitating workshops  ·  SME-level guidance  ·  SAC  ·  and Data Sphere for process optimization
+
+
+SELECTED IMPACT
+• Delivered SAP Consultant-aligned work for Client: ATOS IT Services, Chicago, IL, covering Pharmaceutical, SAP with design, test evidence, and stakeholder updates.
+• Partnered with business and technical owners on process design, integration touchpoints, and release readiness at Client: ATOS IT Services, Chicago, IL.
+• Built unit and SIT/UAT evidence packs for Pharmaceutical-related scenarios on Client: ATOS IT Services, Chicago, IL.
+• Supported cutover and hypercare activities with clear defect triage and documentation for Client: ATOS IT Services, Chicago, IL.
+
+
+PROFESSIONAL EXPERIENCE
+SAP Consultant
+Employer / Client: Client: ATOS IT Services, Chicago, IL
+2012 – 2017
+Environment: Pharmaceutical  ·  SAP  ·  PowerPoint  ·  CDISC  ·  CDASH  ·  SDTM  ·  facilitating workshops  ·  SME-level guidance
+
+• Project: Implementation & Production Support
+• Environment: Material Ledger, Product Costing, MM/SD, OTC/PTP, Profit Center Accounting
+• Configured RTR (Record-to-Report) processes with Universal Allocations, coding blocks, and multi-ledger accounting in S/4HANA.
+• Integrated PTP processes with Ariba, OpenText VIM, Coupa, and Fieldglass, enhancing accounts payable automation.
+• Streamlined OTC operations by configuring Vertex Tax, Credit Management, Lockbox, and payment workflows.
+• Implemented CFIN for real-time financial consolidation and replication of multi-system data.
+• Managed Data Migration, including cleansing and validation, using LTMC and custom scripts.
+• Led S/4HANA Public Cloud deployment using Activate Methodology.
+
+
+SAP Consultant
+Employer / Client: Client: Nagarro, Dallas, TX
+2003 – 2008
+Environment: Pharmaceutical  ·  SAP  ·  PowerPoint  ·  CDISC  ·  CDASH  ·  SDTM  ·  facilitating workshops  ·  SME-level guidance
+
+• Project: Global SAP Implementation, Rollouts, Support,
+• Configured Chart of accounts, account determination for MM-FI / SD-FI / AA etc.,
+• Worked on consolidating the banking and collections process.
+• Worked on Asset Accounting integration with PS and IM.
+• Worked on data migration of master data related to Projects (Project Definitions / WBS Elements) etc.,
+• Conducting the workshops for Integration testing and UAT with business stake holders.
+• Worked on ACH Formats for vendor invoices.
+• Worked on Reconciliation of Checks from Lockbox.
+
+
+
+
+EDUCATION
+Bachelor's degree or equivalent professional experience.
+
+
+
+— Role Forge · assemble-pack/deterministic · Domain: attp · Projects: 2 · ATS: 100/100 —

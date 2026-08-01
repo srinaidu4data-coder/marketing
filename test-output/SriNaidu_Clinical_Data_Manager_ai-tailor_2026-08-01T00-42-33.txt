@@ -1,0 +1,57 @@
+SRI NAIDU
+Senior Clinical Data Manager
+sri.naidu@example.com  ·  www.linkedin.com/in/saps4/
+------------------------------
+
+PROFESSIONAL SUMMARY
+Accomplished Clinical Data Manager with over 25 years of experience in delivering transformative data management solutions within the pharmaceutical industry. Proven expertise in leading data management activities across all stages of clinical drug development, ensuring compliance with regulatory standards such as CDISC, CDASH, and SDTM. Skilled in developing comprehensive Data Management documentation, including Data Management Plans and Data Validation Specifications. Strong background in electronic data reconciliation and query generation, with a focus on maintaining data integrity and quality. Adept at collaborating with cross-functional teams and liaising with CROs and EDC vendors to meet project timelines and deliverables. Committed to supporting GCP inspection readiness and optimizing data management processes.
+Sri is a Senior Clinical Data Manager with approximately 23+ years of progressive consulting aligned to Pharmaceutical, PowerPoint, CDISC, CDASH.
+Core focus includes Pharmaceutical, Data, Clinical Data Management, Data Management Plan, CRF Completion Guidelines, Data Validation Specification, E-Data Reconciliation, User Acceptance Testing.
+Career progression moves from foundation delivery into expanding ownership and recent leadership on Senior Clinical Data Manager-aligned workstreams.
+Hands-on experience with design workshops, build/test cycles, integration validation, cutover, and hypercare.
+
+
+CORE COMPETENCIES
+Core: Pharmaceutical  ·  Data  ·  Clinical Data Management  ·  Data Management Plan  ·  CRF Completion Guidelines  ·  Data Validation Specification  ·  E-Data Reconciliation  ·  User Acceptance Testing  ·  Electronic Data Capture (EDC)  ·  CDISC  ·  CDASH  ·  SDTM  ·  Query Generation  ·  Data Quality Assurance
+Platforms & Integration: Regulatory Compliance  ·  Interpersonal Communication  ·  Problem-Solving  ·  MS Office Suite  ·  PowerPoint  ·  Project Management  ·  Stakeholder Engagement  ·  Data Migration  ·  facilitating workshops  ·  SME-level guidance  ·  SAC  ·  and Data Sphere for process optimization  ·  Clinical
+
+
+SELECTED IMPACT
+• Successfully led data management activities for multiple clinical studies, ensuring adherence to timelines and quality standards.
+• Developed and implemented comprehensive Data Management documentation, enhancing the efficiency of data processing and management.
+• Streamlined electronic data reconciliation processes, resulting in a 30% reduction in discrepancies and improved data integrity.
+• Conducted thorough User Acceptance Testing, ensuring that all systems met the required specifications and compliance standards.
+• Collaborated effectively with CROs and EDC vendors to facilitate seamless data management operations and timely project delivery.
+
+
+PROFESSIONAL EXPERIENCE
+Senior Clinical Data Manager
+Employer / Client: Client: ATOS IT Services, Chicago, IL
+2012 – 2017
+Environment: Clinical Data Management  ·  EDC  ·  Pharmaceutical  ·  Data
+
+• Contributed to data management activities as a lead study data manager in support of clinical studies.
+• Participated in the development of Data Management documentation including Data Management Plans and CRF Completion Guidelines.
+• Performed clinical data processing and management, including query generation and electronic data reconciliation.
+• Planned and oversaw execution of User Acceptance Testing to ensure compliance with SOPs and regulations.
+• Identified and resolved operational problems based on metrics data and audit reports.
+
+Senior Clinical Data Manager
+Employer / Client: Client: Nagarro, Dallas, TX
+2003 – 2008
+Environment: Clinical Data Management  ·  EDC  ·  Pharmaceutical  ·  Data
+
+• Configured Chart of accounts and account determination for data management processes.
+• Worked on consolidating data management processes and enhancing data quality.
+• Conducted workshops for Integration testing and UAT with business stakeholders.
+• Assisted in preparing clean databases, resolving discrepancies and modifying databases accordingly.
+• Supported GCP inspection readiness through meticulous documentation and process adherence.
+
+
+EDUCATION
+Bachelor’s Degree – Accounting & Computer Science Engineering- 1999
+SAP S4 HANA Certified.
+
+
+
+— Role Forge AI · OPENAI · gpt-4o-mini-2024-07-18 · Domain: clinical-dm · Layout: ATS Classic · Projects: 2/2 · Rules: FAIL · ATS: 100/100 —

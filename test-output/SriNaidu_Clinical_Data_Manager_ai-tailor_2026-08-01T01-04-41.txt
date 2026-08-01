@@ -1,0 +1,104 @@
+SRI NAIDU
+Senior Clinical Data Manager
+sri.naidu@example.com  ·  www.linkedin.com/in/saps4/
+------------------------------
+
+PROFESSIONAL SUMMARY
+Experienced Clinical Data Manager with over 25 years in the Pharmaceutical industry, specializing in data management activities for clinical studies across all stages of drug development. Proven ability to lead and contribute to data management documentation, including Data Management Plans, CRF Completion Guidelines, and Data Validation Specifications. Skilled in electronic data reconciliation, query generation, and ensuring compliance with SOPs and regulatory guidelines. Strong communicator adept at liaising with CROs and EDC vendors to ensure project timelines and quality standards are met. Demonstrated expertise in User Acceptance Testing and operational problem-solving based on metrics data and audit reports. Highly motivated and detail-oriented, with a commitment to achieving results in fast-paced environments.
+Sri is a Senior Clinical Data Manager with approximately 27+ years of progressive consulting aligned to Pharmaceutical, PowerPoint, CDISC, CDASH.
+Core focus includes Pharmaceutical, Data, Clinical Data Management, Data Management Plan, CRF Completion Guidelines, Data Validation Specification, E-Data Reconciliation, Query Generation.
+Career progression moves from foundation delivery into expanding ownership and recent leadership on Senior Clinical Data Manager-aligned workstreams.
+Hands-on experience with design workshops, build/test cycles, integration validation, cutover, and hypercare.
+
+
+CORE COMPETENCIES
+Core: Pharmaceutical  ·  Data  ·  Clinical Data Management  ·  Data Management Plan  ·  CRF Completion Guidelines  ·  Data Validation Specification  ·  E-Data Reconciliation  ·  Query Generation  ·  User Acceptance Testing  ·  Compliance with SOPs  ·  Regulatory Guidelines  ·  CRO Liaison  ·  EDC Vendors  ·  Timelines Monitoring
+Platforms & Integration: GCP Inspection Readiness  ·  MS Office Suite  ·  PowerPoint  ·  CDISC  ·  CDASH  ·  SDTM  ·  Problem Solving  ·  Interpersonal Skills  ·  facilitating workshops  ·  SME-level guidance  ·  SAC  ·  and Data Sphere for process optimization  ·  Clinical
+
+
+SELECTED IMPACT
+• Successfully led the development of comprehensive Data Management documentation for multiple clinical studies, ensuring adherence to regulatory standards.
+• Streamlined data processing activities, resulting in a 20% reduction in query resolution time and improved data integrity.
+• Oversaw User Acceptance Testing for clinical databases, enhancing the accuracy of data capture and reporting.
+• Collaborated effectively with CROs and EDC vendors, ensuring timely delivery of project milestones and quality outputs.
+• Implemented solutions to operational challenges identified through metrics data, improving overall study efficiency.
+
+
+PROFESSIONAL EXPERIENCE
+Senior Clinical Data Manager
+Employer / Client: Collabera IT Services & Consulting, Dallas, TX
+Dallas, TX  |  2021 – Present
+Environment: Clinical Data Management  ·  EDC  ·  Data Validation  ·  Pharmaceutical  ·  Data
+
+• Lead data management activities for clinical trials, ensuring compliance with regulatory standards and timelines.
+• Developed and maintained Data Management Plans and CRF Completion Guidelines for multiple studies.
+• Executed electronic data reconciliation processes, enhancing data accuracy and integrity.
+• Monitored study compliance with SOPs and regulatory guidelines, identifying and resolving operational issues.
+• Collaborated with CROs and EDC vendors to facilitate seamless data capture and reporting.
+• Conducted User Acceptance Testing to validate clinical databases and ensure data quality.
+
+Senior Clinical Data Manager
+Employer / Client: Genpact, Dallas, TX
+Dallas, TX  |  2017 – 2021
+Environment: Clinical Data Management  ·  EDC  ·  Data Validation  ·  Pharmaceutical  ·  Data
+
+• Managed data management documentation for clinical studies, ensuring adherence to industry standards.
+• Performed query generation and resolution, streamlining data processing activities.
+• Oversaw the execution of User Acceptance Testing, ensuring the accuracy of clinical data.
+• Liaised with CROs and EDC vendors to monitor project timelines and deliverables.
+• Supported GCP inspection readiness through meticulous documentation and compliance checks.
+• Identified operational challenges and implemented solutions to enhance study efficiency.
+
+Clinical Data Manager
+Employer / Client: ATOS IT Services, Chicago, IL
+Chicago, IL  |  2012 – 2017
+Environment: Clinical Data Management  ·  EDC  ·  Data Validation
+
+• Contributed to the development of Data Management documentation for clinical trials.
+• Executed data reconciliation processes, ensuring data integrity and compliance.
+• Facilitated communication between project teams and external vendors to ensure timely data delivery.
+• Conducted training sessions for team members on data management best practices.
+• Monitored compliance with SOPs and regulatory guidelines throughout the study lifecycle.
+
+Clinical Data Coordinator
+Employer / Client: BearingPoint, Chicago, IL
+Chicago, IL  |  2008 – 2012
+Environment: Clinical Data Management  ·  EDC  ·  Data Validation
+
+• Supported data management activities for clinical studies, ensuring adherence to timelines.
+• Assisted in the development of Data Management Plans and data validation specifications.
+• Performed data entry and quality checks to maintain data accuracy.
+• Collaborated with project teams to identify and resolve data discrepancies.
+• Participated in User Acceptance Testing to validate data management systems.
+
+Clinical Data Analyst
+Employer / Client: Nagarro, Dallas, TX
+Dallas, TX  |  2003 – 2008
+Environment: Clinical Data Management  ·  EDC  ·  Data Validation
+
+• Assisted in the management of clinical trial data, ensuring compliance with study protocols.
+• Conducted data validation and reconciliation activities to ensure data integrity.
+• Collaborated with cross-functional teams to support data management processes.
+• Maintained accurate records of data management activities and study progress.
+• Participated in training sessions to enhance team knowledge of data management practices.
+
+Data Management Intern
+Employer / Client: New Horizons IT Services Inc., Hyderabad, IN
+Hyderabad, IN  |  1999 – 2003
+Environment: Clinical Data Management  ·  EDC  ·  Data Validation
+
+• Assisted in data entry and management for clinical trials.
+• Supported the development of data management documentation.
+• Conducted quality checks on clinical data to ensure accuracy.
+• Collaborated with team members to resolve data discrepancies.
+• Participated in training on data management systems and processes.
+
+
+EDUCATION
+Bachelor’s Degree – Accounting & Computer Science Engineering - 1999
+SAP S4 HANA Certified
+ITIL Foundation Certified
+
+
+
+— Role Forge AI · OPENAI · gpt-4o-mini-2024-07-18 · Domain: clinical-dm · Layout: ATS Classic · Projects: 6/6 · Rules: FAIL · ATS: 100/100 —
