@@ -488,7 +488,8 @@ export function profileForAiPath(profile: MasterProfile): {
       project: e.project,
       industry: e.industry,
       environment: e.environment,
-      masterBullets: (e.bullets || []).filter((b) => b.length > 12).slice(0, 12),
+      // Enough source material for 8–10 AI rewrites per engagement
+      masterBullets: (e.bullets || []).filter((b) => b.length > 12).slice(0, 20),
     })),
     warnings: profile.warnings,
   };

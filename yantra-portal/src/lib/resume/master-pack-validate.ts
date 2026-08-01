@@ -13,6 +13,7 @@ import {
   type MasterEngagement,
   type MasterProfile,
 } from "./master-profile";
+import { packHasIndustryCosplay } from "./resume-honesty";
 
 export type CheckSeverity = "pass" | "warn" | "fail";
 
@@ -492,7 +493,7 @@ export function validatePackAgainstMaster(opts: {
     }
   }
 
-  // Engagement count: Employer / Client lines or distinct matched clients
+  // Engagement count + bullet density (8–10 per client)
   const employerLines = (
     text.match(/Employer\s*\/\s*Client\s*:/gi) || []
   ).length;
@@ -510,6 +511,18 @@ export function validatePackAgainstMaster(opts: {
       detail: `master=${expected}, clients found in pack=${clientsFound.length}, Employer/Client lines=${employerLines}`,
       group: "pack",
     });
+
+    const bulletLines = (text.match(/^[•\-–]\s+\S/gm) || []).length;
+    if (text.length > 200) {
+      const per = bulletLines / Math.max(expected, 1);
+      checks.push({
+        id: "pack_bullets_per_project",
+        label: "Bullets per project (~8–10 target)",
+        severity: per >= 8 ? "pass" : per >= 6 ? "warn" : "fail",
+        detail: `${bulletLines} bullet lines / ${expected} clients ≈ ${per.toFixed(1)} each`,
+        group: "pack",
+      });
+    }
   }
 
   // Single years claim in summary region
@@ -588,6 +601,25 @@ export function validatePackAgainstMaster(opts: {
     detail: junkHits.length ? junkHits.join("; ") : "Clean",
     group: "honesty",
   });
+
+  const cosplay = packHasIndustryCosplay(text, opts.masterText || "");
+  checks.push({
+    id: "pack_no_industry_cosplay",
+    label: "No unsupported industry/career cosplay",
+    severity: cosplay.length ? "fail" : "pass",
+    detail: cosplay.length ? cosplay.join("; ") : "Clean",
+    group: "honesty",
+  });
+
+  if (clientsMissing.length) {
+    checks.push({
+      id: "pack_all_clients_hard",
+      label: "All master employers present (hard)",
+      severity: "fail",
+      detail: `Missing: ${clientsMissing.map((c) => c.split(",")[0]).join(", ")}`,
+      group: "pack",
+    });
+  }
 
   const clientsExtra: string[] = []; // reserved for invented-client detection later
 

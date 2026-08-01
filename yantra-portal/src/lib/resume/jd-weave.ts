@@ -79,14 +79,13 @@ export function cleanMasterBullets(
  * Disabled when policy.emergencyFill is false.
  */
 export function domainProofBullets(
-  _domain: DomainHint | string,
+  domain: DomainHint | string,
   era: StructureProject["era"],
   client: string,
   jobTitle: string,
   skillBank: string[] = [],
   policy: ResumeEnginePolicy = DEFAULT_RESUME_ENGINE_POLICY
 ): string[] {
-  void _domain;
   if (!policy.emergencyFill) return [];
 
   const c = (client || "the client").trim();
@@ -103,10 +102,39 @@ export function domainProofBullets(
 
   const key =
     era === "recent" ? "recent" : era === "early" ? "early" : "mid";
-  const tmpls = policy.emergencyBullets[key] || [];
+  let tmpls = policy.emergencyBullets[key] || [];
+
+  // Clinical / non-SAP domains: strip SAP go-live ritual templates (cutover/hypercare)
+  const d = String(domain || "").toLowerCase();
+  if (d === "clinical-dm" || d.includes("clinical")) {
+    tmpls = tmpls.filter(
+      (t) => !/\b(cutover|hypercare|SIT\/UAT evidence packs|configuration trackers)\b/i.test(t)
+    );
+    // Transferable density fillers (honest, not clinical ownership claims)
+    const transferable = [
+      "Supported {role}-aligned delivery for {client}, emphasizing data quality, documentation, and stakeholder coordination around {s0}.",
+      "Partnered with business and technical owners on process clarity, validation evidence, and release readiness at {client}.",
+      "Built test evidence and issue logs for {s0}-related scenarios supporting {client} workstreams.",
+      "Maintained clear status cadence, defect notes, and handoff materials for {client}.",
+      "Facilitated workshops and walkthroughs covering {skills} with {client} stakeholders.",
+      "Validated end-to-end scenarios spanning {s0} and {s1}, capturing defects and retest proof for {client}.",
+      "Produced functional notes and evidence packs aligned to {role} delivery expectations on {client}.",
+      "Collaborated across teams to resolve data and process issues affecting {client} timelines.",
+      "Documented open questions, owners, and closure criteria used in {client} steering updates.",
+      "Reinforced delivery discipline (notes, retests, status inputs) under {role} scope for {client}.",
+    ];
+    tmpls = [...tmpls, ...transferable];
+  }
+
   return tmpls
     .map((t) => applyEmergencyTemplate(t, vars))
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((b) => {
+      if (d === "clinical-dm" || d.includes("clinical")) {
+        return !/\b(cutover|hypercare|RICEFW|blueprinting)\b/i.test(b);
+      }
+      return true;
+    });
 }
 
 export function hasCriticalJdCoverage(

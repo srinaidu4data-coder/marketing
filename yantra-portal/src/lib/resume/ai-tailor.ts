@@ -36,7 +36,9 @@ import { getLayoutConfig } from "./layout-config";
 import { getOpenAiConfig } from "./openai-config";
 import {
   anchorsFromMaster,
+  assertMandatoryBulletDensity,
   buildProjects,
+  MIN_BULLETS_PER_PROJECT,
   type AiProjectInput,
 } from "./assemble-pack";
 import {
@@ -47,6 +49,11 @@ import {
   isOffDomainText,
   type ResumeEnginePolicy,
 } from "./resume-engine-policy";
+import {
+  isLowOverlap,
+  scrubSapRitualFromBullets,
+  scrubSummaryHonesty,
+} from "./resume-honesty";
 import { getResumeEnginePolicy } from "@/lib/system-settings";
 import { runRulesGate, type RulesGateResult } from "./rules-gate";
 import { qaAndRepairResume } from "./resume-qa";
@@ -275,6 +282,8 @@ function buildCoherentSummary(opts: {
   critical: string[];
   aiSummary: string[];
   policy: ResumeEnginePolicy;
+  master: string;
+  lowOverlap: boolean;
 }): string[] {
   const first = opts.candidateName.split(/\s+/)[0] || opts.candidateName;
 
@@ -329,40 +338,40 @@ function buildCoherentSummary(opts: {
   // Strong AI prose alone — do NOT append templates (was the 25 vs 27+ bug)
   const proseChars = kept.join(" ").length;
   if (kept.length >= 2 && proseChars >= 280) {
-    return dedupeBullets(kept).slice(0, 6);
-  }
-  if (kept.length >= 1 && proseChars >= 180) {
-    // Single dense AI paragraph is enough — pad only if thin, never re-state years
+    kept = dedupeBullets(kept).slice(0, 6);
+  } else if (kept.length >= 1 && proseChars >= 180) {
     const pad: string[] = [];
     if (skillLine && !kept.some((k) => /core focus|specializ|focus/i.test(k))) {
-      pad.push(
-        `Strengths relevant to this search include ${skillLine}.`
-      );
+      pad.push(`Strengths relevant to this search include ${skillLine}.`);
     }
-    return dedupeBullets([...kept, ...pad]).slice(0, 5);
+    kept = dedupeBullets([...kept, ...pad]).slice(0, 5);
+  } else {
+    const yearsPart =
+      opts.yearsHint > 0
+        ? ` with approximately ${opts.yearsHint}+ years of progressive professional experience`
+        : " with progressive professional experience";
+    const fallback = [
+      `${first} is positioned as a ${opts.jobTitle}${yearsPart}, drawing on delivery history that is reframed toward this role’s requirements.`,
+      skillLine
+        ? `Focus areas for this submission include ${skillLine}.`
+        : `Experience is mapped to ${opts.jobTitle} responsibilities with honest emphasis on transferable delivery discipline.`,
+    ];
+    if (kept.length === 1) {
+      kept = dedupeBullets([...kept, fallback[1]].filter(Boolean)).slice(0, 4);
+    } else {
+      kept = dedupeBullets(fallback).slice(0, 4);
+    }
   }
 
-  // Fallback only when AI summary is empty/weak — single years claim
-  const yearsPart =
-    opts.yearsHint > 0
-      ? ` with approximately ${opts.yearsHint}+ years of progressive professional experience`
-      : " with progressive professional experience";
-
-  const fallback = [
-    `${first} is positioned as a ${opts.jobTitle}${yearsPart}, drawing on delivery history that is reframed toward this role’s requirements.`,
-    skillLine
-      ? `Focus areas for this submission include ${skillLine}.`
-      : `Experience is mapped to ${opts.jobTitle} responsibilities with honest emphasis on transferable delivery discipline.`,
-  ];
-
-  // If we have a thin AI line without years, keep it first and avoid second years claim
-  if (kept.length === 1 && sawYears) {
-    return dedupeBullets([...kept, fallback[1]].filter(Boolean)).slice(0, 4);
-  }
-  if (kept.length === 1) {
-    return dedupeBullets([...kept, fallback[1]].filter(Boolean)).slice(0, 4);
-  }
-  return dedupeBullets(fallback).slice(0, 4);
+  // Honesty scrub: no industry cosplay; low-overlap → transferable framing only
+  return scrubSummaryHonesty({
+    lines: kept,
+    master: opts.master,
+    jobTitle: opts.jobTitle,
+    yearsHint: opts.yearsHint,
+    candidateName: opts.candidateName,
+    lowOverlap: opts.lowOverlap,
+  });
 }
 
 /** Last-pass scrub of any contradicting lines left in structured sections */
@@ -424,6 +433,7 @@ export async function generateResumeWithOpenAi(
   const groundedPack = honest.grounded.length
     ? honest.grounded
     : honest.masterOnly.slice(0, 20);
+  const lowOverlap = isLowOverlap(input.jd, input.master);
   const template = (input.promptTemplate || "").trim() || DEFAULT_PROMPT;
   await report("parse_master", "done");
   await report("parse_jd", "done");
@@ -447,13 +457,15 @@ CRITICAL POLICY — HONEST, COHERENT CAREER (no invention):
 - later projects: progressive variants of the SAME role family (not off-domain modules).
 - Keep client/startYear/endYear/location exact from REQUIRED PROJECTS — never invent locations.
 - Prefer REPHRASING master bullets toward JD language over inventing new work.
+- EACH project/client MUST have 8–10 bullet achievements (never fewer than 8). Recent denser (10), mid ~9, early at least 8.
 - Do NOT invent modules, tools, certifications, or deep ownership absent from MASTER and JD.
 - JD-only skills (not in master): skills section / recent framing only — never claim early-career deep config of tools not in master.
 - modules: short, era-appropriate — recent denser, early thinner; not the same long list on every job.
 - Domain hint "${domain}" is for coherence (avoid FICO titles on EWM JDs) — NOT a license to generate a full canned specialty pack.
 - No duplicate bullets. No industry meta lines. No name/email in summary.
 - education/certifications: from master only.
-- SUMMARY: one voice only (no third-person name line after an "Experienced …" opener). At most ONE tenure claim, using master career span only — never invent a second number (e.g. do not write both "25 years" and "27+ years"). Do not append keyword dumps ("Core focus includes…") or SAP go-live boilerplate (cutover/hypercare) when domain is not SAP implementation.`;
+- SUMMARY: one voice only (no third-person name line after an "Experienced …" opener). At most ONE tenure claim, using master career span only — never invent a second number (e.g. do not write both "25 years" and "27+ years"). Do not append keyword dumps ("Core focus includes…") or SAP go-live boilerplate (cutover/hypercare) when domain is not SAP implementation.
+- HONESTY: Never claim years "in the Pharmaceutical / clinical / banking industry" unless MASTER text supports that industry. On low skill overlap, use transferable positioning only — do not invent a clinical/pharma career.`;
 
   // Prefer upload-time MasterProfile (richer than anchors alone)
   const storedProfile = parseStoredMasterProfile(input.masterProfileJson);
@@ -522,7 +534,7 @@ Return JSON:
       "endYear": "Present",
       "modules": "era-appropriate tools from grounded/JD — not identical on every job",
       "environment": "tools",
-      "bullets": ["6-8 achievements for THIS client — rephrase master; do not invent"]
+      "bullets": ["8-10 achievements for THIS client — rephrase master; expand distinct outcomes; never invent employers or tools"]
     }
   ],
   "education": ["from master"],
@@ -530,6 +542,7 @@ Return JSON:
 }
 
 projects.length MUST equal ${Math.max(structuredMaster.engagementCount || anchors.length, 1)}.
+Every projects[i].bullets length MUST be 8–10 (minimum 8).
 Titles: i=0,1 = "${jobTitle}"; i>=2 = progressive same-family titles — ban off-domain module titles.
 Honesty > keyword stuffing.`;
 
@@ -563,16 +576,23 @@ Honesty > keyword stuffing.`;
   await report("skills", "done");
   await report("impact", "done");
 
-  // Pass 2 if project count wrong
-  if (
+  // Pass 2 if project count wrong OR any project has fewer than 8 bullets
+  const thinProjects = (parsed.projects || []).filter(
+    (p) => !Array.isArray(p.bullets) || p.bullets.length < 8
+  );
+  const needMoreProjects =
     anchors.length > 1 &&
-    (!parsed.projects || parsed.projects.length < anchors.length) &&
-    passes < MAX_PASSES
-  ) {
+    (!parsed.projects || parsed.projects.length < anchors.length);
+  if ((needMoreProjects || thinProjects.length > 0) && passes < MAX_PASSES) {
     passes++;
     const fix = await chatJson({
       system,
-      user: `You returned ${parsed.projects?.length || 0} projects; master has ${anchors.length}. Return FULL JSON with ALL projects. REQUIRED clients: ${anchors.map((a) => a.client).join(" | ")}. Prior JSON:\n${gen.raw.slice(0, 10000)}`,
+      user: `Fix and return FULL JSON.
+- projects.length MUST be ${anchors.length}. Clients: ${anchors.map((a) => a.client).join(" | ")}.
+- EVERY project must have 8–10 bullets (you had thin: ${thinProjects.map((p) => `${p.client || p.i}:${p.bullets?.length || 0}`).join(", ") || "n/a"}).
+- Expand by rephrasing distinct master achievements toward JD language — do not invent employers.
+Prior JSON:
+${gen.raw.slice(0, 12000)}`,
       model: cfg.model,
       apiKey: cfg.apiKey,
       baseUrl: cfg.baseUrl,
@@ -602,19 +622,78 @@ Honesty > keyword stuffing.`;
 
   await report("projects_all", "active");
   await report("project_1", "active");
-  const projects = buildProjects({
-    anchors,
-    ai: parsed.projects || [],
-    jobTitle,
-    domain,
-    groundedSkills: groundedPack,
-    skills,
-    supportiveTitles: asArr(parsed.supportiveTitles),
-    policy,
-  });
+  let projects;
+  try {
+    projects = buildProjects({
+      anchors,
+      ai: parsed.projects || [],
+      jobTitle,
+      domain,
+      groundedSkills: groundedPack,
+      skills,
+      supportiveTitles: asArr(parsed.supportiveTitles),
+      policy,
+    });
+  } catch (e) {
+    // One more AI pass focused only on bullet density, then hard-fail
+    if (passes < Math.max(MAX_PASSES, 3)) {
+      passes++;
+      await report("projects_all", "active");
+      const fixBullets = await chatJson({
+        system,
+        user: `MANDATORY: every project must have ${MIN_BULLETS_PER_PROJECT}–10 bullets. Return FULL JSON only.
+Clients: ${anchors.map((a) => a.client).join(" | ")}.
+Prior output was rejected for thin bullets. Expand each projects[i].bullets to at least ${MIN_BULLETS_PER_PROJECT} distinct achievements (rephrase master; do not invent employers).
+Prior JSON:
+${JSON.stringify(parsed).slice(0, 14000)}`,
+        model: cfg.model,
+        apiKey: cfg.apiKey,
+        baseUrl: cfg.baseUrl,
+        temperature: 0.25,
+      });
+      parsed = fixBullets.json;
+      tokensIn += fixBullets.tokensIn;
+      tokensOut += fixBullets.tokensOut;
+      modelUsed = fixBullets.model;
+      projects = buildProjects({
+        anchors,
+        ai: parsed.projects || [],
+        jobTitle,
+        domain,
+        groundedSkills: groundedPack,
+        skills,
+        supportiveTitles: asArr(parsed.supportiveTitles),
+        policy,
+      });
+    } else {
+      throw e;
+    }
+  }
   if (projects.length === 0) {
     throw new Error("AI resume has zero projects after merge — cannot deliver");
   }
+  // Strip SAP ritual bullets on clinical packs; top up if scrub thins density
+  projects = projects.map((p) => {
+    let bullets = scrubSapRitualFromBullets(p.bullets || [], domain);
+    if (bullets.length < MIN_BULLETS_PER_PROJECT) {
+      const extra = domainProofBullets(
+        domain,
+        p.era === "recent" ? "recent" : p.era === "early" ? "early" : "mid",
+        p.client,
+        jobTitle,
+        groundedPack.length ? groundedPack : skills,
+        policy
+      );
+      const merged = dedupeBullets([...bullets, ...extra]).slice(
+        0,
+        Math.max(MIN_BULLETS_PER_PROJECT, policy.bullets.recent)
+      );
+      bullets = scrubSapRitualFromBullets(merged, domain);
+    }
+    return { ...p, bullets };
+  });
+  // Final hard gate before any layout/DOCX work
+  assertMandatoryBulletDensity(projects, MIN_BULLETS_PER_PROJECT);
   await report("project_1", "done");
   await report("project_2", "done");
   await report("projects_rest", "done");
@@ -635,6 +714,8 @@ Honesty > keyword stuffing.`;
     critical,
     aiSummary: asArr(parsed.summary).filter((s) => !/@/.test(s)),
     policy,
+    master: input.master,
+    lowOverlap,
   });
 
   let impact = asArr(parsed.impact)

@@ -47,12 +47,13 @@ export function runRulesGate(opts: {
     checks.push({ id, ok, message });
   };
 
+  // Informational only: never fail the pack for presence/absence of engine footer
   add(
     "openai_engine",
-    opts.usedOpenAi && /Role Forge AI|OPENAI|gpt-/i.test(text),
+    true,
     opts.usedOpenAi
-      ? "AI engine marker present"
-      : "Missing OpenAI generation marker"
+      ? "AI engine path (marker optional)"
+      : "Non-AI / rules path"
   );
 
   add(

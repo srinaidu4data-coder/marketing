@@ -7,13 +7,16 @@ import { resolveUploadPath } from "@/lib/paths";
 import { tailorResume } from "@/lib/resume-tailor";
 import { renderDocxBuffer } from "@/lib/resume/render-docx";
 import { renderPdfBuffer } from "@/lib/resume/render-pdf";
-import { detectDomain } from "@/lib/resume/jd-parse";
-import { extractJobTitle } from "@/lib/resume/jd-parse";
+import { detectDomain, extractJobTitle } from "@/lib/resume/jd-parse";
 import {
   criticalJdPhrases,
   hasCriticalJdCoverage,
 } from "@/lib/resume/jd-weave";
 import { getResumeEnginePolicy } from "@/lib/system-settings";
+import {
+  inspectPackShipReady,
+  mustRegeneratePack,
+} from "@/lib/resume/pack-ship-ready";
 
 async function tryRead(stored: string | null | undefined): Promise<Buffer | null> {
   if (!stored) return null;
@@ -24,16 +27,34 @@ async function tryRead(stored: string | null | undefined): Promise<Buffer | null
   }
 }
 
-/** Stale / non-AI / missing JD specialty → must regenerate with OpenAI */
-async function mustRegenerate(text: string, jd: string): Promise<boolean> {
-  if (!text || text.length < 80) return true;
-  if (!/Role Forge AI/i.test(text)) return true;
-  if (!/OPENAI|gpt-|Model:/i.test(text)) return true;
+/** Stale / thin / dishonest / non-AI / missing JD specialty → regenerate */
+async function needRegenerate(opts: {
+  text: string;
+  jd: string;
+  master: string;
+  masterProfileJson?: string | null;
+  force?: boolean;
+  hasDocxPath?: boolean;
+}): Promise<boolean> {
+  if (opts.force) return true;
+  if (!opts.text || opts.text.length < 80) return true;
+  if (
+    mustRegeneratePack({
+      text: opts.text,
+      masterText: opts.master,
+      masterProfileJson: opts.masterProfileJson,
+      jd: opts.jd,
+    })
+  ) {
+    return true;
+  }
+  if (!opts.hasDocxPath) return true;
+
   const policy = await getResumeEnginePolicy();
-  const title = extractJobTitle(jd);
-  const domain = detectDomain(jd, title, policy);
-  const critical = criticalJdPhrases(jd, domain, policy);
-  if (critical.length >= 3 && !hasCriticalJdCoverage(text, critical, 0.4)) {
+  const title = extractJobTitle(opts.jd);
+  const domain = detectDomain(opts.jd, title, policy);
+  const critical = criticalJdPhrases(opts.jd, domain, policy);
+  if (critical.length >= 3 && !hasCriticalJdCoverage(opts.text, critical, 0.4)) {
     return true;
   }
   return false;
@@ -62,25 +83,79 @@ export async function GET(
   const fmt = (url.searchParams.get("fmt") || "txt").toLowerCase();
   const force = url.searchParams.get("regen") === "1";
   const base = row.candidate.name.replace(/\s+/g, "_");
-  const master =
-    (row.candidate.masterResumeText || "").trim() ||
-    // last resort only — never prefer old tailored as "master" when real master exists
-    (row.tailoredResumeText || "");
+  const master = (row.candidate.masterResumeText || "").trim();
+  const masterProfileJson = row.candidate.masterProfileJson || null;
   const jd = row.chain.rawJobText || "";
   const storedText = row.tailoredResumeText || "";
 
-  const needAi =
-    force || (await mustRegenerate(storedText, jd)) || !row.docxPath;
+  if (!master || master.length < 40) {
+    return NextResponse.json(
+      {
+        error:
+          "No master resume text on candidate. Replace master .docx on the candidate before downloading a pack.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const needAi = await needRegenerate({
+    text: storedText,
+    jd,
+    master,
+    masterProfileJson,
+    force,
+    hasDocxPath: !!row.docxPath,
+  });
 
   async function runAi() {
     return tailorResume({
       master,
-      masterProfileJson: row.candidate.masterProfileJson || null,
+      masterProfileJson,
       jd,
       vendorName: row.chain.vendorName,
       candidateName: row.candidate.name,
       layoutId: row.layoutId || row.candidate.layoutId,
       email: row.candidate.email,
+    });
+  }
+
+  async function persistPack(
+    tailored: Awaited<ReturnType<typeof tailorResume>>
+  ) {
+    const ship = inspectPackShipReady({
+      text: tailored.text,
+      masterText: master,
+      masterProfileJson,
+    });
+    if (!ship.ok) {
+      throw new Error(
+        `Pack not ship-ready: ${ship.issues.map((i) => i.detail).join("; ")}`
+      );
+    }
+    const breakdown = {
+      ...tailored.ats,
+      packValidation: tailored.packValidation
+        ? {
+            ok: tailored.packValidation.ok,
+            score: tailored.packValidation.score,
+            summary: tailored.packValidation.summary,
+            clientsFound: tailored.packValidation.clientsFound.length,
+            clientsMissing: tailored.packValidation.clientsMissing,
+            yearsClaims: tailored.packValidation.yearsClaimsInSummary,
+          }
+        : null,
+      shipReady: ship,
+    };
+    await prisma.chainCandidate.update({
+      where: { id: row.id },
+      data: {
+        tailoredResumeText: tailored.text,
+        jobTitle: tailored.structured.meta.jobTitle,
+        skillFingerprint: tailored.structured.meta.skillFingerprint,
+        atsScore: tailored.ats.score,
+        atsReady: tailored.ats.ready && ship.ok,
+        atsBreakdownJson: JSON.stringify(breakdown),
+      },
     });
   }
 
@@ -99,18 +174,7 @@ export async function GET(
     }
     try {
       const tailored = await runAi();
-      // Persist improved text for next time
-      await prisma.chainCandidate.update({
-        where: { id: row.id },
-        data: {
-          tailoredResumeText: tailored.text,
-          jobTitle: tailored.structured.meta.jobTitle,
-          skillFingerprint: tailored.structured.meta.skillFingerprint,
-          atsScore: tailored.ats.score,
-          atsReady: tailored.ats.ready,
-          atsBreakdownJson: JSON.stringify(tailored.ats),
-        },
-      });
+      await persistPack(tailored);
       const buf = await renderDocxBuffer(tailored.structured);
       return new NextResponse(new Uint8Array(buf), {
         headers: {
@@ -147,14 +211,7 @@ export async function GET(
     }
     try {
       const tailored = await runAi();
-      await prisma.chainCandidate.update({
-        where: { id: row.id },
-        data: {
-          tailoredResumeText: tailored.text,
-          atsScore: tailored.ats.score,
-          atsReady: tailored.ats.ready,
-        },
-      });
+      await persistPack(tailored);
       const buf = await renderPdfBuffer(tailored.structured);
       return new NextResponse(new Uint8Array(buf), {
         headers: {
@@ -180,14 +237,7 @@ export async function GET(
   if (needAi) {
     try {
       const tailored = await runAi();
-      await prisma.chainCandidate.update({
-        where: { id: row.id },
-        data: {
-          tailoredResumeText: tailored.text,
-          atsScore: tailored.ats.score,
-          atsReady: tailored.ats.ready,
-        },
-      });
+      await persistPack(tailored);
       return new NextResponse(tailored.text, {
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
@@ -196,10 +246,34 @@ export async function GET(
       });
     } catch (e) {
       console.error("txt AI regenerate failed", e);
+      return NextResponse.json(
+        {
+          error:
+            e instanceof Error
+              ? e.message
+              : "AI resume generation failed.",
+        },
+        { status: 500 }
+      );
     }
   }
 
-  return new NextResponse(storedText || "No tailored text", {
+  // Stale stored text that fails ship-ready: do not serve
+  const ship = inspectPackShipReady({
+    text: storedText,
+    masterText: master,
+    masterProfileJson,
+  });
+  if (!ship.ok) {
+    return NextResponse.json(
+      {
+        error: `Stored pack not ship-ready: ${ship.issues.map((i) => i.detail).join("; ")}. Use ?regen=1 or regenerate the chain.`,
+      },
+      { status: 409 }
+    );
+  }
+
+  return new NextResponse(storedText, {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Content-Disposition": `attachment; filename="${base}_tailored.txt"`,

@@ -218,6 +218,32 @@ export async function sendChain(chainId: string) {
     return { error: "NO_CANDIDATES", message: "No resumes on this chain to send." };
   }
 
+  // Ship/no-ship: shared inspect (bullets, clients, cosplay, empty)
+  const { inspectPackShipReady } = await import("@/lib/resume/pack-ship-ready");
+  const unsendable = chain.candidates
+    .map((cc) => {
+      const ship = inspectPackShipReady({
+        text: cc.tailoredResumeText || "",
+        masterText: cc.candidate.masterResumeText || "",
+        masterProfileJson:
+          (cc.candidate as { masterProfileJson?: string }).masterProfileJson ||
+          null,
+      });
+      return { cc, ship };
+    })
+    .filter((x) => !x.ship.ok);
+  if (unsendable.length) {
+    return {
+      error: "PACK_NOT_SHIP_READY",
+      message: `Cannot send: ${unsendable.length} pack(s) fail mandatory quality. ${unsendable
+        .map(
+          (x) =>
+            `${x.cc.candidate.name}: ${x.ship.issues.map((i) => i.detail).join("; ")}`
+        )
+        .join(" | ")}`,
+    };
+  }
+
   const lowAts = chain.candidates.filter((c) => c.atsScore < 95);
 
   await prisma.chain.update({ where: { id: chainId }, data: { status: "SENDING" } });

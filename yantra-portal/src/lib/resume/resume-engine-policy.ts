@@ -61,7 +61,8 @@ export type ResumeEnginePolicy = {
 /** Factory defaults — also shown in admin console until overridden. */
 export const DEFAULT_RESUME_ENGINE_POLICY: ResumeEnginePolicy = {
   recentTitleCount: 2,
-  bullets: { recent: 8, mid: 6, early: 5 },
+  /** Target 8–10 bullets per client/project for client-submittable density */
+  bullets: { recent: 10, mid: 9, early: 8 },
   skillCaps: { recent: 8, mid: 5, early: 3 },
   minKeywordCoverage: 0.9,
   minAtsScore: 95,
@@ -185,20 +186,39 @@ export const DEFAULT_RESUME_ENGINE_POLICY: ResumeEnginePolicy = {
     "Associate {core}",
   ],
   emergencyBullets: {
+    // Enough soft-fill lines to top each engagement to 8–10 when AI/master short
     recent: [
       "Delivered {role}-aligned work for {client}, covering {skills} with design, test evidence, and stakeholder updates.",
       "Partnered with business and technical owners on process design, integration touchpoints, and release readiness at {client}.",
       "Built unit and SIT/UAT evidence packs for {s0}-related scenarios on {client}.",
-      "Supported cutover and hypercare activities with clear defect triage and documentation for {client}.",
+      "Drove requirements workshops and solution walkthroughs for {role} scope with {client} stakeholders.",
+      "Maintained issue logs, RACI clarity, and status cadence across {client} workstreams involving {s1}.",
+      "Validated end-to-end scenarios spanning {s0} and {s1}, capturing defects and retest evidence for {client}.",
+      "Coordinated with cross-functional teams on data readiness, cutover checklists, and hypercare for {client}.",
+      "Produced functional specs, configuration notes, and handoff packs aligned to {role} delivery on {client}.",
+      "Led triage of priority defects during SIT/UAT with clear ownership and closure criteria at {client}.",
+      "Supported go-live readiness reviews and post-go-live stabilization for {client} on {skills}.",
     ],
     mid: [
       "Supported {role}-related delivery tasks for {client}, including documentation and test evidence around {s0}.",
       "Assisted seniors with workshops, unit tests, and defect notes for {client}.",
-      "Contributed to configuration trackers and handoff materials under guidance.",
+      "Contributed to configuration trackers and handoff materials under guidance on {client}.",
+      "Executed assigned test scripts for {s0}-related scenarios and logged results for {client}.",
+      "Helped refine process maps and functional notes supporting {role} outcomes at {client}.",
+      "Participated in defect triage calls and retested fixes for {client} releases.",
+      "Prepared status inputs and evidence packs used in {client} steering updates.",
+      "Collaborated with peers on integration touchpoints involving {s1} for {client}.",
+      "Documented as-built configuration and open questions for {client} knowledge transfer.",
     ],
     early: [
       "Assisted seniors with documentation, unit tests, and evidence capture on {client}.",
       "Built foundational delivery discipline (notes, retests, status inputs) under mentorship on {client}.",
+      "Supported test data setup and script execution for {s0} scenarios at {client}.",
+      "Logged defects with clear repro steps and followed retest instructions for {client}.",
+      "Maintained configuration and issue trackers used by the {client} delivery team.",
+      "Shadowed design workshops and converted notes into actionable follow-ups for {client}.",
+      "Helped prepare training and handoff materials under senior review for {client}.",
+      "Contributed to day-to-day coordination across {role}-adjacent tasks on {client}.",
     ],
   },
   criticalPhrasePatterns: [
@@ -269,9 +289,9 @@ function mergePolicy(
   }
   if (patch.bullets) {
     out.bullets = {
-      recent: num(patch.bullets.recent, out.bullets.recent, 1, 24),
-      mid: num(patch.bullets.mid, out.bullets.mid, 1, 20),
-      early: num(patch.bullets.early, out.bullets.early, 1, 16),
+      recent: num(patch.bullets.recent, out.bullets.recent, 8, 24),
+      mid: num(patch.bullets.mid, out.bullets.mid, 8, 20),
+      early: num(patch.bullets.early, out.bullets.early, 8, 16),
     };
   }
   if (patch.skillCaps) {

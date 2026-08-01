@@ -357,7 +357,20 @@ export async function generateChainResumes(
           skillFingerprint: tailored.structured.meta.skillFingerprint,
           atsScore: tailored.ats.score,
           atsReady: tailored.ats.ready,
-          atsBreakdownJson: JSON.stringify(tailored.ats),
+          atsBreakdownJson: JSON.stringify({
+            ...tailored.ats,
+            packValidation: tailored.packValidation
+              ? {
+                  ok: tailored.packValidation.ok,
+                  score: tailored.packValidation.score,
+                  summary: tailored.packValidation.summary,
+                  clientsFound: tailored.packValidation.clientsFound.length,
+                  clientsMissing: tailored.packValidation.clientsMissing,
+                  yearsClaims: tailored.packValidation.yearsClaimsInSummary,
+                }
+              : null,
+            progressiveNotes: tailored.structured.meta.progressiveNotes,
+          }),
         };
         if (existing) {
           await prisma.chainCandidate.update({

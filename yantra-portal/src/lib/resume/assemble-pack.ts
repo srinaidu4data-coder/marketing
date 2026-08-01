@@ -45,6 +45,7 @@ import {
   formatContactLine,
 } from "./extract-contact";
 import type { StructuredResume } from "./templates";
+import { isLowOverlap, scrubSummaryHonesty } from "./resume-honesty";
 import {
   parseMasterProfile,
   parseStoredMasterProfile,
@@ -258,6 +259,42 @@ function parseModules(
     .filter((s) => !isOffDomainText(s, domain, policy));
 }
 
+/** Floor for client-submittable packs: at least 8 bullets per project/client/employer. */
+export const MIN_BULLETS_PER_PROJECT = 8;
+/** Soft upper target (policy recent default). */
+export const TARGET_BULLETS_PER_PROJECT = 10;
+
+/**
+ * Hard gate: every engagement must have ≥8 bullets or the pack must not ship.
+ * Throws — callers must not render DOCX/PDF/send on failure.
+ */
+export function assertMandatoryBulletDensity(
+  projects: { client?: string; bullets?: string[] }[],
+  min = MIN_BULLETS_PER_PROJECT
+): void {
+  if (!projects.length) {
+    throw new Error(
+      "Resume generation blocked: zero projects/clients — cannot deliver a pack."
+    );
+  }
+  const thin = projects
+    .map((p, i) => ({
+      i,
+      client: (p.client || `Project ${i + 1}`).split(",")[0].trim(),
+      n: Array.isArray(p.bullets) ? p.bullets.filter((b) => String(b).trim().length > 20).length : 0,
+    }))
+    .filter((p) => p.n < min);
+
+  if (thin.length) {
+    const detail = thin
+      .map((t) => `${t.client}: ${t.n}/${min}`)
+      .join("; ");
+    throw new Error(
+      `Resume generation blocked: every project/client/employer requires ${min}–${TARGET_BULLETS_PER_PROJECT} bullets. Insufficient: ${detail}. Re-upload a richer master or regenerate.`
+    );
+  }
+}
+
 function fillBullets(opts: {
   aiBullets: string[];
   masterBullets: string[];
@@ -270,14 +307,24 @@ function fillBullets(opts: {
   max: number;
   policy: ResumeEnginePolicy;
 }): string[] {
-  let final = opts.aiBullets.slice(0, opts.max);
-  if (final.length < 4) {
+  // Fill to policy max (8–10). Floor enforced via MIN_BULLETS_PER_PROJECT on policy defaults.
+  const need = Math.max(opts.max, Math.min(MIN_BULLETS_PER_PROJECT, opts.max));
+
+  let final = dedupeBullets(opts.aiBullets).slice(0, opts.max);
+
+  // Always top up from master until target — not only when sparse
+  if (final.length < need) {
     const masterProof = cleanMasterBullets(opts.masterBullets, opts.max).filter(
       (b) => !isOffDomainText(b, opts.domain, opts.policy)
     );
     final = dedupeBullets([...final, ...masterProof]).slice(0, opts.max);
   }
-  if (final.length < 4) {
+
+  // Soft-fill (policy) to hit 8–10 when AI + master still short
+  if (
+    final.length < need &&
+    (opts.policy.emergencyFill || final.length < MIN_BULLETS_PER_PROJECT)
+  ) {
     const proof = domainProofBullets(
       opts.domain,
       opts.isRecent ? "recent" : opts.era === "early" ? "early" : "mid",
@@ -288,6 +335,7 @@ function fillBullets(opts: {
     );
     final = dedupeBullets([...final, ...proof]).slice(0, opts.max);
   }
+
   return final.slice(0, opts.max);
 }
 
@@ -356,11 +404,15 @@ export function buildProjects(opts: {
           };
         });
 
-  return list.map((anchor, idx) => {
+  const projects = list.map((anchor, idx) => {
     const aiP = pickAiProject(opts.ai, anchor, idx);
     const era = eraFor(anchor.endYear, now);
     const isRecent = idx < recentN;
-    const maxBullets = bulletCapFor(isRecent, era, opts.policy);
+    // Hard floor: never allow policy max below 8
+    const maxBullets = Math.max(
+      MIN_BULLETS_PER_PROJECT,
+      bulletCapFor(isRecent, era, opts.policy)
+    );
     const skillCap = skillCapFor(isRecent, era, opts.policy);
     const bank = eraSkillBank(isRecent, era, grounded, fullBank);
 
@@ -414,6 +466,10 @@ export function buildProjects(opts: {
       bullets,
     };
   });
+
+  // Hard gate: without 8 bullets per project/client/employer, do not emit a pack
+  assertMandatoryBulletDensity(projects, MIN_BULLETS_PER_PROJECT);
+  return projects;
 }
 
 /**
@@ -493,11 +549,18 @@ export async function assembleDeterministicPack(opts: {
     yearsHint > 0
       ? ` with approximately ${yearsHint}+ years of progressive professional experience`
       : " with progressive professional experience";
-  const summary = [
-    `${first} is positioned as a ${jobTitle}${yearsPart}, mapped to this role’s requirements: ${skillLine}.`,
-    `Master-backed delivery history is reframed toward ${jobTitle} responsibilities (data quality, process ownership, stakeholder coordination, and release/test discipline where supported by experience).`,
-    `Core focus includes ${skillLine}.`,
-  ];
+  const lowOverlap = isLowOverlap(opts.jd, opts.master);
+  const summary = scrubSummaryHonesty({
+    lines: [
+      `${first} is positioned as a ${jobTitle}${yearsPart}, mapped to this role’s requirements with emphasis on ${skillLine}.`,
+      `Master-backed delivery history is reframed toward ${jobTitle} responsibilities (data quality, process ownership, stakeholder coordination, and release/test discipline where supported by experience).`,
+    ],
+    master: opts.master,
+    jobTitle,
+    yearsHint,
+    candidateName: opts.candidateName,
+    lowOverlap,
+  });
 
   const impact = domainProofBullets(
     domain,

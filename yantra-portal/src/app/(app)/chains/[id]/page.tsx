@@ -12,6 +12,7 @@ import { formatDateTime } from "@/lib/utils";
 import { getLayout } from "@/lib/resume/templates";
 import { getResendConfig } from "@/lib/email/resend";
 import { Mail, AlertTriangle, CheckCircle2, Download } from "lucide-react";
+import { inspectPackShipReady } from "@/lib/resume/pack-ship-ready";
 
 export default async function ChainDetailPage({
   params,
@@ -79,10 +80,22 @@ export default async function ChainDetailPage({
   const sent = chain.candidates.filter((c) => c.sendStatus === "SENT").length;
   const total = chain.candidates.length;
   const lowAts = chain.candidates.filter((c) => c.atsScore < 95);
+  const shipReports = chain.candidates.map((cc) => ({
+    id: cc.id,
+    ship: inspectPackShipReady({
+      text: cc.tailoredResumeText || "",
+      masterText: cc.candidate.masterResumeText || "",
+      masterProfileJson:
+        (cc.candidate as { masterProfileJson?: string }).masterProfileJson ||
+        null,
+    }),
+  }));
+  const notShipReady = shipReports.filter((r) => !r.ship.ok);
   const stuck = chain.status === "GENERATING" || chain.status === "SENDING";
   const emptyFailed = chain.status === "FAILED" && total === 0;
   const canSend =
     total > 0 &&
+    notShipReady.length === 0 &&
     (chain.status === "READY" ||
       chain.status === "FAILED" ||
       chain.status === "SENT");
@@ -232,6 +245,27 @@ export default async function ChainDetailPage({
         </div>
       ) : null}
 
+      {total > 0 && notShipReady.length > 0 ? (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-900">
+          <p className="font-medium">
+            {notShipReady.length} pack(s) not ship-ready — Send blocked until
+            regenerate.
+          </p>
+          <ul className="mt-1 list-disc pl-5 text-xs">
+            {notShipReady.slice(0, 6).map((r) => {
+              const name =
+                chain.candidates.find((c) => c.id === r.id)?.candidate.name ||
+                r.id;
+              return (
+                <li key={r.id}>
+                  {name}: {r.ship.issues.map((i) => i.detail).join("; ")}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+
       <Card className="space-y-2 text-sm">
         <div>
           <span className="text-zinc-500">Vendor </span>
@@ -255,12 +289,15 @@ export default async function ChainDetailPage({
               <th className="px-4 py-3 text-xs font-medium text-zinc-500">Candidate</th>
               <th className="px-4 py-3 text-xs font-medium text-zinc-500">Layout</th>
               <th className="px-4 py-3 text-xs font-medium text-zinc-500">ATS</th>
+              <th className="px-4 py-3 text-xs font-medium text-zinc-500">Ship-ready</th>
               <th className="px-4 py-3 text-xs font-medium text-zinc-500">Email</th>
               <th className="px-4 py-3 text-xs font-medium text-zinc-500">Files</th>
             </tr>
           </thead>
           <tbody>
-            {chain.candidates.map((cc) => (
+            {chain.candidates.map((cc) => {
+              const ship = shipReports.find((r) => r.id === cc.id)?.ship;
+              return (
               <tr key={cc.id} className="border-b border-zinc-50 last:border-0">
                 <td className="px-4 py-3">
                   <div className="font-medium text-zinc-900">{cc.candidate.name}</div>
@@ -284,6 +321,26 @@ export default async function ChainDetailPage({
                   </span>
                   <span className="text-xs text-zinc-400"> / 100</span>
                 </td>
+                <td className="px-4 py-3 text-xs">
+                  {ship?.ok ? (
+                    <span className="font-semibold text-emerald-700">
+                      OK
+                      {ship.minBulletsSeen != null
+                        ? ` · ≥${ship.minBulletsSeen} bullets`
+                        : ""}
+                    </span>
+                  ) : (
+                    <span
+                      className="font-semibold text-red-700"
+                      title={ship?.issues.map((i) => i.detail).join("; ")}
+                    >
+                      Blocked
+                      {ship?.issues[0]
+                        ? ` · ${ship.issues[0].detail.slice(0, 40)}`
+                        : ""}
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <Badge status={cc.sendStatus}>{cc.sendStatus}</Badge>
                 </td>
@@ -304,10 +361,11 @@ export default async function ChainDetailPage({
                   </div>
                 </td>
               </tr>
-            ))}
+            );
+            })}
             {total === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-zinc-400">
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-zinc-400">
                   No resume packs yet
                 </td>
               </tr>
