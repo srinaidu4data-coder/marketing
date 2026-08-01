@@ -31,6 +31,7 @@ export function shipReportsForChain(candidates: ChainCandidateRow[]): {
       ship: missingPack
         ? {
             ok: false,
+            best: false,
             issues: [
               {
                 code: "empty" as const,

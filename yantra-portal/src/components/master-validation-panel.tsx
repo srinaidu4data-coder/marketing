@@ -54,25 +54,26 @@ export function MasterValidationPanel({
   ];
 
   return (
-    <section className="space-y-4 rounded-2xl border border-black/[0.06] bg-white p-4 shadow-soft">
+    <section className="space-y-3 overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-4 shadow-soft sm:p-5">
       <div>
         <h2 className="text-[15px] font-semibold tracking-tight text-[#1d1d1f]">
           Ground-truth validation
         </h2>
-        <p className="mt-1 text-[13px] text-[#6e6e73]">
-          Every field the AI path must honor after master upload — and after a tailored
-          resume is generated. Not just engagement count.
+        <p className="mt-0.5 text-[13px] leading-relaxed text-[#6e6e73]">
+          Fields the AI path must honor after upload — and after a tailored pack is
+          generated.
         </p>
       </div>
 
       <div className={`rounded-xl border px-3 py-2.5 text-[13px] ${headerTone}`}>
-        <div className="font-semibold text-[#1d1d1f]">
-          Upload profile: {report.ok ? "Ready" : "Needs review"} · score {report.score}%
+        <div className="font-semibold tracking-tight text-[#1d1d1f]">
+          Upload profile · {report.ok ? "Ready" : "Needs review"} · {report.score}%
         </div>
         <div className="mt-0.5 text-[12.5px] text-[#6e6e73]">
-          {report.engagementCount} engagement(s) · career span ~{report.careerSpanYears}+
-          years · {report.summary.pass} pass · {report.summary.warn} warn ·{" "}
-          {report.summary.fail} fail
+          {report.engagementCount} engagement
+          {report.engagementCount === 1 ? "" : "s"} · ~{report.careerSpanYears}+ years ·{" "}
+          {report.summary.pass} pass · {report.summary.warn} warn · {report.summary.fail}{" "}
+          fail
         </div>
       </div>
 

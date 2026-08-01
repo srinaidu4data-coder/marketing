@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/db";
@@ -9,12 +8,12 @@ import {
 } from "@/app/actions/chains";
 import { Badge, Button, Card, PageHeader } from "@/components/ui";
 import { formatDateTime } from "@/lib/utils";
-import { getLayout } from "@/lib/resume/templates";
 import {
   decodeShipErrorMessage,
   encodeShipErrorMessage,
   shipReportsForChain,
 } from "@/lib/chain-ship-ui";
+import { ChainPacksTable } from "@/components/chain-packs-table";
 
 export default async function AdminChainDetailPage({
   params,
@@ -203,108 +202,12 @@ export default async function AdminChainDetailPage({
         </pre>
       </Card>
 
-      <div className="overflow-x-auto rounded-lg border">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b bg-slate-50">
-            <tr>
-              <th className="px-4 py-3 font-medium">Candidate</th>
-              <th className="px-4 py-3 font-medium">Layout</th>
-              <th className="px-4 py-3 font-medium">ATS</th>
-              <th className="px-4 py-3 font-medium">Ship-ready</th>
-              <th className="px-4 py-3 font-medium">Send Status</th>
-              <th className="px-4 py-3 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {chain.candidates.map((cc) => {
-              const ship = shipReports.find((r) => r.id === cc.id)?.ship;
-              return (
-                <tr key={cc.id} className="border-b last:border-0">
-                  <td className="px-4 py-3">
-                    <div className="font-medium">{cc.candidate.name}</div>
-                    <div className="text-xs text-slate-500">{cc.candidate.email}</div>
-                    {cc.jobTitle ? (
-                      <div className="text-[11px] text-slate-400">{cc.jobTitle}</div>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3 text-xs">{getLayout(cc.layoutId).name}</td>
-                  <td className="px-4 py-3 font-semibold">
-                    <span
-                      className={
-                        cc.atsScore >= 95 ? "text-emerald-700" : "text-amber-700"
-                      }
-                    >
-                      {cc.atsScore}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs">
-                    {ship?.ok ? (
-                      <span className="font-semibold text-emerald-700">
-                        OK
-                        {ship.minBulletsSeen != null
-                          ? ` · ≥${ship.minBulletsSeen} bullets`
-                          : ""}
-                      </span>
-                    ) : (
-                      <span
-                        className="font-semibold text-red-700"
-                        title={ship?.issues.map((i) => i.detail).join("; ")}
-                      >
-                        Blocked
-                        {ship?.issues[0]
-                          ? ` · ${ship.issues[0].detail.slice(0, 48)}`
-                          : ""}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge status={cc.sendStatus}>{cc.sendStatus}</Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-3">
-                      <details>
-                        <summary className="cursor-pointer hover:underline">
-                          Preview
-                        </summary>
-                        <pre className="mt-2 max-h-64 max-w-xl overflow-auto rounded border bg-slate-50 p-3 text-xs">
-                          {cc.tailoredResumeText.slice(0, 4000)}
-                        </pre>
-                      </details>
-                      <Link
-                        href={`/api/chains/${chain.id}/candidates/${cc.id}/download?fmt=txt`}
-                        className="hover:underline"
-                      >
-                        TXT
-                      </Link>
-                      <Link
-                        href={`/api/chains/${chain.id}/candidates/${cc.id}/download?fmt=docx`}
-                        className="hover:underline"
-                      >
-                        DOCX
-                      </Link>
-                      {cc.pdfPath ? (
-                        <Link
-                          href={`/api/chains/${chain.id}/candidates/${cc.id}/download?fmt=pdf`}
-                          className="hover:underline"
-                        >
-                          PDF
-                        </Link>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {chain.candidates.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-400">
-                  No resume packs yet
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+      <ChainPacksTable
+        chainId={chain.id}
+        rawJobText={chain.rawJobText}
+        candidates={chain.candidates}
+        shipById={new Map(shipReports.map((r) => [r.id, r.ship]))}
+      />
     </div>
   );
 }

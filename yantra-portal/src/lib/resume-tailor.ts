@@ -15,6 +15,7 @@ import {
   type ResumeEngineId,
 } from "./system-settings";
 import type { AtsResult } from "./resume/ats-scorer";
+import type { PsychResult } from "./resume/psych-scorer";
 import type { StructuredResume } from "./resume/templates";
 import type { RulesGateResult } from "./resume/rules-gate";
 import {
@@ -22,8 +23,8 @@ import {
   type PackValidationReport,
 } from "./resume/master-pack-validate";
 import { parseStoredMasterProfile } from "./resume/master-profile";
-import { MIN_BULLETS_PER_PROJECT } from "./resume/assemble-pack";
 import { inspectPackShipReady } from "./resume/pack-ship-ready";
+import type { TailorModeResult } from "./resume/tailor-mode";
 
 export { renderEmailTemplate } from "./resume/email-render";
 export { getOpenAiConfig } from "./resume/openai-config";
@@ -34,6 +35,8 @@ export type TailorResumeResult = {
   structured: StructuredResume;
   text: string;
   ats: AtsResult;
+  psych?: PsychResult;
+  modeResult?: TailorModeResult;
   usedLlm: boolean;
   model: string;
   engine: ResumeEngineId;
@@ -45,17 +48,30 @@ export type TailorResumeResult = {
   tokensOut?: number;
   /** Full ground-truth checklist vs master (every employer/date/etc.) */
   packValidation?: PackValidationReport;
+  /** Dual 100 = best pack */
+  best?: boolean;
 };
 
 function attachPackValidation(
-  result: Omit<TailorResumeResult, "packValidation">,
-  opts: { masterProfileJson?: string | null; master: string }
+  result: Omit<TailorResumeResult, "packValidation" | "best">,
+  opts: {
+    masterProfileJson?: string | null;
+    master: string;
+    jd: string;
+    candidateName?: string;
+  }
 ): TailorResumeResult {
-  // Single ship-ready gate (clients + bullets + summary cosplay)
+  // Single ship authority: structural + ATS 100 + Psych 100
   const ship = inspectPackShipReady({
     text: result.text,
     masterText: opts.master,
     masterProfileJson: opts.masterProfileJson,
+    jd: opts.jd,
+    candidateName: opts.candidateName,
+    ats: result.ats,
+    psych: result.psych,
+    mode: result.modeResult?.mode,
+    minBullets: result.modeResult?.minBullets,
   });
   if (!ship.ok) {
     throw new Error(
@@ -77,14 +93,22 @@ function attachPackValidation(
     expectedYears: span,
   });
 
+  const psych = result.psych || ship.psych;
+  const ats = result.ats || ship.ats;
+  result.structured.meta.psychScore = psych?.score;
+  result.structured.meta.atsScore = ats?.score ?? result.ats.score;
   result.structured.meta.progressiveNotes = [
     ...result.structured.meta.progressiveNotes,
-    `Ground-truth: ${packValidation.ok ? "PASS" : "REVIEW"} ${packValidation.score}% · clients ${packValidation.clientsFound.length}/${packValidation.engagementCount} · fail ${packValidation.summary.fail} warn ${packValidation.summary.warn}`,
-    `Bullet density: PASS · mandatory ≥${MIN_BULLETS_PER_PROJECT} per project/client (hard gate)`,
-    `Honesty: no unsupported industry cosplay in summary`,
-    `Ship-ready: OK · min bullets/block ${ship.minBulletsSeen ?? "?"}`,
+    `Ground-truth: ${packValidation.ok ? "PASS" : "REVIEW"} ${packValidation.score}% · clients ${packValidation.clientsFound.length}/${packValidation.engagementCount}`,
+    `Dual scores: ATS ${ats?.score ?? "?"}/100 · Psych ${psych?.score ?? "?"}/100 · ${ship.best ? "BEST" : "SHIP OK"}`,
+    `Ship-ready: OK · mode ${ship.mode || "?"} · min bullets ${ship.minBulletsSeen ?? "?"}`,
   ];
-  return { ...result, packValidation };
+  return {
+    ...result,
+    psych: psych || result.psych,
+    packValidation,
+    best: ship.best,
+  };
 }
 
 export async function tailorResume(opts: {
@@ -195,6 +219,8 @@ export async function tailorResume(opts: {
             structured: result.structured,
             text: result.text,
             ats: result.ats,
+            psych: result.psych,
+            modeResult: result.modeResult,
             usedLlm: true,
             model: result.model,
             engine: "ai-tailor",
@@ -208,6 +234,8 @@ export async function tailorResume(opts: {
           {
             masterProfileJson: opts.masterProfileJson,
             master: opts.master,
+            jd: opts.jd,
+            candidateName: opts.candidateName,
           }
         );
       }
@@ -258,11 +286,16 @@ export async function tailorResume(opts: {
             structured: pack.structured,
             text: pack.text,
             ats: pack.ats,
+            psych: pack.psych,
+            modeResult: pack.modeResult,
             usedLlm: false,
             model: "rules-engine",
             engine: "progressive-rules",
             enginesTried,
-            matchGate: { pass: true, reasons: [] },
+            matchGate: {
+              pass: !!(pack.ats?.score === 100 && pack.psych?.score === 100),
+              reasons: [],
+            },
             passes: 1,
             tokensIn: 0,
             tokensOut: 0,
@@ -270,6 +303,8 @@ export async function tailorResume(opts: {
           {
             masterProfileJson: opts.masterProfileJson,
             master: opts.master,
+            jd: opts.jd,
+            candidateName: opts.candidateName,
           }
         );
       }

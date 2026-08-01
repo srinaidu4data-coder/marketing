@@ -238,6 +238,114 @@ export function packHasIndustryCosplay(
   return hits;
 }
 
+/**
+ * Free metrics: % / $ / “reduced by N” claims that are not supported by master text.
+ * Costly-signal rule (Spence): numbers without master provenance are cheap lies.
+ */
+export function packHasFreeMetrics(
+  tailoredText: string,
+  masterText: string
+): string[] {
+  const text = tailoredText || "";
+  const master = (masterText || "").toLowerCase();
+  const flags: string[] = [];
+  const seen = new Set<string>();
+
+  const push = (s: string) => {
+    const k = s.slice(0, 80);
+    if (seen.has(k)) return;
+    seen.add(k);
+    flags.push(s);
+  };
+
+  // Percentages: "30%", "30 percent", "by 25%"
+  const pctRe =
+    /\b(\d{1,3})\s*%|\b(\d{1,3})\s*percent\b|\bby\s+(\d{1,3})\s*%/gi;
+  let m: RegExpExecArray | null;
+  while ((m = pctRe.exec(text))) {
+    const n = m[1] || m[2] || m[3];
+    if (!n) continue;
+    // Master must contain the same number near % or the exact token
+    if (
+      !master.includes(`${n}%`) &&
+      !master.includes(`${n} percent`) &&
+      !new RegExp(`\\b${n}\\b`).test(master)
+    ) {
+      push(`${n}% claim not on master`);
+    }
+  }
+
+  // Currency / rates that look like achievement metrics (not salary JD noise)
+  const moneyRe =
+    /(?:saved|reduced costs?|cut costs?|increased revenue|roi of)\s*\$?\s*[\d,]+/gi;
+  while ((m = moneyRe.exec(text))) {
+    const frag = m[0].toLowerCase();
+    const digits = frag.replace(/[^\d]/g, "");
+    if (digits && !master.includes(digits)) {
+      push(`money metric not on master: ${m[0].slice(0, 40)}`);
+    }
+  }
+
+  // “X× faster / reduced by N times”
+  const multRe = /\b(\d+(?:\.\d+)?)\s*[x×]\s*(?:faster|improvement|increase)/gi;
+  while ((m = multRe.exec(text))) {
+    if (!master.includes(m[1])) push(`${m[1]}× claim not on master`);
+  }
+
+  return flags.slice(0, 12);
+}
+
+/**
+ * Master residue: SAP/finance config bullets under clinical-looking packs
+ * (or inverse) when mode is transfer/strict.
+ */
+export function packHasMasterResidueLeak(
+  tailoredText: string,
+  jd: string,
+  mode: "same_domain" | "transfer" | "strict"
+): string[] {
+  if (mode === "same_domain") return [];
+  const text = tailoredText || "";
+  const jdLc = (jd || "").toLowerCase();
+  const clinicalJd =
+    /\b(clinical|cdm|cdisc|edc|sdtm|pharma|trial)\b/i.test(jdLc);
+  const sapJd = /\bsap\b|s\/4|fico|ewm\b/i.test(jdLc);
+  const flags: string[] = [];
+
+  if (clinicalJd && !sapJd) {
+    const sapBullets =
+      text.match(
+        /^[•\-–—*].{0,200}\b(chart of accounts|material ledger|mm-fi|sd-fi|fico|lockbox|vertex tax|cfin|ltmc|s\/4hana|ariba|opentext vim)\b/gim
+      ) || [];
+    if (sapBullets.length) {
+      flags.push(
+        `SAP/finance bullets on clinical pack (${sapBullets.length})`
+      );
+    }
+    // Environment lines pure clinical on every job while bullets are SAP — caught above
+  }
+
+  if (sapJd && !clinicalJd) {
+    const clin =
+      text.match(
+        /^[•\-–—*].{0,200}\b(CRF Completion|Data Management Plan|CDISC|SDTM|eCRF|Medidata)\b/gim
+      ) || [];
+    if (clin.length >= 3) {
+      flags.push(`Clinical specialty bullets on SAP pack (${clin.length})`);
+    }
+  }
+
+  return flags;
+}
+
+/** Count distinct “N years” tenure claims in text. */
+export function countYearsClaims(text: string): number {
+  const re =
+    /\b(?:approximately|about|over|more than)?\s*\d{1,2}\+?\s*years?\b|\b\d{1,2}\+\s*years?\b/gi;
+  const hits = text.match(re) || [];
+  return hits.length;
+}
+
 export function masterIndustriesFromProfile(
   profile: MasterProfile | null
 ): string {

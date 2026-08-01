@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
@@ -9,14 +8,14 @@ import {
 } from "@/app/actions/chains";
 import { Badge, Button, Card, PageHeader } from "@/components/ui";
 import { formatDateTime } from "@/lib/utils";
-import { getLayout } from "@/lib/resume/templates";
 import { getResendConfig } from "@/lib/email/resend";
-import { Mail, AlertTriangle, CheckCircle2, Download } from "lucide-react";
+import { Mail, AlertTriangle, CheckCircle2 } from "lucide-react";
 import {
   decodeShipErrorMessage,
   encodeShipErrorMessage,
   shipReportsForChain,
 } from "@/lib/chain-ship-ui";
+import { ChainPacksTable } from "@/components/chain-packs-table";
 
 export default async function ChainDetailPage({
   params,
@@ -336,97 +335,12 @@ export default async function ChainDetailPage({
         </div>
       </Card>
 
-      <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-zinc-100 bg-zinc-50/80">
-            <tr>
-              <th className="px-4 py-3 text-xs font-medium text-zinc-500">Candidate</th>
-              <th className="px-4 py-3 text-xs font-medium text-zinc-500">Layout</th>
-              <th className="px-4 py-3 text-xs font-medium text-zinc-500">ATS</th>
-              <th className="px-4 py-3 text-xs font-medium text-zinc-500">Ship-ready</th>
-              <th className="px-4 py-3 text-xs font-medium text-zinc-500">Email</th>
-              <th className="px-4 py-3 text-xs font-medium text-zinc-500">Files</th>
-            </tr>
-          </thead>
-          <tbody>
-            {chain.candidates.map((cc) => {
-              const ship = shipReports.find((r) => r.id === cc.id)?.ship;
-              return (
-              <tr key={cc.id} className="border-b border-zinc-50 last:border-0">
-                <td className="px-4 py-3">
-                  <div className="font-medium text-zinc-900">{cc.candidate.name}</div>
-                  <div className="text-xs text-zinc-500">{cc.candidate.email}</div>
-                  {cc.jobTitle ? (
-                    <div className="text-[11px] text-zinc-400">{cc.jobTitle}</div>
-                  ) : null}
-                </td>
-                <td className="px-4 py-3 text-xs text-zinc-600">
-                  {getLayout(cc.layoutId).name}
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={
-                      cc.atsScore >= 95
-                        ? "font-semibold text-emerald-700"
-                        : "font-semibold text-amber-700"
-                    }
-                  >
-                    {cc.atsScore}
-                  </span>
-                  <span className="text-xs text-zinc-400"> / 100</span>
-                </td>
-                <td className="px-4 py-3 text-xs">
-                  {ship?.ok ? (
-                    <span className="font-semibold text-emerald-700">
-                      OK
-                      {ship.minBulletsSeen != null
-                        ? ` · ≥${ship.minBulletsSeen} bullets`
-                        : ""}
-                    </span>
-                  ) : (
-                    <span
-                      className="font-semibold text-red-700"
-                      title={ship?.issues.map((i) => i.detail).join("; ")}
-                    >
-                      Blocked
-                      {ship?.issues[0]
-                        ? ` · ${ship.issues[0].detail.slice(0, 40)}`
-                        : ""}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <Badge status={cc.sendStatus}>{cc.sendStatus}</Badge>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <Link
-                      href={`/api/chains/${chain.id}/candidates/${cc.id}/download?fmt=txt`}
-                      className="inline-flex items-center gap-1 text-indigo-600 hover:underline"
-                    >
-                      <Download className="h-3 w-3" /> TXT
-                    </Link>
-                    <Link
-                      href={`/api/chains/${chain.id}/candidates/${cc.id}/download?fmt=docx`}
-                      className="inline-flex items-center gap-1 text-indigo-600 hover:underline"
-                    >
-                      <Download className="h-3 w-3" /> DOCX
-                    </Link>
-                  </div>
-                </td>
-              </tr>
-            );
-            })}
-            {total === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-zinc-400">
-                  No resume packs yet
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+      <ChainPacksTable
+        chainId={chain.id}
+        rawJobText={chain.rawJobText}
+        candidates={chain.candidates}
+        shipById={new Map(shipReports.map((r) => [r.id, r.ship]))}
+      />
     </div>
   );
 }

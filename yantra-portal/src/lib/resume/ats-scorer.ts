@@ -25,8 +25,14 @@ export type AtsResult = {
   breakdown: AtsBreakdown;
   missingKeywords: string[];
   warnings: string[];
+  /** Perfect Fit-IR — score === 100 (and not capped by honesty fail) */
   ready: boolean;
+  /** True when honesty fail capped the score */
+  honestyCapped?: boolean;
 };
+
+/** Ship / “best” requires exact 100 */
+export const ATS_BEST_SCORE = 100;
 
 const STOP = new Set(
   "the and for with that this from have will your our are you all any can not but into a an of to in on as by or be is was were been being at it its".split(
@@ -41,6 +47,8 @@ export function scoreResume(opts: {
   recentProjectCount?: number;
   temporalViolations?: number;
   earlyCareerOversell?: boolean;
+  /** When true, cap score at 70 so ATS cannot celebrate cosplay packs */
+  honestyFailed?: boolean;
 }): AtsResult {
   const text = opts.resumeText || "";
   const jd = opts.jd || "";
@@ -163,16 +171,27 @@ export function scoreResume(opts: {
     progressiveBalance,
     recencyEmphasis,
   };
-  const score = Math.min(
+  let score = Math.min(
     100,
     Object.values(breakdown).reduce((a, b) => a + b, 0)
   );
+
+  let honestyCapped = false;
+  if (opts.honestyFailed) {
+    // Elon constraint: never show ATS 100 while honesty fails
+    if (score > 70) {
+      score = 70;
+      honestyCapped = true;
+      warnings.push("ATS capped at 70 — honesty/psych gates failed");
+    }
+  }
 
   return {
     score,
     breakdown,
     missingKeywords: missing.slice(0, 12),
     warnings,
-    ready: score >= 95,
+    ready: score === ATS_BEST_SCORE && !honestyCapped,
+    honestyCapped,
   };
 }

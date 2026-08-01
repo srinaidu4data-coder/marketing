@@ -15,7 +15,10 @@ export function PromptTestForm({ versionId }: { versionId: string }) {
   const [result, setResult] = useState<{
     text: string;
     atsScore: number;
+    psychScore: number;
     atsReady: boolean;
+    best: boolean;
+    mode?: string;
     layoutId: string;
     jobTitle: string;
   } | null>(null);
@@ -35,7 +38,10 @@ export function PromptTestForm({ versionId }: { versionId: string }) {
         setResult({
           text: res.text,
           atsScore: res.atsScore,
+          psychScore: res.psychScore,
           atsReady: res.atsReady,
+          best: res.best,
+          mode: res.mode,
           layoutId: res.layoutId,
           jobTitle: res.jobTitle,
         });
@@ -87,13 +93,30 @@ export function PromptTestForm({ versionId }: { versionId: string }) {
             <span className="font-semibold text-emerald-900">Test result</span>
             <span
               className={
-                result.atsReady
+                result.atsScore === 100
                   ? "rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800"
                   : "rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800"
               }
             >
-              ATS {result.atsScore}/100 {result.atsReady ? "READY" : "REVIEW"}
+              ATS {result.atsScore}/100
             </span>
+            <span
+              className={
+                result.psychScore === 100
+                  ? "rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800"
+                  : "rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800"
+              }
+            >
+              Psych {result.psychScore}/100
+            </span>
+            {result.best ? (
+              <span className="rounded-full bg-[#0071e3]/15 px-2.5 py-0.5 text-xs font-semibold text-[#0071e3]">
+                BEST
+              </span>
+            ) : null}
+            {result.mode ? (
+              <span className="text-xs text-slate-500">Mode: {result.mode}</span>
+            ) : null}
             <span className="text-xs text-slate-500">Title: {result.jobTitle}</span>
             <span className="text-xs text-slate-500">Layout: {result.layoutId}</span>
             <a

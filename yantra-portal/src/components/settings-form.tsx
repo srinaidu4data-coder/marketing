@@ -207,8 +207,9 @@ export function SystemSettingsForm({
             <code className="rounded bg-white px-1">progressiveTitleTemplates</code>,{" "}
             <code className="rounded bg-white px-1">emergencyBullets</code>,{" "}
             <code className="rounded bg-white px-1">criticalPhrasePatterns</code>,{" "}
-            <code className="rounded bg-white px-1">methodologyDefaults</code>,{" "}
-            <code className="rounded bg-white px-1">educationDefaults</code>.
+            <code className="rounded bg-white px-1">methodologyDefaults</code>.{" "}
+            Education is master-only (not{" "}
+            <code className="rounded bg-white px-1">educationDefaults</code>).
           </p>
         </div>
       </fieldset>

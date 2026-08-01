@@ -411,9 +411,16 @@ export async function generateChainResumes(
           jobTitle: tailored.structured.meta.jobTitle,
           skillFingerprint: tailored.structured.meta.skillFingerprint,
           atsScore: tailored.ats.score,
-          atsReady: tailored.ats.ready,
+          psychScore: tailored.psych?.score ?? 0,
+          tailorMode: tailored.modeResult?.mode || tailored.structured.meta.tailorMode || "",
+          atsReady:
+            tailored.ats.score === 100 &&
+            (tailored.psych?.score ?? 0) === 100,
           atsBreakdownJson: JSON.stringify({
-            ...tailored.ats,
+            ats: tailored.ats,
+            psych: tailored.psych,
+            mode: tailored.modeResult,
+            best: tailored.best,
             packValidation: tailored.packValidation
               ? {
                   ok: tailored.packValidation.ok,
@@ -474,6 +481,8 @@ export async function generateChainResumes(
             jobTitle: "",
             skillFingerprint: "",
             atsScore: 0,
+            psychScore: 0,
+            tailorMode: "",
             atsReady: false,
             atsBreakdownJson: JSON.stringify({
               error: message,

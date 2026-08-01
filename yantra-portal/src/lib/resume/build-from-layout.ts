@@ -119,7 +119,7 @@ function sectionLines(
       return expBlock(c.projects, skills, bullet, sep, label);
     }
     case "education":
-      // Defaults come from admin policy (passed in as educationLines when empty upstream)
+      // Master-grounded only (upstream). Empty → section omitted by buildStructuredFromLayout.
       return c.educationLines.slice(0, 10);
     case "methodology":
       return c.methodologyLines.length

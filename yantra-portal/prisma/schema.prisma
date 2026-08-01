@@ -78,6 +78,10 @@ model ChainCandidate {
   jobTitle           String    @default("")
   skillFingerprint   String    @default("")
   atsScore           Int       @default(0)
+  /// Psych / credibility score 0–100 (best requires 100 with ATS)
+  psychScore         Int       @default(0)
+  /// same_domain | transfer | strict
+  tailorMode         String    @default("")
   atsReady           Boolean   @default(false)
   atsBreakdownJson   String    @default("{}")
   sendStatus         String    @default("PENDING") // PENDING | SENT | FAILED

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 import { audit } from "@/lib/audit";
@@ -79,59 +80,92 @@ async function persistMasterFile(file: File): Promise<{
   };
 }
 
-export async function createCandidate(formData: FormData) {
+/**
+ * Create roster entry, then continue the flow on the candidate profile.
+ * Uses server redirect (not client router) so navigation always works.
+ */
+export async function createCandidate(formData: FormData): Promise<void> {
   const admin = await requireAdmin();
   const defaults = await getSystemConfig();
   const name = String(formData.get("name") || "").trim();
   const email = String(formData.get("email") || "").trim();
-  const layoutId = String(formData.get("layoutId") || defaults.defaultLayoutId || "ats_classic");
+  const layoutId = String(
+    formData.get("layoutId") || defaults.defaultLayoutId || "ats_classic"
+  );
   const exportFormat = String(
     formData.get("exportFormat") || defaults.defaultExportFormat || "DOCX"
   );
-  const file = formData.get("resume") as File | null;
+  const file = formData.get("resume");
 
-  if (!name || !email) return;
+  if (!name || !email) {
+    redirect("/admin/candidates?error=" + encodeURIComponent("Name and email are required."));
+  }
 
   let masterResumeText = "";
   let masterResumePath: string | null = null;
   let masterProfileJson = "{}";
   let engagementCount = 0;
 
-  if (file && file.size > 0) {
-    const saved = await persistMasterFile(file);
-    masterResumeText = saved.masterResumeText;
-    masterResumePath = saved.masterResumePath;
-    masterProfileJson = saved.masterProfileJson;
-    engagementCount = saved.profile.engagements.length;
-  }
+  try {
+    if (file instanceof File && file.size > 0) {
+      const saved = await persistMasterFile(file);
+      masterResumeText = saved.masterResumeText;
+      masterResumePath = saved.masterResumePath;
+      masterProfileJson = saved.masterProfileJson;
+      engagementCount = saved.profile.engagements.length;
+    }
 
-  const c = await prisma.candidate.create({
-    data: {
+    const c = await prisma.candidate.create({
+      data: {
+        name,
+        email,
+        masterResumeText,
+        masterResumePath,
+        masterProfileJson,
+        layoutId: LAYOUT_IDS.has(layoutId as never) ? layoutId : "ats_classic",
+        exportFormat: exportFormat === "DOCX_PDF" ? "DOCX_PDF" : "DOCX",
+      },
+    });
+    const validation = validateMasterProfile(
+      parseStoredMasterProfile(masterProfileJson)
+    );
+
+    await audit("candidate.create", admin.id, {
+      candidateId: c.id,
       name,
       email,
-      masterResumeText,
-      masterResumePath,
-      masterProfileJson,
-      layoutId: LAYOUT_IDS.has(layoutId as never) ? layoutId : "ats_classic",
-      exportFormat: exportFormat === "DOCX_PDF" ? "DOCX_PDF" : "DOCX",
-    },
-  });
-  const validation = validateMasterProfile(
-    parseStoredMasterProfile(masterProfileJson)
-  );
+      layoutId: c.layoutId,
+      exportFormat: c.exportFormat,
+      engagementCount,
+      validationScore: validation?.score,
+      validationFail: validation?.summary.fail,
+      validationWarn: validation?.summary.warn,
+    });
+    revalidatePath("/admin/candidates");
+    revalidatePath(`/admin/candidates/${c.id}`);
+    revalidatePath("/admin/allocations");
+    revalidatePath("/chains/new");
 
-  await audit("candidate.create", admin.id, {
-    candidateId: c.id,
-    name,
-    email,
-    layoutId: c.layoutId,
-    exportFormat: c.exportFormat,
-    engagementCount,
-    validationScore: validation?.score,
-    validationFail: validation?.summary.fail,
-    validationWarn: validation?.summary.warn,
-  });
-  revalidatePath("/admin/candidates");
+    // Always land on profile — UI shows next step (upload master or start chain)
+    redirect(`/admin/candidates/${c.id}?new=1`);
+  } catch (e) {
+    // redirect() throws a special NEXT_REDIRECT error — rethrow it
+    if (
+      e &&
+      typeof e === "object" &&
+      "digest" in e &&
+      String((e as { digest?: string }).digest || "").startsWith("NEXT_REDIRECT")
+    ) {
+      throw e;
+    }
+    console.error("createCandidate failed", e);
+    redirect(
+      "/admin/candidates?error=" +
+        encodeURIComponent(
+          e instanceof Error ? e.message : "Could not create candidate."
+        )
+    );
+  }
 }
 
 export async function updateCandidate(candidateId: string, formData: FormData) {
@@ -160,6 +194,8 @@ export async function updateCandidate(candidateId: string, formData: FormData) {
   });
   revalidatePath(`/admin/candidates/${candidateId}`);
   revalidatePath("/admin/candidates");
+  revalidatePath("/admin/allocations");
+  revalidatePath("/chains/new");
 }
 
 export async function replaceMasterResume(

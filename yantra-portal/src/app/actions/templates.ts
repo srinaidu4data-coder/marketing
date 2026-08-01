@@ -62,9 +62,12 @@ export async function runPromptTest(
       ok: true;
       text: string;
       atsScore: number;
+      psychScore: number;
       atsReady: boolean;
+      best: boolean;
       layoutId: string;
       jobTitle: string;
+      mode?: string;
     }
   | { ok: false; error: string }
 > {
@@ -134,7 +137,10 @@ export async function runPromptTest(
       ok: true,
       text: result.text,
       atsScore: result.ats.score,
-      atsReady: result.ats.ready,
+      psychScore: result.psych?.score ?? 0,
+      atsReady: result.ats.score === 100 && (result.psych?.score ?? 0) === 100,
+      best: !!result.best,
+      mode: result.modeResult?.mode,
       layoutId: result.structured.layoutId,
       jobTitle: result.structured.meta.jobTitle,
     };

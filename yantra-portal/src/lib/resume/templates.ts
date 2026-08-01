@@ -26,9 +26,12 @@ export type StructuredResume = {
   layoutId: ResumeLayoutId;
   meta: {
     atsScore: number;
+    /** Psych / credibility score 0–100 (best requires 100) */
+    psychScore?: number;
     skillFingerprint: string;
     jobTitle: string;
     progressiveNotes: string[];
+    tailorMode?: string;
   };
 };
 

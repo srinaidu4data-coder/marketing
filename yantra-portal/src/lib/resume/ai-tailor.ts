@@ -38,9 +38,22 @@ import {
   anchorsFromMaster,
   assertMandatoryBulletDensity,
   buildProjects,
+  educationLinesForJd,
+  formatEducationNote,
   MIN_BULLETS_PER_PROJECT,
   type AiProjectInput,
 } from "./assemble-pack";
+import {
+  modePromptAppendix,
+  resolveTailorMode,
+  type TailorModeResult,
+} from "./tailor-mode";
+import { scorePsych, type PsychResult } from "./psych-scorer";
+import {
+  packHasFreeMetrics,
+  packHasIndustryCosplay,
+  packHasMasterResidueLeak,
+} from "./resume-honesty";
 import {
   parseStoredMasterProfile,
   profileForAiPath,
@@ -77,6 +90,7 @@ export type AiTailorResult = {
   structured: StructuredResume;
   text: string;
   ats: AtsResult;
+  psych: PsychResult;
   usedLlm: true;
   model: string;
   tokensIn: number;
@@ -86,6 +100,7 @@ export type AiTailorResult = {
   rulesGate: RulesGateResult;
   passes: number;
   matchGate: { pass: boolean; reasons: string[] };
+  modeResult: TailorModeResult;
 };
 
 type AiResumeJson = {
@@ -140,40 +155,6 @@ function isNoisyBullet(b: string): boolean {
     /near-100%|keyword coverage|ROLE\s*::|80\s*\/\s*hr/i.test(b) ||
     /Do the data work personally where it matters/i.test(b)
   );
-}
-
-function extractEducationLinesFromMaster(master: string): string[] {
-  if (!master || master.length < 20) return [];
-  const lines = master.replace(/\r\n/g, "\n").split("\n").map((l) => l.trim());
-  let start = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (
-      /^(education|academic|certifications?|licenses?)\b/i.test(lines[i]) &&
-      lines[i].length < 60
-    ) {
-      start = i + 1;
-      break;
-    }
-  }
-  if (start < 0) return [];
-  const out: string[] = [];
-  for (let i = start; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line) continue;
-    if (
-      /^(experience|professional|technical skills|skills|summary|employment)\b/i.test(
-        line
-      ) &&
-      line.length < 50
-    ) {
-      break;
-    }
-    if (line.length < 4 || line.length > 200) continue;
-    if (/^https?:\/\//i.test(line) || /@/.test(line)) continue;
-    out.push(line);
-    if (out.length >= 8) break;
-  }
-  return out;
 }
 
 async function chatJson(opts: {
@@ -434,15 +415,21 @@ export async function generateResumeWithOpenAi(
     ? honest.grounded
     : honest.masterOnly.slice(0, 20);
   const lowOverlap = isLowOverlap(input.jd, input.master);
+  const modeResult = resolveTailorMode(input.jd, input.master);
   const template = (input.promptTemplate || "").trim() || DEFAULT_PROMPT;
   await report("parse_master", "done");
   await report("parse_jd", "done");
   await report("title", "active");
   await report("header", "active");
 
+  const titleRule =
+    modeResult.jdTitlesOnRecent
+      ? `- projects[0..${Math.max(0, (policy.recentTitleCount || 2) - 1)}] title = exact JD title "${jobTitle}"; later = progressive same family.`
+      : `- Do NOT rewrite every project title as "${jobTitle}". Keep master career titles (or progressive variants of the SAME master family). Headline may target "${jobTitle}" only.`;
+
   const vars = {
     job_requirement: input.jd.slice(0, 14000),
-    vendor_context: `Vendor: ${input.vendorName}\nCandidate: ${input.candidateName}\nUS C2C SAP staffing`,
+    vendor_context: `Vendor: ${input.vendorName}\nCandidate: ${input.candidateName}\nUS C2C staffing`,
     candidate_master_resume: input.master.slice(0, 22000),
     candidate_name: input.candidateName,
     job_title: jobTitle,
@@ -451,21 +438,20 @@ export async function generateResumeWithOpenAi(
   const system =
     fillPrompt(template, vars) +
     `\n\nOUTPUT: valid JSON only. Layout target: ${layout.name} (${layout.researchSpine}).
+${modePromptAppendix(modeResult.mode, jobTitle)}
 CRITICAL POLICY — HONEST, COHERENT CAREER (no invention):
 - projects[] length MUST be ${Math.max(anchors.length, 1)} — every master employer.
-- projects[0..${Math.max(0, (policy.recentTitleCount || 2) - 1)}] title = exact JD title "${jobTitle}".
-- later projects: progressive variants of the SAME role family (not off-domain modules).
+${titleRule}
 - Keep client/startYear/endYear/location exact from REQUIRED PROJECTS — never invent locations.
 - Prefer REPHRASING master bullets toward JD language over inventing new work.
-- EACH project/client MUST have 8–10 bullet achievements (never fewer than 8). Recent denser (10), mid ~9, early at least 8.
-- Do NOT invent modules, tools, certifications, or deep ownership absent from MASTER and JD.
-- JD-only skills (not in master): skills section / recent framing only — never claim early-career deep config of tools not in master.
-- modules: short, era-appropriate — recent denser, early thinner; not the same long list on every job.
-- Domain hint "${domain}" is for coherence (avoid FICO titles on EWM JDs) — NOT a license to generate a full canned specialty pack.
+- EACH project should have ${modeResult.minBullets}–10 bullets from master rephrase — NEVER invent metrics (no free % or $). Prefer fewer honest bullets over fabricated density.
+- Do NOT invent modules, tools, certifications, or deep ownership absent from MASTER.
+- JD-only skills (not in master): skills section / recent framing only.
+- Domain hint "${domain}" is for coherence — NOT a license to invent a specialty career.
 - No duplicate bullets. No industry meta lines. No name/email in summary.
-- education/certifications: from master only.
-- SUMMARY: one voice only (no third-person name line after an "Experienced …" opener). At most ONE tenure claim, using master career span only — never invent a second number (e.g. do not write both "25 years" and "27+ years"). Do not append keyword dumps ("Core focus includes…") or SAP go-live boilerplate (cutover/hypercare) when domain is not SAP implementation.
-- HONESTY: Never claim years "in the Pharmaceutical / clinical / banking industry" unless MASTER text supports that industry. On low skill overlap, use transferable positioning only — do not invent a clinical/pharma career.`;
+- education: degrees from master only. certifications: only JD-relevant certs from master (drop SAP certs on clinical JDs).
+- SUMMARY: one voice, ONE years claim from master span. No keyword dumps. No cutover/hypercare on non-SAP domains.
+- HONESTY: Never claim years in Pharmaceutical/clinical/banking industry unless MASTER supports it. Mode=${modeResult.mode} overlap=${modeResult.overlap.toFixed(2)}.`;
 
   // Prefer upload-time MasterProfile (richer than anchors alone)
   const storedProfile = parseStoredMasterProfile(input.masterProfileJson);
@@ -633,6 +619,7 @@ ${gen.raw.slice(0, 12000)}`,
       skills,
       supportiveTitles: asArr(parsed.supportiveTitles),
       policy,
+      modeResult,
     });
   } catch (e) {
     // One more AI pass focused only on bullet density, then hard-fail
@@ -641,9 +628,9 @@ ${gen.raw.slice(0, 12000)}`,
       await report("projects_all", "active");
       const fixBullets = await chatJson({
         system,
-        user: `MANDATORY: every project must have ${MIN_BULLETS_PER_PROJECT}–10 bullets. Return FULL JSON only.
+        user: `MANDATORY: every project must have ${modeResult.minBullets}–10 bullets from MASTER rephrase only. Return FULL JSON only.
 Clients: ${anchors.map((a) => a.client).join(" | ")}.
-Prior output was rejected for thin bullets. Expand each projects[i].bullets to at least ${MIN_BULLETS_PER_PROJECT} distinct achievements (rephrase master; do not invent employers).
+Prior output was rejected for thin bullets. Expand by rephrasing master achievements — do NOT invent employers, metrics, or industry careers.
 Prior JSON:
 ${JSON.stringify(parsed).slice(0, 14000)}`,
         model: cfg.model,
@@ -664,6 +651,7 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
         skills,
         supportiveTitles: asArr(parsed.supportiveTitles),
         policy,
+        modeResult,
       });
     } else {
       throw e;
@@ -692,8 +680,8 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
     }
     return { ...p, bullets };
   });
-  // Final hard gate before any layout/DOCX work
-  assertMandatoryBulletDensity(projects, MIN_BULLETS_PER_PROJECT);
+  // Final hard gate before any layout/DOCX work (mode-aware min; no invent)
+  assertMandatoryBulletDensity(projects, modeResult.minBullets);
   await report("project_1", "done");
   await report("project_2", "done");
   await report("projects_rest", "done");
@@ -720,8 +708,15 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
 
   let impact = asArr(parsed.impact)
     .filter((b) => !isNoisyBullet(b) && !isOffDomainText(b, domain, policy))
+    // Drop free metrics not on master
+    .filter(
+      (b) =>
+        !/\b\d{1,3}\s*%/.test(b) ||
+        packHasFreeMetrics(b, input.master).length === 0
+    )
     .slice(0, 5);
-  if (impact.length < 3) {
+  // Transfer/strict: never invent impact templates
+  if (impact.length < 3 && modeResult.mode === "same_domain") {
     impact = domainProofBullets(
       domain,
       "recent",
@@ -729,26 +724,23 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
       jobTitle,
       groundedPack.length ? groundedPack : coherentSkills,
       policy
-    ).slice(0, 4);
+    )
+      .filter((b) => packHasFreeMetrics(b, input.master).length === 0)
+      .slice(0, 4);
   }
 
-  // Education/certs: master-grounded only — never invent degrees/certs
-  const masterLc = (input.master || "").toLowerCase();
-  const educationFromAi = [
-    ...asArr(parsed.education),
-    ...asArr(parsed.certifications),
-  ]
-    .filter((line) => {
-      const t = line.trim();
-      if (t.length < 4 || t.length > 200) return false;
-      const needle = t.toLowerCase().slice(0, Math.min(48, t.length));
-      return masterLc.includes(needle);
-    })
-    .slice(0, 10);
-  const education =
-    educationFromAi.length > 0
-      ? educationFromAi
-      : extractEducationLinesFromMaster(input.master);
+  // Degrees from master always; certs JD-relevant via AI (heuristic fallback).
+  // Never invent degrees/certs; never keep SAP certs on clinical JDs, etc.
+  await report("specialty", "active");
+  const edu = await educationLinesForJd({
+    master: input.master,
+    jd: input.jd,
+    jobTitle,
+    domain,
+    aiLines: [...asArr(parsed.education), ...asArr(parsed.certifications)],
+    useAi: true,
+  });
+  const education = edu.lines;
 
   await report("specialty", "done");
   await report("layout", "active");
@@ -790,7 +782,9 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
   );
   let text = renderPlainFromStructured(structured);
 
+  // Keyword inject only in same_domain (transfer/strict: stuffing ≠ honesty)
   if (
+    modeResult.mode === "same_domain" &&
     policy.specialtyInject &&
     !hasCriticalJdCoverage(text, critical, 0.35) &&
     critical.length >= 3
@@ -805,6 +799,21 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
     text = renderPlainFromStructured(structured);
   }
 
+  const honestyFailed =
+    packHasIndustryCosplay(text, input.master).length > 0 ||
+    packHasFreeMetrics(text, input.master).length > 0 ||
+    packHasMasterResidueLeak(text, input.jd, modeResult.mode).length > 0;
+
+  const psych = scorePsych({
+    resumeText: text,
+    masterText: input.master,
+    masterProfileJson: input.masterProfileJson,
+    jd: input.jd,
+    jobTitle,
+    mode: modeResult.mode,
+    candidateName: input.candidateName,
+  });
+
   const ats = scoreResume({
     resumeText: text,
     jd: input.jd,
@@ -812,8 +821,11 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
     recentProjectCount: Math.min(2, projects.length),
     temporalViolations: 0,
     earlyCareerOversell: false,
+    honestyFailed: honestyFailed || !psych.ready,
   });
   structured.meta.atsScore = ats.score;
+  structured.meta.psychScore = psych.score;
+  structured.meta.tailorMode = modeResult.mode;
   structured.meta.skillFingerprint = skillFingerprint(input.jd, jobTitle);
   structured.meta.jobTitle = jobTitle;
   await report("qa", "done");
@@ -830,33 +842,44 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
   });
   await report("rules", "done");
 
+  const dualBest = ats.score === 100 && psych.score === 100;
   structured.meta.progressiveNotes = [
     `AI ENGINE: OpenAI ${modelUsed}`,
+    `Mode: ${modeResult.label} (${modeResult.mode}) · overlap ${(modeResult.overlap * 100).toFixed(0)}%`,
     `Domain: ${domain} · Layout: ${layout.name}`,
     `Projects: ${projects.length}/${anchors.length || projects.length}`,
+    `ATS: ${ats.score}/100 ${ats.ready ? "BEST" : ""} · Psych: ${psych.score}/100 ${psych.ready ? "BEST" : ""} · Dual: ${dualBest ? "BEST" : "NOT BEST"}`,
     `Honesty: grounded ${groundedPack.length} · JD-only ${honest.jdOnly.length} · years ${yearsHint || "unknown"}`,
+    formatEducationNote(edu),
     `Rules: ${rulesGate.pass ? "PASS" : "FAIL"} (${rulesGate.score}%)`,
+    ...psych.warnings.slice(0, 4).map((w) => `Psych: ${w}`),
     ...rulesGate.checks.filter((c) => !c.ok).map((c) => `FAIL ${c.id}: ${c.message}`),
-    ...qa.issues.slice(0, 4).map((i) => `${i.code}: ${i.message}`),
+    ...qa.issues.slice(0, 3).map((i) => `${i.code}: ${i.message}`),
   ];
 
-  text += `\n\n— Role Forge AI · OPENAI · ${modelUsed} · Domain: ${domain} · Layout: ${layout.name} · Projects: ${projects.length}/${anchors.length || projects.length} · Rules: ${rulesGate.pass ? "PASS" : "FAIL"} · ATS: ${ats.score}/100 —\n`;
+  text += `\n\n— Role Forge AI · ${modelUsed} · Mode: ${modeResult.mode} · ATS: ${ats.score}/100 · Psych: ${psych.score}/100 · Dual: ${dualBest ? "BEST" : "REVIEW"} · Projects: ${projects.length} —\n`;
 
   return {
     structured,
     text,
     ats,
+    psych,
     usedLlm: true,
     model: modelUsed,
     tokensIn,
     tokensOut,
-    promptVersionNote: "makeover: honest AI+rules+layout+gate",
+    promptVersionNote: "v3: mode+psych+ats dual best",
     qaIssues: qa.issues,
     rulesGate,
     passes,
+    modeResult,
     matchGate: {
-      pass: rulesGate.pass,
-      reasons: rulesGate.checks.filter((c) => !c.ok).map((c) => c.message),
+      pass: dualBest && rulesGate.pass,
+      reasons: [
+        ...(!ats.ready ? [`ATS ${ats.score}<100`] : []),
+        ...(!psych.ready ? [`Psych ${psych.score}<100`] : []),
+        ...rulesGate.checks.filter((c) => !c.ok).map((c) => c.message),
+      ],
     },
   };
 }

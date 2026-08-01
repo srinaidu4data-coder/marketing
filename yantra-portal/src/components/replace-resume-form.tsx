@@ -19,7 +19,7 @@ export function ReplaceResumeForm({ candidateId }: { candidateId: string }) {
 
   return (
     <form
-      className="space-y-3 border-t pt-3"
+      className="space-y-3.5 border-t border-black/[0.05] pt-5"
       encType="multipart/form-data"
       onSubmit={(e) => {
         e.preventDefault();
@@ -75,38 +75,43 @@ export function ReplaceResumeForm({ candidateId }: { candidateId: string }) {
         });
       }}
     >
-      <Label htmlFor="replace-resume">Replace Master Resume</Label>
-      <p className="text-xs text-slate-500">
-        Preferred: <strong>.docx</strong> or <strong>.txt</strong> so Role Forge can read
-        employers, skills, dates, titles, and bullets into a full ground-truth checklist.
-        PDF is best-effort.
-      </p>
-      <Input
-        id="replace-resume"
-        ref={inputRef}
-        name="resume"
-        type="file"
-        required
-        accept=".txt,.doc,.docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          setFileName(f ? `${f.name} (${Math.round(f.size / 1024)} KB)` : "");
-          setError(null);
-          setSuccess(null);
-          setValidation(null);
-        }}
-      />
+      <div>
+        <Label htmlFor="replace-resume">Replace master</Label>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-[#86868b]">
+          Prefer <strong className="font-semibold text-[#6e6e73]">.docx</strong> or{" "}
+          <strong className="font-semibold text-[#6e6e73]">.txt</strong> so employers,
+          dates, and bullets parse cleanly. PDF is best-effort.
+        </p>
+      </div>
+      <div className="rounded-2xl border border-dashed border-black/[0.1] bg-[#fafafa]/80 px-3 py-3 transition-colors hover:border-black/[0.14]">
+        <Input
+          id="replace-resume"
+          ref={inputRef}
+          name="resume"
+          type="file"
+          required
+          accept=".txt,.doc,.docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+          className="border-0 bg-transparent shadow-none file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-3.5 file:py-1.5 file:text-[12px] file:font-semibold file:shadow-soft hover:border-0 focus-visible:ring-0"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            setFileName(f ? `${f.name} (${Math.round(f.size / 1024)} KB)` : "");
+            setError(null);
+            setSuccess(null);
+            setValidation(null);
+          }}
+        />
+      </div>
       {fileName ? (
-        <p className="text-xs font-medium text-slate-700">Selected: {fileName}</p>
+        <p className="text-[12.5px] font-medium text-[#1d1d1f]">Selected · {fileName}</p>
       ) : null}
 
       {error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-2xl border border-red-200/80 bg-red-50/90 px-3.5 py-2.5 text-[13.5px] text-red-800">
           {error}
         </div>
       ) : null}
       {success ? (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/90 px-3.5 py-2.5 text-[13.5px] text-emerald-900">
           {success}
         </div>
       ) : null}
@@ -156,8 +161,8 @@ export function ReplaceResumeForm({ candidateId }: { candidateId: string }) {
         </div>
       ) : null}
 
-      <Button type="submit" variant="outline" disabled={pending}>
-        {pending ? "Replacing…" : "Replace"}
+      <Button type="submit" variant="soft" disabled={pending} className="w-fit">
+        {pending ? "Replacing…" : "Replace master"}
       </Button>
     </form>
   );

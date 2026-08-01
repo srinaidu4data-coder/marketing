@@ -254,6 +254,7 @@ export const DEFAULT_RESUME_ENGINE_POLICY: ResumeEnginePolicy = {
     "Spec → build → test → release → hypercare → AMS KT.",
     "Prefer standard platform capability; document gaps with impact and approval path.",
   ],
+  /** @deprecated Not used by pack assembly — education is master-only. Kept for admin JSON compat. */
   educationDefaults: [
     "Bachelor's degree or equivalent professional experience.",
   ],
