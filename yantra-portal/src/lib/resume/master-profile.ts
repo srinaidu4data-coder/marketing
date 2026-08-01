@@ -77,25 +77,6 @@ export function parseStoredMasterProfile(
 const MONTH =
   "(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)";
 
-function monthToNum(m: string): number {
-  const s = m.toLowerCase().slice(0, 3);
-  const map: Record<string, number> = {
-    jan: 1,
-    feb: 2,
-    mar: 3,
-    apr: 4,
-    may: 5,
-    jun: 6,
-    jul: 7,
-    aug: 8,
-    sep: 9,
-    oct: 10,
-    nov: 11,
-    dec: 12,
-  };
-  return map[s] || 1;
-}
-
 export function parseDateRange(
   text: string
 ): { start: number; end: number | "Present" } | null {

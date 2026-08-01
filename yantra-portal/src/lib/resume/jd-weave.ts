@@ -56,7 +56,7 @@ export function cleanMasterBullets(
   const out: string[] = [];
   const seen = new Set<string>();
   for (const raw of masterBullets || []) {
-    let b = String(raw)
+    const b = String(raw)
       .replace(/^[•▸→–\-\*◆›]\s*/, "")
       .replace(/\s+/g, " ")
       .trim();

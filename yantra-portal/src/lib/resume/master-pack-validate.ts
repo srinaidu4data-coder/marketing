@@ -419,7 +419,7 @@ export function validatePackAgainstMaster(opts: {
   tailoredText: string;
   expectedYears?: number;
 }): PackValidationReport {
-  let profile =
+  const profile =
     parseStoredMasterProfile(opts.masterProfileJson) ||
     (opts.masterText ? parseMasterProfile(opts.masterText) : null);
 

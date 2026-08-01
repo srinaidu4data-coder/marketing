@@ -2,22 +2,19 @@
  * Progressive Resume Tailor (Role Forge v2)
  *
  * Output targets:
- * - 10â€“12+ bullet lines per project/client engagement
- * - Resume content sized for ~4â€“5 pages (DOCX/PDF)
+ * - 10–12+ bullet lines per project/client engagement
+ * - Resume content sized for ~4–5 pages (DOCX/PDF)
  * - Progressive career narrative (early balanced, recent heavily JD-aligned)
  * - Temporal skill integrity
- * - Internal ATS score target â‰¥ 95
+ * - Internal ATS score target ≥ 95
+ *
+ * Note: many helpers below are retained for the progressive-rules backup path
+ * and offline probes; some are unused by the primary AI assembly path.
  */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
+import type { AtsResult } from "./ats-scorer";
 import {
-  extractJdKeywords,
-  extractJobTitle,
-  scoreResume,
-  skillFingerprint,
-  type AtsResult,
-} from "./ats-scorer";
-import {
-  detectDomain,
   progressiveTitlesFromJobTitle,
   sanitizeSkillList,
   skillsHonestFromSources,
@@ -25,17 +22,7 @@ import {
   type DomainHint,
 } from "./jd-parse";
 import type { ResumeEnginePolicy } from "./resume-engine-policy";
-import { getResumeEnginePolicy } from "@/lib/system-settings";
-import {
-  getLayout,
-  type ResumeLayoutId,
-  type StructuredResume,
-} from "./templates";
-import { buildSectionsForLayout } from "./layout-structures";
-import {
-  extractContactFromMaster,
-  formatContactLine,
-} from "./extract-contact";
+import type { ResumeLayoutId, StructuredResume } from "./templates";
 
 /** Minimum bullets per project â€” denser packs for 4â€“5 page DOCX with heavy page-1 proof */
 /** @deprecated Density comes from admin policy bullets.* */
