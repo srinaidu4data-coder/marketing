@@ -208,7 +208,7 @@ export function scrubPackQuality(
 ): StructuredResume {
   const jd = opts.jd || "";
   const master = opts.masterText || "";
-  let jobTitle = (opts.jobTitle || structured.meta.jobTitle || structured.headline || "")
+  const jobTitle = (opts.jobTitle || structured.meta.jobTitle || structured.headline || "")
     .replace(/^[\-\–—•*]+\s*/, "")
     .replace(/\s+/g, " ")
     .trim();
