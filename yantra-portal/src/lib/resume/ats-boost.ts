@@ -295,8 +295,8 @@ export function boostPackTowardAts100(opts: {
     notes.push(`T3 → ATS ${ats.score}`);
   }
 
-  // ── T4: full JD keyword bank until ≥ shipFloor ───────────────────
-  if (ats.score < shipFloor) {
+  // ── T4: full JD keyword bank until ≥ shipFloor OR target 100 ─────
+  if (ats.score < shipFloor || ats.score < 100) {
     rounds++;
     tierReached = Math.max(tierReached, 4);
     const bank = extractJdKeywords(opts.jd, 40);
@@ -316,6 +316,23 @@ export function boostPackTowardAts100(opts: {
     text = renderPlainFromStructured(structured);
     ats = scoreOnce(text, opts.jd, opts.jobTitle, recentN);
     notes.push(`T4 full JD bank (${all.length} tokens) → ATS ${ats.score}`);
+  }
+
+  // ── T5: repeat T4 once more if still under 100 ───────────────────
+  if (ats.score < 100) {
+    rounds++;
+    tierReached = Math.max(tierReached, 5);
+    const bank = extractJdKeywords(opts.jd, 45);
+    const missing = ats.missingKeywords || [];
+    const all = Array.from(new Set([...bank, ...missing, opts.jobTitle].filter(Boolean) as string[]));
+    structured = mergeSkillsLine(structured, all, "Ship-floor skills");
+    structured = ensureTitleInSummary(structured, opts.jobTitle);
+    structured = ensureVerbs(structured, opts.jd, text);
+    structured = sprinkleIntoRecent(structured, all.slice(0, 10));
+    injected.push(...all.slice(0, 24));
+    text = renderPlainFromStructured(structured);
+    ats = scoreOnce(text, opts.jd, opts.jobTitle, recentN);
+    notes.push(`T5 force-100 inject (${all.length} tok) → ATS ${ats.score}`);
   }
 
   // Final render + score (still no honesty cap in boost — ship inspect is separate)

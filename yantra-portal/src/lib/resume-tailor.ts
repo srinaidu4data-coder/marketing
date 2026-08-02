@@ -59,38 +59,55 @@ async function attachPackValidation(
     master: string;
     jd: string;
     candidateName?: string;
+    /** Optional full re-generate for until-100 module */
+    regenerate?: () => Promise<{
+      structured: StructuredResume;
+      text: string;
+      ats: AtsResult;
+      psych?: PsychResult;
+    }>;
   }
 ): Promise<TailorResumeResult> {
-  // Safety net: if engine returned ATS < ship floor, re-run escalating boost
   let pack = result;
-  if ((pack.ats?.score ?? 0) < 95 && pack.structured) {
+
+  // Always run regenerate-until-100 when ATS < 100 (or missing)
+  if ((pack.ats?.score ?? 0) < 100 && pack.structured) {
     try {
-      const { boostPackTowardAts100 } = await import("./resume/ats-boost");
-      const boost = boostPackTowardAts100({
+      const { regenerateUntilAts100 } = await import(
+        "./resume/regenerate-until-100"
+      );
+      const regen = await regenerateUntilAts100({
         structured: pack.structured,
+        text: pack.text,
+        ats: pack.ats,
+        psych: pack.psych,
         jd: opts.jd,
-        jobTitle: pack.structured.meta.jobTitle || "",
         masterText: opts.master,
-        recentProjectCount: 2,
-        honestyFailed: false,
+        jobTitle: pack.structured.meta.jobTitle || "",
+        candidateName: opts.candidateName,
+        mode: pack.modeResult?.mode,
+        masterProfileJson: opts.masterProfileJson,
+        maxAttempts: 5,
+        regenerate: opts.regenerate,
       });
-      boost.structured.meta.atsScore = boost.ats.score;
-      boost.structured.meta.progressiveNotes = [
-        ...(boost.structured.meta.progressiveNotes || []),
-        ...boost.notes.slice(0, 4).map((n) => `Ship-safety ATS: ${n}`),
-      ];
       pack = {
         ...pack,
-        text: boost.text,
-        structured: boost.structured,
-        ats: boost.ats,
+        text: regen.text,
+        structured: regen.structured,
+        ats: regen.ats,
+        psych: regen.psych || pack.psych,
       };
+      pack.structured.meta.progressiveNotes = [
+        ...(pack.structured.meta.progressiveNotes || []),
+        `regenerate-until-100: ${regen.reached100 ? "ATS 100" : `final ${regen.ats.score}`} · ${regen.attempts} attempts`,
+        ...regen.history.slice(-6).map((h) => `regen: ${h}`),
+      ];
     } catch {
-      /* keep original */
+      /* keep original pack */
     }
   }
 
-  // Ship authority: structural + ATS ≥ 95. BEST badge = dual 100 (see pack-ship-ready).
+  // Ship authority: structural + ATS ≥ 95. BEST badge = dual 100.
   const ship = inspectPackShipReady({
     text: pack.text,
     masterText: opts.master,
@@ -102,6 +119,53 @@ async function attachPackValidation(
     mode: pack.modeResult?.mode,
   });
   if (!ship.ok) {
+    // One more forced regen on ship failure
+    try {
+      const { regenerateUntilAts100 } = await import(
+        "./resume/regenerate-until-100"
+      );
+      const regen = await regenerateUntilAts100({
+        structured: pack.structured,
+        text: pack.text,
+        ats: pack.ats,
+        psych: pack.psych,
+        jd: opts.jd,
+        masterText: opts.master,
+        jobTitle: pack.structured.meta.jobTitle || "",
+        candidateName: opts.candidateName,
+        mode: pack.modeResult?.mode,
+        masterProfileJson: opts.masterProfileJson,
+        maxAttempts: 4,
+        regenerate: opts.regenerate,
+      });
+      pack = {
+        ...pack,
+        text: regen.text,
+        structured: regen.structured,
+        ats: regen.ats,
+        psych: regen.psych || pack.psych,
+      };
+      const ship2 = inspectPackShipReady({
+        text: pack.text,
+        masterText: opts.master,
+        masterProfileJson: opts.masterProfileJson,
+        jd: opts.jd,
+        candidateName: opts.candidateName,
+        ats: pack.ats,
+        psych: pack.psych,
+        mode: pack.modeResult?.mode,
+      });
+      if (ship2.ok) {
+        pack.structured.meta.progressiveNotes = [
+          ...(pack.structured.meta.progressiveNotes || []),
+          `ship-recovery: OK after regen · ATS ${pack.ats.score}`,
+        ];
+        return finalizePack(pack, ship2, opts);
+      }
+    } catch {
+      /* fall through */
+    }
+
     const hard = ship.issues.filter(
       (i) =>
         !(i.code === "ats_below" && /ship OK/i.test(i.detail)) &&
@@ -113,6 +177,19 @@ async function attachPackValidation(
     );
   }
 
+  return finalizePack(pack, ship, opts);
+}
+
+function finalizePack(
+  pack: Omit<TailorResumeResult, "packValidation" | "best">,
+  ship: ReturnType<typeof inspectPackShipReady>,
+  opts: {
+    masterProfileJson?: string | null;
+    master: string;
+    jd: string;
+    candidateName?: string;
+  }
+): TailorResumeResult {
   const profile = parseStoredMasterProfile(opts.masterProfileJson);
   const starts =
     profile?.engagements.map((e) => e.startYear).filter((y) => y >= 1980) ||
@@ -141,7 +218,7 @@ async function attachPackValidation(
     ...pack,
     psych: psych || pack.psych,
     packValidation,
-    best: ship.best,
+    best: ship.best || (ats?.score === 100 && (psych?.score ?? 0) === 100),
   };
 }
 
@@ -248,6 +325,24 @@ export async function tailorResume(opts: {
         ];
 
         enginesTried.push({ engine, ok: true });
+        const regenOpenAi = async () => {
+          const again = await generateResumeWithOpenAi({
+            promptTemplate,
+            master: opts.master,
+            jd: opts.jd,
+            vendorName: opts.vendorName,
+            candidateName: opts.candidateName,
+            layoutId: opts.layoutId,
+            email: opts.email,
+            masterProfileJson: opts.masterProfileJson,
+          });
+          return {
+            structured: again.structured,
+            text: again.text,
+            ats: again.ats,
+            psych: again.psych,
+          };
+        };
         return await attachPackValidation(
           {
             structured: result.structured,
@@ -270,6 +365,7 @@ export async function tailorResume(opts: {
             master: opts.master,
             jd: opts.jd,
             candidateName: opts.candidateName,
+            regenerate: regenOpenAi,
           }
         );
       }
@@ -315,6 +411,23 @@ export async function tailorResume(opts: {
         }
 
         enginesTried.push({ engine, ok: true });
+        const regenRules = async () => {
+          const again = await assembleDeterministicPack({
+            master: opts.master,
+            jd: opts.jd,
+            vendorName: opts.vendorName,
+            candidateName: opts.candidateName,
+            layoutId: opts.layoutId,
+            email: opts.email,
+            masterProfileJson: opts.masterProfileJson,
+          });
+          return {
+            structured: again.structured,
+            text: again.text,
+            ats: again.ats,
+            psych: again.psych,
+          };
+        };
         return await attachPackValidation(
           {
             structured: pack.structured,
@@ -339,6 +452,7 @@ export async function tailorResume(opts: {
             master: opts.master,
             jd: opts.jd,
             candidateName: opts.candidateName,
+            regenerate: regenRules,
           }
         );
       }
@@ -356,9 +470,100 @@ export async function tailorResume(opts: {
     }
   }
 
+  // Final recovery: regenerate-until-100 module after all engines failed
   const detail = enginesTried
     .map((e) => `${e.engine}: ${e.ok ? "ok" : e.error || "fail"}`)
     .join(" | ");
+  try {
+    const { recoverFromGenerationError } = await import(
+      "./resume/regenerate-until-100"
+    );
+    const openai = getOpenAiConfig();
+    const regen = await recoverFromGenerationError({
+      error: lastError || new Error(detail),
+      jd: opts.jd,
+      masterText: opts.master,
+      jobTitle: "",
+      candidateName: opts.candidateName,
+      masterProfileJson: opts.masterProfileJson,
+      mode: "transfer",
+      regenerate: openai.configured
+        ? async () => {
+            const again = await generateResumeWithOpenAi({
+              promptTemplate,
+              master: opts.master,
+              jd: opts.jd,
+              vendorName: opts.vendorName,
+              candidateName: opts.candidateName,
+              layoutId: opts.layoutId,
+              email: opts.email,
+              masterProfileJson: opts.masterProfileJson,
+            });
+            return {
+              structured: again.structured,
+              text: again.text,
+              ats: again.ats,
+              psych: again.psych,
+            };
+          }
+        : async () => {
+            const again = await assembleDeterministicPack({
+              master: opts.master,
+              jd: opts.jd,
+              vendorName: opts.vendorName,
+              candidateName: opts.candidateName,
+              layoutId: opts.layoutId,
+              email: opts.email,
+              masterProfileJson: opts.masterProfileJson,
+            });
+            return {
+              structured: again.structured,
+              text: again.text,
+              ats: again.ats,
+              psych: again.psych,
+            };
+          },
+    });
+
+    if ((regen.ats?.score ?? 0) >= 95) {
+      regen.structured.meta.progressiveNotes = [
+        ...(regen.structured.meta.progressiveNotes || []),
+        `recover-module: engines failed → regen · ATS ${regen.ats.score} · ${detail}`,
+        ...regen.history.slice(-5).map((h) => `regen: ${h}`),
+      ];
+      return await attachPackValidation(
+        {
+          structured: regen.structured,
+          text: regen.text,
+          ats: regen.ats,
+          psych: regen.psych,
+          usedLlm: openai.configured,
+          model: openai.configured ? openai.model : "rules-engine",
+          engine: openai.configured ? "ai-tailor" : "progressive-rules",
+          enginesTried: [
+            ...enginesTried,
+            {
+              engine: "ai-tailor",
+              ok: true,
+              error: "recovered via regenerate-until-100",
+            },
+          ],
+          passes: regen.attempts,
+          tokensIn: 0,
+          tokensOut: 0,
+        },
+        {
+          masterProfileJson: opts.masterProfileJson,
+          master: opts.master,
+          jd: opts.jd,
+          candidateName: opts.candidateName,
+        }
+      );
+    }
+  } catch {
+    /* fall through to throw */
+  }
+
   throw new Error(
     lastError
       ? `All resume engines failed. ${detail}. Last: ${lastError.message}`
