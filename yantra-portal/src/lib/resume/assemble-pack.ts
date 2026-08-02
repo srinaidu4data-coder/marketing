@@ -180,22 +180,6 @@ function isMetaStackLine(s: string): boolean {
   return /^(oil|gas|retail|hospitality|pharma)/i.test(s) || s.length > 55;
 }
 
-function isOffDomainTitle(
-  title: string,
-  domain: DomainHint,
-  jobTitle: string,
-  policy: ResumeEnginePolicy
-): boolean {
-  const t = (title || "").toLowerCase();
-  if (!t) return true;
-  const jdCore = jobTitle
-    .toLowerCase()
-    .replace(/senior|lead|principal|consultant|analyst/g, "")
-    .trim();
-  if (jdCore.length > 4 && t.includes(jdCore.slice(0, 12))) return false;
-  return isOffDomainText(t, domain, policy);
-}
-
 function titleForIndex(
   idx: number,
   jobTitle: string,
