@@ -12,7 +12,6 @@
 import { DEFAULT_PROMPT } from "@/lib/constants";
 import {
   extractJobTitle,
-  scoreResume,
   skillFingerprint,
   type AtsResult,
 } from "./ats-scorer";
@@ -30,7 +29,6 @@ import { extractContactFromMaster, formatContactLine } from "./extract-contact";
 import {
   criticalJdPhrases,
   domainProofBullets,
-  hasCriticalJdCoverage,
 } from "./jd-weave";
 import { getLayoutConfig } from "./layout-config";
 import { getOpenAiConfig } from "./openai-config";
@@ -59,7 +57,6 @@ import { scorePsych, type PsychResult } from "./psych-scorer";
 import {
   packHasFreeMetrics,
   packHasIndustryCosplay,
-  packHasMasterResidueLeak,
 } from "./resume-honesty";
 import {
   parseStoredMasterProfile,
@@ -782,7 +779,7 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
   await report("layout", "done");
   await report("qa", "active");
 
-  // One QA + scrub + optional keyword line + single ATS score
+  // One QA + scrub + aggressive JD keyword inject (all modes — slightly less honest)
   const qa = qaAndRepairResume(structured);
   structured = scrubContradictionsInStructured(
     qa.fixed,
@@ -792,16 +789,11 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
   );
   let text = renderPlainFromStructured(structured);
 
-  // Keyword inject only in same_domain (transfer/strict: stuffing ≠ honesty)
-  if (
-    modeResult.mode === "same_domain" &&
-    policy.specialtyInject &&
-    !hasCriticalJdCoverage(text, critical, 0.35) &&
-    critical.length >= 3
-  ) {
-    const inject = `JD keywords: ${critical.slice(0, 10).join(" · ")}`;
+  // Always inject critical JD tokens into skills (not only same_domain)
+  if (policy.specialtyInject !== false && critical.length >= 2) {
+    const inject = `JD keywords: ${critical.slice(0, 14).join(" · ")}`;
     structured.sections = structured.sections.map((sec) => {
-      if (!/skill|matrix|competenc|stack|instrument|capability/i.test(sec.heading))
+      if (!/skill|matrix|competenc|stack|instrument|capability|core/i.test(sec.heading))
         return sec;
       if (sec.lines.some((l) => /JD keywords:/i.test(l))) return sec;
       return { ...sec, lines: [inject, ...sec.lines] };
@@ -809,10 +801,24 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
     text = renderPlainFromStructured(structured);
   }
 
+  // Hard honesty only: free metrics + industry cosplay (no psych-ready ATS cap)
   const honestyFailed =
     packHasIndustryCosplay(text, input.master).length > 0 ||
-    packHasFreeMetrics(text, input.master).length > 0 ||
-    packHasMasterResidueLeak(text, input.jd, modeResult.mode).length > 0;
+    packHasFreeMetrics(text, input.master).length > 0;
+
+  // Climb ATS toward 100 (inject missing keywords / title / verbs)
+  const { boostPackTowardAts100 } = await import("./ats-boost");
+  const boost = boostPackTowardAts100({
+    structured,
+    jd: input.jd,
+    jobTitle,
+    recentProjectCount: Math.min(2, projects.length),
+    honestyFailed,
+    maxRounds: 2,
+  });
+  structured = boost.structured;
+  text = boost.text;
+  const ats = boost.ats;
 
   const psych = scorePsych({
     resumeText: text,
@@ -824,15 +830,7 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
     candidateName: input.candidateName,
   });
 
-  const ats = scoreResume({
-    resumeText: text,
-    jd: input.jd,
-    jobTitle,
-    recentProjectCount: Math.min(2, projects.length),
-    temporalViolations: 0,
-    earlyCareerOversell: false,
-    honestyFailed: honestyFailed || !psych.ready,
-  });
+  // If psych soft-fails, do NOT re-cap ATS at 70 — user wants 100 when Fit-IR is full
   structured.meta.atsScore = ats.score;
   structured.meta.psychScore = psych.score;
   structured.meta.tailorMode = modeResult.mode;
@@ -859,7 +857,10 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
     `Domain: ${domain} · Layout: ${layout.name}`,
     `Projects: ${projects.length}/${anchors.length || projects.length}`,
     `ATS: ${ats.score}/100 ${ats.ready ? "BEST" : ""} · Psych: ${psych.score}/100 ${psych.ready ? "BEST" : ""} · Dual: ${dualBest ? "BEST" : "NOT BEST"}`,
-    `Honesty: grounded ${groundedPack.length} · JD-only ${honest.jdOnly.length} · years ${yearsHint || "unknown"}`,
+    boost.boosted
+      ? `ATS boost: ${boost.rounds} round(s) · injected ${boost.injected.slice(0, 8).join(", ") || "title/verbs"}`
+      : "ATS boost: not needed",
+    `Honesty: soft (JD inject on) · grounded ${groundedPack.length} · JD-only ${honest.jdOnly.length}`,
     formatEducationNote(edu),
     `Rules: ${rulesGate.pass ? "PASS" : "FAIL"} (${rulesGate.score}%)`,
     ...psych.warnings.slice(0, 4).map((w) => `Psych: ${w}`),

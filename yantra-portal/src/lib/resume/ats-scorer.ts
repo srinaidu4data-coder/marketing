@@ -84,10 +84,10 @@ export function scoreResume(opts: {
     }
   }
   const coverageRatio = keywords.length ? hit / keywords.length : 1;
-  // Full keyword points once ≥90% of JD terms appear (near-100% matching target)
-  const keywordCoverage = Math.round(25 * Math.min(1, coverageRatio / 0.9));
-  if (coverageRatio < 0.9) {
-    warnings.push(`Keyword coverage only ${Math.round(coverageRatio * 100)}% (target ≥90%)`);
+  // Slightly softer: full keyword points once ≥85% of JD terms appear (was 90%)
+  const keywordCoverage = Math.round(25 * Math.min(1, coverageRatio / 0.85));
+  if (coverageRatio < 0.85) {
+    warnings.push(`Keyword coverage only ${Math.round(coverageRatio * 100)}% (target ≥85%)`);
   }
 
   let roleMatch = 0;

@@ -29,7 +29,7 @@ import {
   detectDomain,
   type DomainHint,
 } from "./jd-parse";
-import { scoreResume, type AtsResult } from "./ats-scorer";
+import type { AtsResult } from "./ats-scorer";
 import {
   cleanMasterBullets,
   criticalJdPhrases,
@@ -721,12 +721,27 @@ export async function assembleDeterministicPack(opts: {
   const {
     packHasFreeMetrics,
     packHasIndustryCosplay,
-    packHasMasterResidueLeak,
   } = await import("./resume-honesty");
+  // Soft honesty for ATS: only free metrics + hard cosplay cap score
   const honestyFailed =
     packHasIndustryCosplay(text, opts.master).length > 0 ||
-    packHasFreeMetrics(text, opts.master).length > 0 ||
-    packHasMasterResidueLeak(text, opts.jd, modeResult.mode).length > 0;
+    packHasFreeMetrics(text, opts.master).length > 0;
+
+  const { boostPackTowardAts100 } = await import("./ats-boost");
+  const boost = boostPackTowardAts100({
+    structured,
+    jd: opts.jd,
+    jobTitle,
+    recentProjectCount: Math.min(
+      Math.max(1, policy.recentTitleCount || 2),
+      projects.length
+    ),
+    honestyFailed,
+    maxRounds: 2,
+  });
+  structured = boost.structured;
+  text = boost.text;
+  const ats = boost.ats;
 
   const psych = scorePsych({
     resumeText: text,
@@ -737,18 +752,6 @@ export async function assembleDeterministicPack(opts: {
     mode: modeResult.mode,
     candidateName: opts.candidateName,
   });
-  const ats = scoreResume({
-    resumeText: text,
-    jd: opts.jd,
-    jobTitle,
-    recentProjectCount: Math.min(
-      Math.max(1, policy.recentTitleCount || 2),
-      projects.length
-    ),
-    temporalViolations: 0,
-    earlyCareerOversell: false,
-    honestyFailed: honestyFailed || !psych.ready,
-  });
   structured.meta.atsScore = ats.score;
   structured.meta.psychScore = psych.score;
   const dualBest = ats.score === 100 && psych.score === 100;
@@ -757,6 +760,9 @@ export async function assembleDeterministicPack(opts: {
     `Mode: ${modeResult.label} (${modeResult.mode}) · overlap ${(modeResult.overlap * 100).toFixed(0)}%`,
     `Domain: ${domain} · Projects: ${projects.length}`,
     `ATS: ${ats.score}/100 · Psych: ${psych.score}/100 · Dual: ${dualBest ? "BEST" : "REVIEW"}`,
+    boost.boosted
+      ? `ATS boost: ${boost.rounds}r · ${boost.injected.slice(0, 6).join(", ") || "title/verbs"}`
+      : "ATS boost: n/a",
     formatEducationNote(edu),
     ...psych.warnings.slice(0, 3).map((w) => `Psych: ${w}`),
   ];
