@@ -413,9 +413,7 @@ export async function generateChainResumes(
           atsScore: tailored.ats.score,
           psychScore: tailored.psych?.score ?? 0,
           tailorMode: tailored.modeResult?.mode || tailored.structured.meta.tailorMode || "",
-          atsReady:
-            tailored.ats.score === 100 &&
-            (tailored.psych?.score ?? 0) === 100,
+          atsReady: tailored.ats.score >= 95, // ship floor; BEST = dual 100 on best flag
           atsBreakdownJson: JSON.stringify({
             ats: tailored.ats,
             psych: tailored.psych,

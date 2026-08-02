@@ -5,15 +5,17 @@ Validated by plan agents (Karpathy-style simplicity + Elon-style hard gates).
 ## Contract
 
 ```
-BEST  ⇔  structural ship OK
-      ∧  ATS score === 100
-      ∧  Psych score === 100
+SHIP  ⇔  structural OK  ∧  ATS ≥ 95
+BEST  ⇔  structural OK  ∧  ATS === 100  ∧  Psych === 100
 ```
 
+- **SHIP** = client-submittable (download / send / chain ready)
+- **BEST** = marketing dual-perfect badge only
 - **ATS** = Fit-IR (parse, keywords, role, temporal, progressive, recency)
 - **Psych** = credibility (cosplay, free metrics, employers, certs, titles, years, identity, first-screen)
 
 If honesty fails, **ATS is capped at 70** so we never ship “ATS 100 / Rules FAIL” theater.
+Emergency: do **not** discard ATS 95 packs for missing dual-100 BEST.
 
 ## Bullet density (ONE LAW)
 

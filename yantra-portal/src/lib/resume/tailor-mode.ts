@@ -45,11 +45,13 @@ export function resolveTailorMode(
   const overlap = groundedOverlapRatio(jd || "", master || "");
   // Density law is global — modes only change titles/honesty framing.
   const minBullets = MIN_BULLETS_PER_PROJECT;
+  // Soft density fill allowed when policy.emergencyFill is on (assemble-pack also checks policy).
+  // Prefer rephrase; fill only pads to min 8 — never invent employers/metrics free of master.
   if (overlap >= OVERLAP_SAME_DOMAIN) {
     return {
       mode: "same_domain",
       overlap,
-      allowEmergencyFill: false, // still no invent — master/AI only
+      allowEmergencyFill: true,
       jdTitlesOnRecent: true,
       minBullets,
       label: "Same-domain tailor",
@@ -59,7 +61,7 @@ export function resolveTailorMode(
     return {
       mode: "transfer",
       overlap,
-      allowEmergencyFill: false,
+      allowEmergencyFill: true,
       jdTitlesOnRecent: false,
       minBullets,
       label: "Transfer tailor",
@@ -68,7 +70,7 @@ export function resolveTailorMode(
   return {
     mode: "strict",
     overlap,
-    allowEmergencyFill: false,
+    allowEmergencyFill: true,
     jdTitlesOnRecent: false,
     minBullets,
     label: "Strict truth",

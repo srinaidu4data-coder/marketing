@@ -471,7 +471,11 @@ export function buildProjects(opts: {
   const jdTitlesOnRecent = modeResult?.jdTitlesOnRecent !== false;
   // ONE LAW: min always 8 — mode never lowers density (titles/honesty only).
   const minBullets = MIN_BULLETS_PER_PROJECT;
-  const allowEmergencyFill = modeResult?.allowEmergencyFill === true;
+  // Emergency: allow soft-fill when policy says so (default true) so thin masters
+  // can still reach min 8 instead of hard-blocking every pack.
+  const allowEmergencyFill =
+    modeResult?.allowEmergencyFill === true ||
+    opts.policy.emergencyFill === true;
 
   const list: ProjectAnchor[] =
     opts.anchors.length > 0

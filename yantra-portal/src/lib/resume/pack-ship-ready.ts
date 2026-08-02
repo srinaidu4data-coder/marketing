@@ -2,7 +2,11 @@
  * Shared ship/no-ship checks for generated packs.
  * Single authority for generation, download, send, and chain UI.
  *
- * Best pack: structural OK ∧ ats.score === 100 ∧ psych.score === 100
+ * SHIP  (ok):   structural OK ∧ ATS ≥ SHIP_MIN_ATS (95)
+ * BEST (badge): structural OK ∧ ATS === 100 ∧ Psych === 100
+ *
+ * Emergency product rule: do not discard high-quality packs (e.g. ATS 95)
+ * just because dual-100 BEST is not met.
  */
 
 import {
@@ -10,6 +14,12 @@ import {
   MAX_BULLETS_PER_PROJECT,
   BULLET_DENSITY_RANGE,
 } from "./bullet-density";
+
+/** Minimum ATS to ship / download / send (policy default 95). */
+export const SHIP_MIN_ATS = 95;
+/** Dual perfect scores for marketing BEST badge only. */
+export const BEST_ATS = 100;
+export const BEST_PSYCH = 100;
 import {
   packHasIndustryCosplay,
   packHasFreeMetrics,
@@ -193,20 +203,26 @@ export function inspectPackShipReady(opts: {
     // Legacy path with only numbers
   }
 
-  // Cap / dual 100 requirement when scores available
+  // Score messaging: ship floor vs BEST badge (do not conflate)
   if (ats) {
-    if (ats.score < 100) {
+    if (ats.score < SHIP_MIN_ATS) {
       issues.push({
         code: "ats_below",
-        detail: `ATS ${ats.score}/100 (best requires 100)`,
+        detail: `ATS ${ats.score}/100 (ship requires ≥${SHIP_MIN_ATS})`,
+      });
+    } else if (ats.score < BEST_ATS) {
+      // Informational only — does not block ship (code still listed for UI)
+      issues.push({
+        code: "ats_below",
+        detail: `ATS ${ats.score}/100 (ship OK ≥${SHIP_MIN_ATS}; BEST badge needs ${BEST_ATS})`,
       });
     }
   }
   if (psych) {
-    if (psych.score < 100) {
+    if (psych.score < BEST_PSYCH) {
       issues.push({
         code: "psych_below",
-        detail: `Psych ${psych.score}/100 (best requires 100) · ${psych.warnings.slice(0, 2).join("; ")}`,
+        detail: `Psych ${psych.score}/100 (BEST badge needs ${BEST_PSYCH}) · ${psych.warnings.slice(0, 2).join("; ")}`,
       });
     }
   }
@@ -222,12 +238,18 @@ export function inspectPackShipReady(opts: {
       "generation_blocked",
     ].includes(i.code)
   );
-  // When JD provided, require both scores present and 100
-  const dualRequired = !!(opts.jd && master);
-  const dualOk =
-    !dualRequired || (!!ats && !!psych && ats.score === 100 && psych.score === 100);
-  const ok = structuralOk && dualOk;
-  const best = ok && !!ats && !!psych && ats.score === 100 && psych.score === 100;
+  // When JD+master: ship if ATS ≥ 95. Psych/ATS-100 only gate BEST badge.
+  // ats_below / psych_below issues are retained for UI but do NOT force fail when ship floor met.
+  const scoresRequired = !!(opts.jd && master);
+  const shipScoresOk =
+    !scoresRequired || (!!ats && ats.score >= SHIP_MIN_ATS);
+  const ok = structuralOk && shipScoresOk;
+  const best =
+    ok &&
+    !!ats &&
+    !!psych &&
+    ats.score >= BEST_ATS &&
+    psych.score >= BEST_PSYCH;
 
   return {
     ok,

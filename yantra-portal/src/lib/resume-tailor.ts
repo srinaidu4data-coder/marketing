@@ -61,7 +61,7 @@ function attachPackValidation(
     candidateName?: string;
   }
 ): TailorResumeResult {
-  // Single ship authority: structural + ATS 100 + Psych 100
+  // Ship authority: structural + ATS ≥ 95. BEST badge = dual 100 (see pack-ship-ready).
   // Bullet floor is ONE LAW (min 8) inside inspectPackShipReady — do not pass mode mins.
   const ship = inspectPackShipReady({
     text: result.text,
@@ -74,8 +74,15 @@ function attachPackValidation(
     mode: result.modeResult?.mode,
   });
   if (!ship.ok) {
+    // ship.ok already uses ATS ≥ 95 + structure; issues list may include soft notes
+    const hard = ship.issues.filter(
+      (i) =>
+        !(i.code === "ats_below" && /ship OK/i.test(i.detail)) &&
+        !(i.code === "psych_below" && /BEST badge/i.test(i.detail))
+    );
+    const details = (hard.length ? hard : ship.issues).map((i) => i.detail);
     throw new Error(
-      `Resume generation blocked: ${ship.issues.map((i) => i.detail).join("; ")}. Full resume was not generated.`
+      `Resume generation blocked: ${details.join("; ")}. Full resume was not generated.`
     );
   }
 
