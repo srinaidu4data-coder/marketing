@@ -14,12 +14,6 @@ import {
   MAX_BULLETS_PER_PROJECT,
   BULLET_DENSITY_RANGE,
 } from "./bullet-density";
-
-/** Minimum ATS to ship / download / send (policy default 95). */
-export const SHIP_MIN_ATS = 95;
-/** Dual perfect scores for marketing BEST badge only. */
-export const BEST_ATS = 100;
-export const BEST_PSYCH = 100;
 import {
   packHasIndustryCosplay,
   packHasFreeMetrics,
@@ -27,13 +21,19 @@ import {
   assertAllMasterClientsPresent,
 } from "./resume-honesty";
 import { parseStoredMasterProfile } from "./master-profile";
-import { scoreResume, type AtsResult } from "./ats-scorer";
+import { scoreResume, type AtsResult, SHIP_MIN_ATS } from "./ats-scorer";
 import { scorePsych, type PsychResult } from "./psych-scorer";
 import {
   resolveTailorMode,
   type TailorMode,
 } from "./tailor-mode";
 import { extractJobTitle } from "./jd-parse";
+
+/** Re-export single ship floor (defined in ats-scorer). */
+export { SHIP_MIN_ATS };
+/** Dual perfect scores for marketing BEST badge only. */
+export const BEST_ATS = 100;
+export const BEST_PSYCH = 100;
 
 export type PackShipIssue = {
   code:

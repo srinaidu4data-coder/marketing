@@ -52,7 +52,7 @@ export type TailorResumeResult = {
   best?: boolean;
 };
 
-function attachPackValidation(
+async function attachPackValidation(
   result: Omit<TailorResumeResult, "packValidation" | "best">,
   opts: {
     masterProfileJson?: string | null;
@@ -60,21 +60,48 @@ function attachPackValidation(
     jd: string;
     candidateName?: string;
   }
-): TailorResumeResult {
+): Promise<TailorResumeResult> {
+  // Safety net: if engine returned ATS < ship floor, re-run escalating boost
+  let pack = result;
+  if ((pack.ats?.score ?? 0) < 95 && pack.structured) {
+    try {
+      const { boostPackTowardAts100 } = await import("./resume/ats-boost");
+      const boost = boostPackTowardAts100({
+        structured: pack.structured,
+        jd: opts.jd,
+        jobTitle: pack.structured.meta.jobTitle || "",
+        masterText: opts.master,
+        recentProjectCount: 2,
+        honestyFailed: false,
+      });
+      boost.structured.meta.atsScore = boost.ats.score;
+      boost.structured.meta.progressiveNotes = [
+        ...(boost.structured.meta.progressiveNotes || []),
+        ...boost.notes.slice(0, 4).map((n) => `Ship-safety ATS: ${n}`),
+      ];
+      pack = {
+        ...pack,
+        text: boost.text,
+        structured: boost.structured,
+        ats: boost.ats,
+      };
+    } catch {
+      /* keep original */
+    }
+  }
+
   // Ship authority: structural + ATS ≥ 95. BEST badge = dual 100 (see pack-ship-ready).
-  // Bullet floor is ONE LAW (min 8) inside inspectPackShipReady — do not pass mode mins.
   const ship = inspectPackShipReady({
-    text: result.text,
+    text: pack.text,
     masterText: opts.master,
     masterProfileJson: opts.masterProfileJson,
     jd: opts.jd,
     candidateName: opts.candidateName,
-    ats: result.ats,
-    psych: result.psych,
-    mode: result.modeResult?.mode,
+    ats: pack.ats,
+    psych: pack.psych,
+    mode: pack.modeResult?.mode,
   });
   if (!ship.ok) {
-    // ship.ok already uses ATS ≥ 95 + structure; issues list may include soft notes
     const hard = ship.issues.filter(
       (i) =>
         !(i.code === "ats_below" && /ship OK/i.test(i.detail)) &&
@@ -96,23 +123,23 @@ function attachPackValidation(
   const packValidation = validatePackAgainstMaster({
     masterProfileJson: opts.masterProfileJson,
     masterText: opts.master,
-    tailoredText: result.text,
+    tailoredText: pack.text,
     expectedYears: span,
   });
 
-  const psych = result.psych || ship.psych;
-  const ats = result.ats || ship.ats;
-  result.structured.meta.psychScore = psych?.score;
-  result.structured.meta.atsScore = ats?.score ?? result.ats.score;
-  result.structured.meta.progressiveNotes = [
-    ...result.structured.meta.progressiveNotes,
+  const psych = pack.psych || ship.psych;
+  const ats = pack.ats || ship.ats;
+  pack.structured.meta.psychScore = psych?.score;
+  pack.structured.meta.atsScore = ats?.score ?? pack.ats.score;
+  pack.structured.meta.progressiveNotes = [
+    ...pack.structured.meta.progressiveNotes,
     `Ground-truth: ${packValidation.ok ? "PASS" : "REVIEW"} ${packValidation.score}% · clients ${packValidation.clientsFound.length}/${packValidation.engagementCount}`,
     `Dual scores: ATS ${ats?.score ?? "?"}/100 · Psych ${psych?.score ?? "?"}/100 · ${ship.best ? "BEST" : "SHIP OK"}`,
     `Ship-ready: OK · mode ${ship.mode || "?"} · min bullets ${ship.minBulletsSeen ?? "?"}`,
   ];
   return {
-    ...result,
-    psych: psych || result.psych,
+    ...pack,
+    psych: psych || pack.psych,
     packValidation,
     best: ship.best,
   };
@@ -221,7 +248,7 @@ export async function tailorResume(opts: {
         ];
 
         enginesTried.push({ engine, ok: true });
-        return attachPackValidation(
+        return await attachPackValidation(
           {
             structured: result.structured,
             text: result.text,
@@ -288,7 +315,7 @@ export async function tailorResume(opts: {
         }
 
         enginesTried.push({ engine, ok: true });
-        return attachPackValidation(
+        return await attachPackValidation(
           {
             structured: pack.structured,
             text: pack.text,

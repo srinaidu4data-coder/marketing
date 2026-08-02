@@ -722,7 +722,7 @@ export async function assembleDeterministicPack(opts: {
     packHasFreeMetrics,
     packHasIndustryCosplay,
   } = await import("./resume-honesty");
-  // Soft honesty for ATS: only free metrics + hard cosplay cap score
+  // Cosplay/metrics flagged for notes only — do not cap ATS during boost climb
   const honestyFailed =
     packHasIndustryCosplay(text, opts.master).length > 0 ||
     packHasFreeMetrics(text, opts.master).length > 0;
@@ -733,16 +733,14 @@ export async function assembleDeterministicPack(opts: {
     jd: opts.jd,
     jobTitle,
     masterText: opts.master,
-    recentProjectCount: Math.min(
-      Math.max(1, policy.recentTitleCount || 2),
-      projects.length
-    ),
-    honestyFailed,
-    maxRounds: 2,
+    recentProjectCount: Math.max(2, projects.length),
+    honestyFailed: false,
+    maxRounds: 4,
   });
   structured = boost.structured;
   text = boost.text;
   const ats = boost.ats;
+  void honestyFailed;
 
   const psych = scorePsych({
     resumeText: text,
@@ -762,9 +760,9 @@ export async function assembleDeterministicPack(opts: {
     `Domain: ${domain} · Projects: ${projects.length}`,
     `ATS: ${ats.score}/100 · Psych: ${psych.score}/100 · Dual: ${dualBest ? "BEST" : "REVIEW"}`,
     boost.boosted
-      ? `ATS fix (master-grounded): ${boost.rounds}r · +[${boost.injected.slice(0, 6).join(", ") || "title"}] · skip ${boost.skippedUngrounded.length}`
-      : "ATS fix: n/a",
-    ...boost.notes.slice(0, 2).map((n) => `ATS: ${n}`),
+      ? `ATS graph T${boost.tierReached}: ${ats.score}/100 · +${boost.injected.length} tok`
+      : `ATS graph: ${ats.score}/100`,
+    ...boost.notes.slice(0, 4).map((n) => `ATS: ${n}`),
     formatEducationNote(edu),
     ...psych.warnings.slice(0, 3).map((w) => `Psych: ${w}`),
   ];

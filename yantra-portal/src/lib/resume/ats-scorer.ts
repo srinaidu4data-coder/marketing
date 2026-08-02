@@ -32,8 +32,10 @@ export type AtsResult = {
   honestyCapped?: boolean;
 };
 
-/** Ship / “best” requires exact 100 */
+/** Marketing BEST badge / perfect Fit-IR */
 export const ATS_BEST_SCORE = 100;
+/** Ship / download / send floor — must match pack-ship-ready.SHIP_MIN_ATS */
+export const SHIP_MIN_ATS = 95;
 
 const STOP = new Set(
   "the and for with that this from have will your our are you all any can not but into a an of to in on as by or be is was were been being at it its".split(
