@@ -4,6 +4,9 @@
  * INVARIANT: Every pack — OpenAI production OR deterministic preview — builds
  * projects via `buildProjects` and structured docs via `buildStructuredFromLayout`.
  *
+ * Bullet density (ONE LAW — see bullet-density.ts):
+ *   every employer ≥ MIN (8) and ≤ MAX (12); preferred TARGET (10).
+ *
  * Bullet honesty ladder (same for both modes):
  *   AI bullets (optional) → master bullets → policy soft-fill (if emergencyFill)
  *
@@ -64,6 +67,13 @@ import {
   resolveTailorMode,
   type TailorModeResult,
 } from "./tailor-mode";
+import {
+  MIN_BULLETS_PER_PROJECT,
+  MAX_BULLETS_PER_PROJECT,
+  TARGET_BULLETS_PER_PROJECT,
+  assertMandatoryBulletDensity,
+  capBullets,
+} from "./bullet-density";
 
 export {
   educationLinesForJd,
@@ -71,6 +81,14 @@ export {
   type EducationFilterResult,
 } from "./education-filter";
 export { resolveTailorMode } from "./tailor-mode";
+/** Re-export single bullet law — importers should prefer bullet-density.ts directly. */
+export {
+  MIN_BULLETS_PER_PROJECT,
+  MAX_BULLETS_PER_PROJECT,
+  TARGET_BULLETS_PER_PROJECT,
+  BULLET_DENSITY_RANGE,
+  assertMandatoryBulletDensity,
+} from "./bullet-density";
 
 export type ProjectAnchor = {
   i: number;
@@ -258,9 +276,16 @@ function bulletCapFor(
   era: StructureProject["era"],
   policy: ResumeEnginePolicy
 ): number {
-  if (isRecent) return policy.bullets.recent;
-  if (era === "mid") return policy.bullets.mid;
-  return policy.bullets.early;
+  // Policy may tune targets, but ONE LAW clamps every era into [8, 12].
+  const raw = isRecent
+    ? policy.bullets.recent
+    : era === "mid"
+      ? policy.bullets.mid
+      : policy.bullets.early;
+  return Math.min(
+    MAX_BULLETS_PER_PROJECT,
+    Math.max(MIN_BULLETS_PER_PROJECT, raw || TARGET_BULLETS_PER_PROJECT)
+  );
 }
 
 function eraSkillBank(
@@ -302,42 +327,6 @@ function parseModules(
     .filter((s) => !isOffDomainText(s, domain, policy));
 }
 
-/** Floor for client-submittable packs: at least 8 bullets per project/client/employer. */
-export const MIN_BULLETS_PER_PROJECT = 8;
-/** Soft upper target (policy recent default). */
-export const TARGET_BULLETS_PER_PROJECT = 10;
-
-/**
- * Hard gate: every engagement must have ≥8 bullets or the pack must not ship.
- * Throws — callers must not render DOCX/PDF/send on failure.
- */
-export function assertMandatoryBulletDensity(
-  projects: { client?: string; bullets?: string[] }[],
-  min = MIN_BULLETS_PER_PROJECT
-): void {
-  if (!projects.length) {
-    throw new Error(
-      "Resume generation blocked: zero projects/clients — cannot deliver a pack."
-    );
-  }
-  const thin = projects
-    .map((p, i) => ({
-      i,
-      client: (p.client || `Project ${i + 1}`).split(",")[0].trim(),
-      n: Array.isArray(p.bullets) ? p.bullets.filter((b) => String(b).trim().length > 20).length : 0,
-    }))
-    .filter((p) => p.n < min);
-
-  if (thin.length) {
-    const detail = thin
-      .map((t) => `${t.client}: ${t.n}/${min}`)
-      .join("; ");
-    throw new Error(
-      `Resume generation blocked: every project/client/employer requires ${min}–${TARGET_BULLETS_PER_PROJECT} bullets. Insufficient: ${detail}. Re-upload a richer master or regenerate.`
-    );
-  }
-}
-
 function fillBullets(opts: {
   aiBullets: string[];
   masterBullets: string[];
@@ -352,19 +341,21 @@ function fillBullets(opts: {
   /** Never invent template bullets when false (default for all modes) */
   allowEmergencyFill?: boolean;
 }): string[] {
-  const need = Math.max(1, Math.min(opts.max, opts.max));
+  // ONE LAW: fill toward min 8, never exceed max 12 (opts.max already clamped).
+  const max = Math.min(MAX_BULLETS_PER_PROJECT, Math.max(MIN_BULLETS_PER_PROJECT, opts.max));
+  const need = MIN_BULLETS_PER_PROJECT;
 
   // Honesty ladder: AI rephrase → master only. No domainProof invent by default.
-  let final = dedupeBullets(opts.aiBullets).slice(0, opts.max);
+  let final = dedupeBullets(opts.aiBullets).slice(0, max);
 
   if (final.length < need) {
-    const masterProof = cleanMasterBullets(opts.masterBullets, opts.max).filter(
+    const masterProof = cleanMasterBullets(opts.masterBullets, max).filter(
       (b) => !isOffDomainText(b, opts.domain, opts.policy)
     );
-    final = dedupeBullets([...final, ...masterProof]).slice(0, opts.max);
+    final = dedupeBullets([...final, ...masterProof]).slice(0, max);
   }
 
-  // Soft-fill ONLY if explicitly allowed (same_domain emergency — still off by default)
+  // Soft-fill ONLY if explicitly allowed — still capped at max, never invent past master honesty policy
   if (
     opts.allowEmergencyFill &&
     final.length < need &&
@@ -378,10 +369,10 @@ function fillBullets(opts: {
       opts.skillBank,
       opts.policy
     );
-    final = dedupeBullets([...final, ...proof]).slice(0, opts.max);
+    final = dedupeBullets([...final, ...proof]).slice(0, max);
   }
 
-  return final.slice(0, opts.max);
+  return capBullets(final.slice(0, max));
 }
 
 /**
@@ -478,7 +469,8 @@ export function buildProjects(opts: {
   const recentN = Math.max(1, opts.policy.recentTitleCount || 2);
   const modeResult = opts.modeResult;
   const jdTitlesOnRecent = modeResult?.jdTitlesOnRecent !== false;
-  const minBullets = modeResult?.minBullets ?? MIN_BULLETS_PER_PROJECT;
+  // ONE LAW: min always 8 — mode never lowers density (titles/honesty only).
+  const minBullets = MIN_BULLETS_PER_PROJECT;
   const allowEmergencyFill = modeResult?.allowEmergencyFill === true;
 
   const list: ProjectAnchor[] =
@@ -507,14 +499,8 @@ export function buildProjects(opts: {
     const aiP = pickAiProject(opts.ai, anchor, idx);
     const era = eraFor(anchor.endYear, now);
     const isRecent = idx < recentN;
-    // Cap by policy but do not invent to fill — min enforced at assert with mode floor
-    const maxBullets = Math.max(
-      minBullets,
-      Math.min(
-        bulletCapFor(isRecent, era, opts.policy),
-        allowEmergencyFill ? MIN_BULLETS_PER_PROJECT : bulletCapFor(isRecent, era, opts.policy)
-      )
-    );
+    // Cap always in [MIN, MAX] — never invent below 8 without material
+    const maxBullets = bulletCapFor(isRecent, era, opts.policy);
     const skillCap = skillCapFor(isRecent, era, opts.policy);
     // Transfer/strict: grounded skills only (never full JD bank on early roles)
     const bank =
@@ -579,7 +565,7 @@ export function buildProjects(opts: {
     };
   });
 
-  // Hard gate: mode-aware min (honest thinner packs OK; never invent to hit 8)
+  // Hard gate: ONE LAW min 8 (never invent to hit floor — fail closed if thin)
   assertMandatoryBulletDensity(projects, minBullets);
   return projects;
 }

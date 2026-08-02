@@ -40,9 +40,16 @@ import {
   buildProjects,
   educationLinesForJd,
   formatEducationNote,
-  MIN_BULLETS_PER_PROJECT,
   type AiProjectInput,
 } from "./assemble-pack";
+import {
+  MIN_BULLETS_PER_PROJECT,
+  MAX_BULLETS_PER_PROJECT,
+  TARGET_BULLETS_PER_PROJECT,
+  BULLET_DENSITY_RANGE,
+  BULLET_DENSITY_PROMPT_RULE,
+  capBullets,
+} from "./bullet-density";
 import {
   modePromptAppendix,
   resolveTailorMode,
@@ -444,7 +451,7 @@ CRITICAL POLICY — HONEST, COHERENT CAREER (no invention):
 ${titleRule}
 - Keep client/startYear/endYear/location exact from REQUIRED PROJECTS — never invent locations.
 - Prefer REPHRASING master bullets toward JD language over inventing new work.
-- EACH project should have ${modeResult.minBullets}–10 bullets from master rephrase — NEVER invent metrics (no free % or $). Prefer fewer honest bullets over fabricated density.
+- ${BULLET_DENSITY_PROMPT_RULE}
 - Do NOT invent modules, tools, certifications, or deep ownership absent from MASTER.
 - JD-only skills (not in master): skills section / recent framing only.
 - Domain hint "${domain}" is for coherence — NOT a license to invent a specialty career.
@@ -520,7 +527,7 @@ Return JSON:
       "endYear": "Present",
       "modules": "era-appropriate tools from grounded/JD — not identical on every job",
       "environment": "tools",
-      "bullets": ["8-10 achievements for THIS client — rephrase master; expand distinct outcomes; never invent employers or tools"]
+      "bullets": ["${MIN_BULLETS_PER_PROJECT}-${MAX_BULLETS_PER_PROJECT} achievements for THIS client — rephrase master; expand distinct outcomes; never invent employers or tools"]
     }
   ],
   "education": ["from master"],
@@ -528,9 +535,9 @@ Return JSON:
 }
 
 projects.length MUST equal ${Math.max(structuredMaster.engagementCount || anchors.length, 1)}.
-Every projects[i].bullets length MUST be 8–10 (minimum 8).
+Every projects[i].bullets length MUST be ${BULLET_DENSITY_RANGE} (minimum ${MIN_BULLETS_PER_PROJECT}, preferred ${TARGET_BULLETS_PER_PROJECT}, maximum ${MAX_BULLETS_PER_PROJECT}).
 Titles: i=0,1 = "${jobTitle}"; i>=2 = progressive same-family titles — ban off-domain module titles.
-Honesty > keyword stuffing.`;
+Honesty > keyword stuffing — but density floor is not relaxed.`;
 
   let tokensIn = 0;
   let tokensOut = 0;
@@ -562,9 +569,11 @@ Honesty > keyword stuffing.`;
   await report("skills", "done");
   await report("impact", "done");
 
-  // Pass 2 if project count wrong OR any project has fewer than 8 bullets
+  // Pass 2 if project count wrong OR any project outside [8, 12]
   const thinProjects = (parsed.projects || []).filter(
-    (p) => !Array.isArray(p.bullets) || p.bullets.length < 8
+    (p) =>
+      !Array.isArray(p.bullets) ||
+      p.bullets.length < MIN_BULLETS_PER_PROJECT
   );
   const needMoreProjects =
     anchors.length > 1 &&
@@ -575,7 +584,7 @@ Honesty > keyword stuffing.`;
       system,
       user: `Fix and return FULL JSON.
 - projects.length MUST be ${anchors.length}. Clients: ${anchors.map((a) => a.client).join(" | ")}.
-- EVERY project must have 8–10 bullets (you had thin: ${thinProjects.map((p) => `${p.client || p.i}:${p.bullets?.length || 0}`).join(", ") || "n/a"}).
+- EVERY project must have ${BULLET_DENSITY_RANGE} bullets (min ${MIN_BULLETS_PER_PROJECT}, preferred ${TARGET_BULLETS_PER_PROJECT}, max ${MAX_BULLETS_PER_PROJECT}). Thin: ${thinProjects.map((p) => `${p.client || p.i}:${p.bullets?.length || 0}`).join(", ") || "n/a"}.
 - Expand by rephrasing distinct master achievements toward JD language — do not invent employers.
 Prior JSON:
 ${gen.raw.slice(0, 12000)}`,
@@ -628,7 +637,7 @@ ${gen.raw.slice(0, 12000)}`,
       await report("projects_all", "active");
       const fixBullets = await chatJson({
         system,
-        user: `MANDATORY: every project must have ${modeResult.minBullets}–10 bullets from MASTER rephrase only. Return FULL JSON only.
+        user: `MANDATORY: every project must have ${BULLET_DENSITY_RANGE} bullets from MASTER rephrase only (min ${MIN_BULLETS_PER_PROJECT}, preferred ${TARGET_BULLETS_PER_PROJECT}, max ${MAX_BULLETS_PER_PROJECT}). Return FULL JSON only.
 Clients: ${anchors.map((a) => a.client).join(" | ")}.
 Prior output was rejected for thin bullets. Expand by rephrasing master achievements — do NOT invent employers, metrics, or industry careers.
 Prior JSON:
@@ -674,14 +683,15 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
       );
       const merged = dedupeBullets([...bullets, ...extra]).slice(
         0,
-        Math.max(MIN_BULLETS_PER_PROJECT, policy.bullets.recent)
+        MAX_BULLETS_PER_PROJECT
       );
       bullets = scrubSapRitualFromBullets(merged, domain);
     }
-    return { ...p, bullets };
+    // ONE LAW: never exceed max 12
+    return { ...p, bullets: capBullets(bullets) };
   });
-  // Final hard gate before any layout/DOCX work (mode-aware min; no invent)
-  assertMandatoryBulletDensity(projects, modeResult.minBullets);
+  // Final hard gate before any layout/DOCX work — always min 8
+  assertMandatoryBulletDensity(projects, MIN_BULLETS_PER_PROJECT);
   await report("project_1", "done");
   await report("project_2", "done");
   await report("projects_rest", "done");

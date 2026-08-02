@@ -77,9 +77,9 @@ For EVERY project, in order:
   2) Employer / Client: <name from master>
   3) Location | start – end (preserve dates from master)
   4) Modules / Environment: JD tools + master-supported stack
-  5) 8–14 bullets recent; 6–10 mid; 4–7 early
+  5) 8–12 bullets for EVERY employer (min 8, preferred 10, max 12) — all eras, no exceptions
 Bullets: rewrite toward JD using THAT project's master facts; put most JD-relevant first.
-Never invent employers. Never omit master employers.
+Never invent employers. Never omit master employers. Never invent bullets to hit 8 — enrich master instead.
 
 EDUCATION & CERTIFICATIONS
 - Preserve from master; reorder certs to JD-relevant first; never invent certs.

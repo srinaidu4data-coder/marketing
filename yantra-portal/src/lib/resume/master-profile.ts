@@ -488,8 +488,8 @@ export function profileForAiPath(profile: MasterProfile): {
       project: e.project,
       industry: e.industry,
       environment: e.environment,
-      // Enough source material for 8–10 AI rewrites per engagement
-      masterBullets: (e.bullets || []).filter((b) => b.length > 12).slice(0, 20),
+      // Enough source material for 8–12 AI rewrites per engagement
+      masterBullets: (e.bullets || []).filter((b) => b.length > 12).slice(0, 24),
     })),
     warnings: profile.warnings,
   };
@@ -512,6 +512,6 @@ export function profileToAnchors(profile: MasterProfile): {
     startYear: e.startYear || 0,
     endYear: e.endYear || "Present",
     masterTitle: e.title || "Consultant",
-    masterBullets: (e.bullets || []).filter((b) => b.length > 12).slice(0, 20),
+    masterBullets: (e.bullets || []).filter((b) => b.length > 12).slice(0, 24),
   }));
 }

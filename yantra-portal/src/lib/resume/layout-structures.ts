@@ -242,7 +242,9 @@ function expLines(
         : p.skills.slice(0, 10);
     out.push(`${opts.stackLabel || "Stack"}: ${stack.join(sep)}`);
     out.push("");
-    const bullets = p.bullets.slice(0, opts.maxBullets ?? p.bullets.length);
+    // ONE LAW: never render more than 12 bullets per employer
+    const bulletCap = Math.min(12, opts.maxBullets ?? 12);
+    const bullets = p.bullets.slice(0, bulletCap);
     for (const b of bullets) out.push(`${bullet} ${b}`);
     out.push("");
     out.push("");
@@ -331,7 +333,7 @@ function buildExecutivePyramid(ctx: StructureCtx): ResumeSection[] {
     {
       heading: "Leadership Engagements",
       lines: expLines(ctx.projects, ctx.cleanSkills, ctx.bullet, ctx.skillSeparator, {
-        maxBullets: 18,
+        maxBullets: 12,
         stackLabel: "Program stack",
       }),
     },
@@ -398,7 +400,7 @@ function buildTechModular(ctx: StructureCtx): ResumeSection[] {
       // ALL master projects — never recentOnly (that dropped mid/early history)
       lines: expLines(ctx.projects, ctx.cleanSkills, "▸", "  |  ", {
         stackLabel: "Modules",
-        maxBullets: 18,
+        maxBullets: 12,
       }),
     },
     {
@@ -440,7 +442,7 @@ function buildTimelineNarrative(ctx: StructureCtx): ResumeSection[] {
         ...expLines(mid, ctx.cleanSkills, ctx.bullet, ctx.skillSeparator, {
           earlyLabel: true,
           stackLabel: "Chapter stack",
-          maxBullets: 16,
+          maxBullets: 12,
         }),
         ...expLines(early, ctx.cleanSkills, ctx.bullet, ctx.skillSeparator, {
           earlyLabel: true,
@@ -506,7 +508,7 @@ function buildMinimalSparse(ctx: StructureCtx): ResumeSection[] {
         }),
         "",
         ...expLines(recent, ctx.cleanSkills, bullet, " · ", {
-          maxBullets: 14,
+          maxBullets: 12,
           stackLabel: "Tools",
           titleStyle: "plain",
         }),
@@ -556,7 +558,7 @@ function buildScqaCasePortfolio(ctx: StructureCtx): ResumeSection[] {
       heading: "Professional Experience",
       lines: expLines(ctx.projects, ctx.cleanSkills, bullet, ctx.skillSeparator, {
         stackLabel: "Environment",
-        maxBullets: 16,
+        maxBullets: 12,
       }),
     },
     {

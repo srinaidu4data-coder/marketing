@@ -55,7 +55,7 @@ export async function refineProjectsWithLlm(
     startYear: p.startYear,
     endYear: p.endYear,
     title: p.title,
-    bullets: p.bullets.slice(0, 14),
+    bullets: p.bullets.slice(0, 12),
   }));
 
   const system = `You are Role Forge resume tailor for SAP C2C staffing.
@@ -69,7 +69,7 @@ Rules:
 - Early bullets: foundational SAP work only; light exposure language for specialized tools.
 - No rates, interview questions, staffing chatter, or "JD MATCH" labels.
 - Return ONLY valid JSON: {"projects":[{"i":0,"title":"...","bullets":["..."]}]}
-- Provide 12–20 bullets for recent, 10–16 for mid, 8–12 for early.`;
+- Provide 8–12 bullets for EVERY project (min 8, preferred 10, max 12) — all eras; rephrase master only, never invent.`;
 
   const user = JSON.stringify({
     jobTitle: input.jobTitle,

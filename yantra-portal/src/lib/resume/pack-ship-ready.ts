@@ -5,7 +5,11 @@
  * Best pack: structural OK ∧ ats.score === 100 ∧ psych.score === 100
  */
 
-import { MIN_BULLETS_PER_PROJECT } from "./assemble-pack";
+import {
+  MIN_BULLETS_PER_PROJECT,
+  MAX_BULLETS_PER_PROJECT,
+  BULLET_DENSITY_RANGE,
+} from "./bullet-density";
 import {
   packHasIndustryCosplay,
   packHasFreeMetrics,
@@ -51,6 +55,10 @@ export function inspectPackShipReady(opts: {
   text: string;
   masterText?: string;
   masterProfileJson?: string | null;
+  /**
+   * @deprecated Ignored if below product floor. ONE LAW: min always 8.
+   * Callers may omit; never lower ship density via this option.
+   */
   minBullets?: number;
   /** When provided, dual scores are computed and required for ok/best */
   jd?: string;
@@ -63,7 +71,11 @@ export function inspectPackShipReady(opts: {
   psych?: PsychResult;
   mode?: TailorMode;
 }): PackShipReport {
-  const min = opts.minBullets ?? MIN_BULLETS_PER_PROJECT;
+  // ONE LAW: never allow ship with fewer than 8 bullets, regardless of caller.
+  const min = Math.max(
+    MIN_BULLETS_PER_PROJECT,
+    opts.minBullets ?? MIN_BULLETS_PER_PROJECT
+  );
   const text = opts.text || "";
   const master = opts.masterText || "";
   const issues: PackShipIssue[] = [];
@@ -92,9 +104,10 @@ export function inspectPackShipReady(opts: {
       if (n < min) {
         issues.push({
           code: "thin_bullets",
-          detail: `${head}: ${n}/${min} bullets`,
+          detail: `${head}: ${n}/${min} bullets (need ${BULLET_DENSITY_RANGE}, max ${MAX_BULLETS_PER_PROJECT})`,
         });
       }
+      // Over-max is capped at assembly/render — ship only hard-fails under-min.
     }
   } else if (text.length >= 400) {
     issues.push({

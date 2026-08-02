@@ -62,6 +62,7 @@ function attachPackValidation(
   }
 ): TailorResumeResult {
   // Single ship authority: structural + ATS 100 + Psych 100
+  // Bullet floor is ONE LAW (min 8) inside inspectPackShipReady — do not pass mode mins.
   const ship = inspectPackShipReady({
     text: result.text,
     masterText: opts.master,
@@ -71,7 +72,6 @@ function attachPackValidation(
     ats: result.ats,
     psych: result.psych,
     mode: result.modeResult?.mode,
-    minBullets: result.modeResult?.minBullets,
   });
   if (!ship.ok) {
     throw new Error(

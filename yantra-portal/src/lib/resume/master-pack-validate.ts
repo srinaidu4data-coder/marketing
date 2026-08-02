@@ -493,7 +493,7 @@ export function validatePackAgainstMaster(opts: {
     }
   }
 
-  // Engagement count + bullet density (8–10 per client)
+  // Engagement count + bullet density (ONE LAW: 8–12 per client)
   const employerLines = (
     text.match(/Employer\s*\/\s*Client\s*:/gi) || []
   ).length;
@@ -528,15 +528,13 @@ export function validatePackAgainstMaster(opts: {
           : totalExpBullets / Math.max(expected, 1);
       checks.push({
         id: "pack_bullets_per_project",
-        label: "Bullets per project (~8–10 target)",
+        label: "Bullets per project (8–12 law, min 8)",
         severity:
           thinBlocks === 0 && per >= 8
             ? "pass"
-            : thinBlocks === 0 && per >= 6
-              ? "warn"
-              : thinBlocks > 0
-                ? "fail"
-                : per >= 6
+            : thinBlocks > 0
+              ? "fail"
+              : per >= 8
                   ? "warn"
                   : "fail",
         detail: `${totalExpBullets} exp bullets / ${blocks.length || expected} clients ≈ ${per.toFixed(1)} each · thin blocks ${thinBlocks}`,

@@ -1,8 +1,8 @@
 ﻿/**
  * Progressive Resume Tailor (Role Forge v2)
  *
- * Output targets:
- * - 10–12+ bullet lines per project/client engagement
+ * Output targets (ONE LAW — bullet-density.ts):
+ * - 8–12 bullet lines per project/client engagement (min 8, preferred 10, max 12)
  * - Resume content sized for ~4–5 pages (DOCX/PDF)
  * - Progressive career narrative (early balanced, recent heavily JD-aligned)
  * - Temporal skill integrity
@@ -23,14 +23,18 @@ import {
 } from "./jd-parse";
 import type { ResumeEnginePolicy } from "./resume-engine-policy";
 import type { ResumeLayoutId, StructuredResume } from "./templates";
+import {
+  MIN_BULLETS_PER_PROJECT,
+  MAX_BULLETS_PER_PROJECT,
+  TARGET_BULLETS_PER_PROJECT,
+} from "./bullet-density";
 
-/** Minimum bullets per project â€” denser packs for 4â€“5 page DOCX with heavy page-1 proof */
-/** @deprecated Density comes from admin policy bullets.* */
-export const MIN_BULLETS_PER_PROJECT = 8;
-/** @deprecated Use ResumeEnginePolicy.bullets */
-export const RECENT_BULLETS_PER_PROJECT = 8;
-export const MID_BULLETS_PER_PROJECT = 6;
-export const EARLY_BULLETS_PER_PROJECT = 5;
+/** Re-export single law — progressive never defines a lower floor. */
+export { MIN_BULLETS_PER_PROJECT, MAX_BULLETS_PER_PROJECT, TARGET_BULLETS_PER_PROJECT };
+/** Era targets all inside [8, 12] — recent prefers TARGET, early still ≥ MIN. */
+export const RECENT_BULLETS_PER_PROJECT = TARGET_BULLETS_PER_PROJECT;
+export const MID_BULLETS_PER_PROJECT = TARGET_BULLETS_PER_PROJECT;
+export const EARLY_BULLETS_PER_PROJECT = MIN_BULLETS_PER_PROJECT;
 /** Fallback synthetic count when master has no parseable jobs */
 export const TARGET_PROJECT_COUNT = 5;
 /** Cap only for extreme masters (performance on serverless) */
@@ -578,8 +582,8 @@ function parseMasterProjects(
       );
       const bullets =
         era === "early"
-          ? [...masterBullets, ...seeds.slice(0, 3)].slice(0, 18)
-          : [...seeds, ...masterBullets].slice(0, 28);
+          ? [...masterBullets, ...seeds.slice(0, 3)].slice(0, MAX_BULLETS_PER_PROJECT)
+          : [...seeds, ...masterBullets].slice(0, MAX_BULLETS_PER_PROJECT);
       return {
         // Project-level role always rewritten to JD title (see alignProjectRoleTitle)
         title: alignProjectRoleTitle(job.title, jobTitle, era),
@@ -729,7 +733,8 @@ function seedBulletsForDomain(
 }
 
 /**
- * Expand to at least MIN_BULLETS_PER_PROJECT lines, intensity-scaled for progressive career.
+ * Expand to at least MIN (8) and at most MAX (12) bullets.
+ * Intensity only chooses bank order/content — not a lower floor.
  */
 function weaveJdIntoBullets(
   bullets: string[],
@@ -812,12 +817,13 @@ function weaveJdIntoBullets(
   const bank =
     intensity === "high" ? highBank : intensity === "medium" ? midBank : earlyBank;
 
+  // ONE LAW: target inside [8, 12] for every intensity/era
   const target =
     intensity === "high"
-      ? RECENT_BULLETS_PER_PROJECT
+      ? Math.min(MAX_BULLETS_PER_PROJECT, RECENT_BULLETS_PER_PROJECT)
       : intensity === "medium"
-        ? MID_BULLETS_PER_PROJECT
-        : EARLY_BULLETS_PER_PROJECT;
+        ? Math.min(MAX_BULLETS_PER_PROJECT, MID_BULLETS_PER_PROJECT)
+        : Math.max(MIN_BULLETS_PER_PROJECT, EARLY_BULLETS_PER_PROJECT);
 
   // Explicit JD-keyword bullets (recent+mid) so page-1 match is near-total
   const keywordBullets: string[] = [];
@@ -848,14 +854,15 @@ function weaveJdIntoBullets(
 
   const merged: string[] = [];
   const seen = new Set<string>();
-  const cap = Math.min(28, Math.max(target + 4, bullets.length + 4));
+  // Hard ceiling MAX_BULLETS_PER_PROJECT (12) — never 28
+  const cap = MAX_BULLETS_PER_PROJECT;
   for (const line of ordered) {
     const t = line.trim();
     if (!t || seen.has(t.toLowerCase())) continue;
     // Drop generic "owned end-to-end" filler when we already have domain-specific lines
     if (
       intensity !== "low" &&
-      merged.length >= 6 &&
+      merged.length >= MIN_BULLETS_PER_PROJECT &&
       /Owned end-to-end delivery for assigned workstream|Led solution design workshops and translated requirements into blueprints/i.test(
         t
       )

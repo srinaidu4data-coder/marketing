@@ -80,8 +80,8 @@ For every project, output exactly these lines in this order: Client, Duration, T
      "remediated," "migrated."
    - Quantify where the master resume provides numbers (transactions/day, 
      users, sites, $ value, ticket volume, SLA %). Never invent metrics.
-   - For each role, target 6â€“12 bullets depending on relevance and recency. 
-     Older or less relevant roles can be 3â€“5 bullets.
+   - For EACH role/employer: 8–12 bullets (minimum 8, preferred 10, maximum 12).
+     No exceptions by era or relevance — never fewer than 8; never invent to fill.
 - Give a line break after each section. For example. After professional summary, give a line break, after technical skills, give a line break, after each project / experiance, give a line break.
 7. CERTIFICATIONS
    - Reorder so certifications matching the JD appear first.

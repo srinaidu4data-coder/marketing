@@ -15,13 +15,24 @@ BEST  ⇔  structural ship OK
 
 If honesty fails, **ATS is capped at 70** so we never ship “ATS 100 / Rules FAIL” theater.
 
-## Modes (`resolveTailorMode`)
+## Bullet density (ONE LAW)
 
-| Mode | Overlap | Titles | Invent fill |
-|------|---------|--------|-------------|
-| `same_domain` | ≥ 0.45 | JD on recent | off |
-| `transfer` | ≥ 0.22 | master titles | off |
-| `strict` | &lt; 0.22 | master titles | off |
+| | |
+|--|--|
+| **Min** | **8** per employer (hard floor — all modes, all eras) |
+| **Preferred** | **10** |
+| **Max** | **12** |
+| Source of truth | `src/lib/resume/bullet-density.ts` |
+
+Mode never lowers density. Prompt, AI, progressive, assemble, ship, validate all use this law.
+
+## Modes (`resolveTailorMode`) — titles / honesty only
+
+| Mode | Overlap | Titles | Invent fill | Bullet min |
+|------|---------|--------|-------------|------------|
+| `same_domain` | ≥ 0.45 | JD on recent | off | **8** (always) |
+| `transfer` | ≥ 0.22 | master titles | off | **8** (always) |
+| `strict` | &lt; 0.22 | master titles | off | **8** (always) |
 
 ## Psych dimensions (binary → 100)
 

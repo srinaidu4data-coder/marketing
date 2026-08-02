@@ -74,13 +74,13 @@ async function main() {
   console.log("psych", psych.score, psych.warnings);
   console.log("ats", ats.score, ats.honestyCapped, ats.ready);
 
+  // ONE LAW: min bullets always 8 — cannot lower via opts.minBullets
   const ship = inspectPackShipReady({
     text: cosplayPack + "\n• bullet one work\n• bullet two work\n• bullet three work\n• bullet four work\n• bullet five work\n",
     masterText: masterSap,
     jd: jdClinical,
     jobTitle: "Senior Clinical Data Manager",
     candidateName: "Sri Naidu",
-    minBullets: 1,
   });
   console.log(
     "ship ok",

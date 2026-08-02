@@ -107,7 +107,7 @@
   - Must cover JD tools/tech for **recent** roles  
   - Mid/early: only era-appropriate stack (temporal integrity)
 
-#### 4B. Experience bullets (10–16 per major role; 8–12 early)
+#### 4B. Experience bullets (ONE LAW: 8–12 per employer, all eras; preferred 10)
 **Psych:** Concrete construal + primacy/recency within role + regulatory focus for compliance domains.  
 **Structure each bullet as:**  
 `Action verb + JD-aligned work + tool/module + (optional metric/outcome)`  

@@ -61,8 +61,11 @@ export type ResumeEnginePolicy = {
 /** Factory defaults — also shown in admin console until overridden. */
 export const DEFAULT_RESUME_ENGINE_POLICY: ResumeEnginePolicy = {
   recentTitleCount: 2,
-  /** Target 8–10 bullets per client/project for client-submittable density */
-  bullets: { recent: 10, mid: 9, early: 8 },
+  /**
+   * Bullet targets per era — ONE LAW clamps every value into [8, 12]
+   * (see bullet-density.ts). Admin cannot lower below 8 or raise above 12.
+   */
+  bullets: { recent: 12, mid: 10, early: 8 },
   skillCaps: { recent: 8, mid: 5, early: 3 },
   minKeywordCoverage: 0.9,
   minAtsScore: 95,
@@ -186,7 +189,7 @@ export const DEFAULT_RESUME_ENGINE_POLICY: ResumeEnginePolicy = {
     "Associate {core}",
   ],
   emergencyBullets: {
-    // Enough soft-fill lines to top each engagement to 8–10 when AI/master short
+    // Enough soft-fill lines to top each engagement to 8–12 when AI/master short
     recent: [
       "Delivered {role}-aligned work for {client}, covering {skills} with design, test evidence, and stakeholder updates.",
       "Partnered with business and technical owners on process design, integration touchpoints, and release readiness at {client}.",
@@ -290,9 +293,10 @@ function mergePolicy(
   }
   if (patch.bullets) {
     out.bullets = {
-      recent: num(patch.bullets.recent, out.bullets.recent, 8, 24),
-      mid: num(patch.bullets.mid, out.bullets.mid, 8, 20),
-      early: num(patch.bullets.early, out.bullets.early, 8, 16),
+      // ONE LAW: admin policy bullets always in [8, 12]
+      recent: num(patch.bullets.recent, out.bullets.recent, 8, 12),
+      mid: num(patch.bullets.mid, out.bullets.mid, 8, 12),
+      early: num(patch.bullets.early, out.bullets.early, 8, 12),
     };
   }
   if (patch.skillCaps) {
