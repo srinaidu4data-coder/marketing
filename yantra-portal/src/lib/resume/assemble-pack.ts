@@ -204,60 +204,21 @@ function titleForIndex(
   supportive: string[],
   domain: DomainHint,
   policy: ResumeEnginePolicy,
-  /** same_domain only — transfer/strict keep master titles on recent roles */
+  /** Always true under JD-first product (strict removed). */
   jdTitlesOnRecent = true
 ): string {
   const recentN = Math.max(1, policy.recentTitleCount || 2);
-  const fromMaster = (masterTitle || "").trim();
   const ladder = progressiveTitlesFromJobTitle(jobTitle, 10, policy);
-  const fromAi = (aiTitle || "").trim();
-  const fromSupportive = (supportive[Math.max(0, idx - recentN)] || "").trim();
+  void masterTitle;
+  void aiTitle;
+  void supportive;
+  void domain;
+  void policy;
+  void jdTitlesOnRecent;
 
-  // Transfer/strict: never force JD title onto career history
-  if (!jdTitlesOnRecent) {
-    if (
-      fromMaster &&
-      fromMaster.length > 3 &&
-      !isOffDomainTitle(fromMaster, domain, jobTitle, policy)
-    ) {
-      return fromMaster.slice(0, 120);
-    }
-    if (
-      fromAi &&
-      fromAi.length > 4 &&
-      !isOffDomainTitle(fromAi, domain, jobTitle, policy)
-    ) {
-      return fromAi.slice(0, 120);
-    }
-    return (fromMaster || ladder[Math.min(idx, ladder.length - 1)] || jobTitle).slice(
-      0,
-      120
-    );
-  }
-
+  // JD-first: recent roles = exact JD title; older = progressive JD-family titles only
+  // (never leave master FICO/etc. titles when submitting for a different specialty JD)
   if (idx < recentN) return jobTitle.slice(0, 120);
-
-  if (
-    fromAi &&
-    fromAi.toLowerCase() !== jobTitle.toLowerCase() &&
-    fromAi.length > 4 &&
-    !isOffDomainTitle(fromAi, domain, jobTitle, policy)
-  ) {
-    return fromAi.slice(0, 120);
-  }
-  if (
-    fromSupportive &&
-    !isOffDomainTitle(fromSupportive, domain, jobTitle, policy)
-  ) {
-    return fromSupportive.slice(0, 120);
-  }
-  if (
-    fromMaster &&
-    fromMaster.toLowerCase() !== jobTitle.toLowerCase() &&
-    !isOffDomainTitle(fromMaster, domain, jobTitle, policy)
-  ) {
-    return fromMaster.slice(0, 120);
-  }
   return ladder[Math.min(idx - recentN, ladder.length - 1)].slice(0, 120);
 }
 
@@ -506,13 +467,12 @@ export function buildProjects(opts: {
     // Cap always in [MIN, MAX] — never invent below 8 without material
     const maxBullets = bulletCapFor(isRecent, era, opts.policy);
     const skillCap = skillCapFor(isRecent, era, opts.policy);
-    // Transfer/strict: grounded skills only (never full JD bank on early roles)
-    const bank =
-      modeResult?.mode === "same_domain"
-        ? eraSkillBank(isRecent, era, grounded, fullBank)
-        : grounded.length
-          ? grounded
-          : fullBank.slice(0, isRecent ? 8 : 4);
+    // JD-first: recent = full bank; older = grounded-first with light JD mix
+    const bank = isRecent
+      ? eraSkillBank(true, era, grounded, fullBank.length ? fullBank : grounded)
+      : grounded.length
+        ? grounded
+        : fullBank.slice(0, 6);
 
     const title = titleForIndex(
       idx,
@@ -655,8 +615,8 @@ export async function assembleDeterministicPack(opts: {
     yearsHint > 0
       ? ` with approximately ${yearsHint}+ years of progressive professional experience`
       : " with progressive professional experience";
-  const lowOverlap =
-    modeResult.mode === "strict" || modeResult.mode === "transfer";
+  // transfer (includes former strict band) still softens summary cosplay
+  const lowOverlap = modeResult.mode === "transfer";
   const summary = scrubSummaryHonesty({
     lines: [
       `${first} is positioned as a ${jobTitle}${yearsPart}, mapped to this role’s requirements with emphasis on ${skillLine}.`,
@@ -669,19 +629,18 @@ export async function assembleDeterministicPack(opts: {
     lowOverlap,
   });
 
-  // No invented impact templates on transfer/strict
-  const impact =
-    modeResult.mode === "same_domain"
-      ? domainProofBullets(
-          domain,
-          "recent",
-          projects[0]?.client || "clients",
-          jobTitle,
-          groundedPack.length ? groundedPack : skills,
-          policy
-        ).slice(0, 4)
-      : projects[0]?.bullets.slice(0, 3).map((b) => b.replace(/^[•\-]\s*/, "")) ||
-        [];
+  // Impact always JD-shaped (domain proof + recent bullets)
+  const impactFromProjects =
+    projects[0]?.bullets.slice(0, 4).map((b) => b.replace(/^[•\-]\s*/, "")) || [];
+  const impactProof = domainProofBullets(
+    domain,
+    "recent",
+    projects[0]?.client || "clients",
+    jobTitle,
+    groundedPack.length ? groundedPack : skills,
+    policy
+  ).slice(0, 4);
+  const impact = (impactProof.length ? impactProof : impactFromProjects).slice(0, 5);
 
   // Degrees from master; certs JD-filtered (AI when key present, else heuristic)
   const edu = await educationLinesForJd({

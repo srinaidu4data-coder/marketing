@@ -202,21 +202,12 @@ export function scorePsych(opts: {
       ).length
     : 0;
 
-  if (opts.mode === "same_domain") {
-    if (titleHits >= 1 || jobTitle.length < 8) {
-      breakdown.titlePolicy = DIM.titlePolicy;
-    } else {
-      warnings.push("same_domain: JD title missing from experience");
-    }
+  // JD-first product: JD title should appear in experience (recent roles)
+  // strict mode removed — transfer also expects JD titles on recent work
+  if (titleHits >= 1 || jobTitle.length < 8) {
+    breakdown.titlePolicy = DIM.titlePolicy;
   } else {
-    // transfer/strict: do not clone JD title onto every role
-    if (titleHits >= 4 && clients.length >= 3) {
-      warnings.push(
-        `${opts.mode}: JD title appears ${titleHits}× (career cosplay)`
-      );
-    } else {
-      breakdown.titlePolicy = DIM.titlePolicy;
-    }
+    warnings.push("JD title missing from experience (JD-first policy)");
   }
 
   // ── One years claim ──

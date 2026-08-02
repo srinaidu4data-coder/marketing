@@ -426,10 +426,10 @@ export async function generateResumeWithOpenAi(
   await report("title", "active");
   await report("header", "active");
 
-  const titleRule =
-    modeResult.jdTitlesOnRecent
-      ? `- projects[0..${Math.max(0, (policy.recentTitleCount || 2) - 1)}] title = exact JD title "${jobTitle}"; later = progressive same family.`
-      : `- Do NOT rewrite every project title as "${jobTitle}". Keep master career titles (or progressive variants of the SAME master family). Headline may target "${jobTitle}" only.`;
+  // Strict removed — always JD titles + progressive JD family
+  const titleRule = `- projects[0..${Math.max(0, (policy.recentTitleCount || 2) - 1)}] title = exact JD title "${jobTitle}" (NOT master specialty titles like FICO if JD is ATTP/etc.).
+- Later projects: progressive variants of the SAME JD title family only — never leave unrelated master titles.
+- Rewrite ALL bullets with STRONG JD language (tools, verbs, outcomes from the JD) using master facts as proof only.`;
 
   const vars = {
     job_requirement: input.jd.slice(0, 14000),
@@ -722,8 +722,8 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
         packHasFreeMetrics(b, input.master).length === 0
     )
     .slice(0, 5);
-  // Transfer/strict: never invent impact templates
-  if (impact.length < 3 && modeResult.mode === "same_domain") {
+  // Always fill impact toward JD specialty when thin
+  if (impact.length < 3) {
     impact = domainProofBullets(
       domain,
       "recent",

@@ -28,13 +28,14 @@ Emergency: do **not** discard ATS 95 packs for missing dual-100 BEST.
 
 Mode never lowers density. Prompt, AI, progressive, assemble, ship, validate all use this law.
 
-## Modes (`resolveTailorMode`) — titles / honesty only
+## Modes (`resolveTailorMode`) — JD-first (strict removed)
 
-| Mode | Overlap | Titles | Invent fill | Bullet min |
-|------|---------|--------|-------------|------------|
-| `same_domain` | ≥ 0.45 | JD on recent | off | **8** (always) |
-| `transfer` | ≥ 0.22 | master titles | off | **8** (always) |
-| `strict` | &lt; 0.22 | master titles | off | **8** (always) |
+| Mode | Overlap | Titles | Language | Bullet min |
+|------|---------|--------|----------|------------|
+| `same_domain` | ≥ 0.45 | **JD on recent** + progressive JD family | Strong JD | **8** |
+| `transfer` | &lt; 0.45 | **JD on recent** + progressive JD family | Strong JD | **8** |
+
+**Strict mode removed.** Low overlap no longer freezes master FICO (etc.) titles.
 
 ## Psych dimensions (binary → 100)
 

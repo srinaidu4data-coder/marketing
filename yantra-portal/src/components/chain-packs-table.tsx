@@ -8,7 +8,10 @@ import { Download, Eye } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { getLayout } from "@/lib/resume/templates";
 import { scorePsych } from "@/lib/resume/psych-scorer";
-import { resolveTailorMode } from "@/lib/resume/tailor-mode";
+import {
+  normalizeTailorMode,
+  resolveTailorMode,
+} from "@/lib/resume/tailor-mode";
 import { extractJobTitle } from "@/lib/resume/jd-parse";
 import type { PackShipReport } from "@/lib/resume/pack-ship-ready";
 
@@ -40,9 +43,9 @@ function resolvePsychScore(
   if (text.length < 200) return 0;
   try {
     const master = cc.candidate.masterResumeText || "";
-    const mode =
-      (cc.tailorMode as "same_domain" | "transfer" | "strict") ||
-      resolveTailorMode(rawJobText, master).mode;
+    const mode = normalizeTailorMode(
+      cc.tailorMode || resolveTailorMode(rawJobText, master).mode
+    );
     return scorePsych({
       resumeText: text,
       masterText: master,

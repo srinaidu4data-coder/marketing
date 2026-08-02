@@ -82,7 +82,7 @@ model ChainCandidate {
   atsScore           Int       @default(0)
   /// Psych / credibility score 0–100 (best requires 100 with ATS)
   psychScore         Int       @default(0)
-  /// same_domain | transfer | strict
+  /// same_domain | transfer (strict removed — maps to transfer)
   tailorMode         String    @default("")
   atsReady           Boolean   @default(false)
   atsBreakdownJson   String    @default("{}") @db.Text

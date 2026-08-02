@@ -302,8 +302,10 @@ export function packHasFreeMetrics(
 export function packHasMasterResidueLeak(
   tailoredText: string,
   jd: string,
-  mode: "same_domain" | "transfer" | "strict"
+  mode: "same_domain" | "transfer" | "strict" | string
 ): string[] {
+  // same_domain: full JD rewrite expected — residue check off
+  // strict removed product-wide; treat as transfer if seen
   if (mode === "same_domain") return [];
   const text = tailoredText || "";
   const jdLc = (jd || "").toLowerCase();
