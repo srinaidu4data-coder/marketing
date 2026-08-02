@@ -186,8 +186,7 @@ function scoreOnce(
   text: string,
   jd: string,
   jobTitle: string,
-  recentProjectCount: number,
-  honestyFailed?: boolean
+  recentProjectCount: number
 ): AtsResult {
   return scoreResume({
     resumeText: text,

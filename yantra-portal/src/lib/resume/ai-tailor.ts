@@ -820,7 +820,7 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
   structured = boost.structured;
   text = boost.text;
   // Optional display-only honesty note if free metrics still present after boost
-  let ats = boost.ats;
+  const ats = boost.ats;
   if (honestyFailed && ats.score > 70) {
     // Keep true score for ship; annotate only
     structured.meta.progressiveNotes = [
@@ -828,7 +828,6 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
       "Honesty flag present (cosplay/metrics) — review pack carefully",
     ];
   }
-  void honestyFailed;
 
   const psych = scorePsych({
     resumeText: text,
