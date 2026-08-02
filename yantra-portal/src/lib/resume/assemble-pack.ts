@@ -710,12 +710,12 @@ export async function assembleDeterministicPack(opts: {
     vendorName: opts.vendorName,
   };
 
-  const structured = buildStructuredFromLayout(bundle);
+  let structured = buildStructuredFromLayout(bundle);
   structured.meta.jobTitle = jobTitle;
   structured.meta.skillFingerprint = skillFingerprint(opts.jd, jobTitle);
   structured.meta.tailorMode = modeResult.mode;
 
-  const text = renderPlainFromStructured(structured);
+  let text = renderPlainFromStructured(structured);
 
   const { scorePsych } = await import("./psych-scorer");
   const {
