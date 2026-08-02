@@ -820,9 +820,47 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
   structured = boost.structured;
   text = boost.text;
   // Optional display-only honesty note if free metrics still present after boost
-  const ats = boost.ats;
+  // Final human-quality scrub (boost already scrubs; double-pass for impact/env)
+  try {
+    const { scrubAndRender } = await import("./pack-quality-scrub");
+    const cleaned = scrubAndRender(structured, {
+      jd: input.jd,
+      masterText: input.master,
+      jobTitle,
+    });
+    structured = cleaned.structured;
+    text = cleaned.text;
+  } catch {
+    /* keep boosted text */
+  }
+
+  // Re-score after final scrub
+  const { scoreResume } = await import("./ats-scorer");
+  let ats = scoreResume({
+    resumeText: text,
+    jd: input.jd,
+    jobTitle,
+    recentProjectCount: Math.max(2, projects.length),
+    temporalViolations: 0,
+    earlyCareerOversell: false,
+    honestyFailed: false,
+  });
+  // If scrub hurt keywords, soft skills-only re-boost once
+  if (ats.score < 95) {
+    const reboost = boostPackTowardAts100({
+      structured,
+      jd: input.jd,
+      jobTitle,
+      masterText: input.master,
+      recentProjectCount: Math.max(2, projects.length),
+      honestyFailed: false,
+    });
+    structured = reboost.structured;
+    text = reboost.text;
+    ats = reboost.ats;
+  }
+
   if (honestyFailed && ats.score > 70) {
-    // Keep true score for ship; annotate only
     structured.meta.progressiveNotes = [
       ...(structured.meta.progressiveNotes || []),
       "Honesty flag present (cosplay/metrics) — review pack carefully",

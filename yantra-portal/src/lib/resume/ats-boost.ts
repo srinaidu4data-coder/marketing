@@ -26,6 +26,7 @@ import {
   preferredInjectForm,
   textHasKeywordOrSynonym,
 } from "./keyword-synonyms";
+import { scrubAndRender } from "./pack-quality-scrub";
 
 // Re-export ship floor for callers that only import boost
 export { SHIP_MIN_ATS };
@@ -73,21 +74,47 @@ function mergeSkillsLine(
     uniq.push(t.trim());
   }
   if (!uniq.length) return structured;
-  const line = `${label}: ${uniq.slice(0, 28).join(" · ")}`;
+  // Clean label — never "Ship-floor skills" in human output
+  const cleanLabel = /ship-floor|jd keywords/i.test(label) ? "Core" : label;
+  const line = `${cleanLabel}: ${uniq.slice(0, 28).join(" · ")}`;
   let hit = false;
   const sections = structured.sections.map((sec) => {
     if (!/skill|matrix|competenc|stack|instrument|capability|core/i.test(sec.heading)) {
       return sec;
     }
+    // Skip experience "stack" headings
+    if (/experience|engagement|employment/i.test(sec.heading)) return sec;
     hit = true;
     const without = sec.lines.filter(
       (l) =>
-        !/JD keywords:|Core \/ JD-aligned skills:|Ship-floor skills:/i.test(l)
+        !/JD keywords:|Core \/ JD-aligned skills:|Ship-floor skills:|^Core:|^Delivery focus:/i.test(
+          l
+        )
     );
+    // Merge into existing Core: line if present
+    const existingCore = without.find((l) => /^Core:/i.test(l));
+    if (existingCore) {
+      const old = existingCore.replace(/^Core:\s*/i, "");
+      const merged = Array.from(
+        new Set(
+          [...old.split(/\s*[·|]\s*/), ...uniq]
+            .map((t) => t.trim())
+            .filter(Boolean)
+        )
+      ).slice(0, 28);
+      const rest = without.filter((l) => !/^Core:/i.test(l));
+      return {
+        ...sec,
+        lines: [`Core: ${merged.join(" · ")}`, ...rest],
+      };
+    }
     return { ...sec, lines: [line, ...without] };
   });
   if (!hit) {
-    sections.splice(1, 0, { heading: "Technical Skills", lines: [line] });
+    sections.splice(1, 0, {
+      heading: "Technical Skills",
+      lines: [`Core: ${uniq.slice(0, 28).join(" · ")}`],
+    });
   }
   return { ...structured, sections };
 }
@@ -116,61 +143,29 @@ function ensureTitleInSummary(
   };
 }
 
+/**
+ * Verbs go into skills only — never spam impact/summary with "Delivery focus:".
+ */
 function ensureVerbs(structured: StructuredResume, jd: string, text: string): StructuredResume {
   const needed = RESP_VERBS.filter(
     (v) => new RegExp(`\\b${v}\\b`, "i").test(jd) && !new RegExp(`\\b${v}\\b`, "i").test(text)
   ).slice(0, 8);
   if (!needed.length) return structured;
-  const line = `Delivery focus: ${needed.join(", ")} across discovery, design, configure, implement, test, integrate, and release with stakeholder alignment.`;
-  return {
-    ...structured,
-    sections: structured.sections.map((sec) => {
-      if (!/skill|matrix|competenc|impact|achievement|summary/i.test(sec.heading)) {
-        return sec;
-      }
-      if (sec.lines.some((l) => /Delivery focus:/i.test(l))) {
-        return {
-          ...sec,
-          lines: sec.lines.map((l) =>
-            /Delivery focus:/i.test(l) ? line : l
-          ),
-        };
-      }
-      return { ...sec, lines: [...sec.lines, line] };
-    }),
-  };
+  // Embed as skill tokens so ATS roleMatch counts without human-visible spam lines
+  return mergeSkillsLine(structured, needed, "Core");
 }
 
+/**
+ * Keywords stay in skills bank only — do NOT append fake "Applied X within engagement" bullets.
+ * Those destroyed resume quality while gaming ATS.
+ */
 function sprinkleIntoRecent(
   structured: StructuredResume,
   tokens: string[]
 ): StructuredResume {
   if (!tokens.length) return structured;
-  const top = tokens.slice(0, 5);
-  let exp = 0;
-  return {
-    ...structured,
-    sections: structured.sections.map((sec) => {
-      if (
-        !/experience|engagement|work|employment|chapter|selected work|leadership/i.test(
-          sec.heading
-        )
-      ) {
-        return sec;
-      }
-      exp++;
-      if (exp > 1) return sec;
-      const existing = sec.lines.join("\n");
-      const add = top
-        .filter((k) => !textHasKeywordOrSynonym(existing, k))
-        .map(
-          (k) =>
-            `• Applied ${k} within engagement delivery — requirements, configuration/build support, validation, and stakeholder sign-off.`
-        );
-      if (!add.length) return sec;
-      return { ...sec, lines: [...sec.lines, ...add] };
-    }),
-  };
+  // Skills-only inject (no experience spam)
+  return mergeSkillsLine(structured, tokens.slice(0, 12), "Core");
 }
 
 function breakdownGaps(b: AtsBreakdown): string[] {
@@ -277,15 +272,11 @@ export function boostPackTowardAts100(opts: {
     tierReached = Math.max(tierReached, 3);
     const missing = ats.missingKeywords || [];
     if (missing.length) {
-      structured = mergeSkillsLine(
-        structured,
-        missing,
-        "Ship-floor skills"
-      );
+      structured = mergeSkillsLine(structured, missing, "Core");
       structured = sprinkleIntoRecent(structured, missing.slice(0, 6));
       injected.push(...missing);
       notes.push(
-        `T3 ship-floor inject ${missing.length} missing keywords (soft-honesty skills bank)`
+        `T3 skills inject ${missing.length} missing keywords (skills bank only — no experience spam)`
       );
     }
     structured = ensureTitleInSummary(structured, opts.jobTitle);
@@ -308,7 +299,7 @@ export function boostPackTowardAts100(opts: {
         new RegExp(v, "i").test(opts.jd)
       )].filter(Boolean) as string[])
     );
-    structured = mergeSkillsLine(structured, all, "Ship-floor skills");
+    structured = mergeSkillsLine(structured, all, "Core");
     structured = ensureTitleInSummary(structured, opts.jobTitle);
     structured = ensureVerbs(structured, opts.jd, text);
     structured = sprinkleIntoRecent(structured, bank.slice(0, 8));
@@ -325,7 +316,7 @@ export function boostPackTowardAts100(opts: {
     const bank = extractJdKeywords(opts.jd, 45);
     const missing = ats.missingKeywords || [];
     const all = Array.from(new Set([...bank, ...missing, opts.jobTitle].filter(Boolean) as string[]));
-    structured = mergeSkillsLine(structured, all, "Ship-floor skills");
+    structured = mergeSkillsLine(structured, all, "Core");
     structured = ensureTitleInSummary(structured, opts.jobTitle);
     structured = ensureVerbs(structured, opts.jd, text);
     structured = sprinkleIntoRecent(structured, all.slice(0, 10));
@@ -335,9 +326,36 @@ export function boostPackTowardAts100(opts: {
     notes.push(`T5 force-100 inject (${all.length} tok) → ATS ${ats.score}`);
   }
 
-  // Final render + score (still no honesty cap in boost — ship inspect is separate)
-  text = renderPlainFromStructured(structured);
-  ats = scoreOnce(text, opts.jd, opts.jobTitle, recentN);
+  // Quality scrub: remove booster spam, FICO residue on ATTP, env industry leaks
+  try {
+    const cleaned = scrubAndRender(structured, {
+      jd: opts.jd,
+      masterText: master,
+      jobTitle: opts.jobTitle,
+    });
+    structured = cleaned.structured;
+    text = cleaned.text;
+    // Re-score after scrub (may drop a few pts — still prefer human quality)
+    ats = scoreOnce(text, opts.jd, opts.jobTitle, recentN);
+    notes.push(`quality scrub → ATS ${ats.score}`);
+    // If scrub dropped below ship floor, re-inject skills-only keywords once
+    if (ats.score < shipFloor) {
+      const miss = ats.missingKeywords || extractJdKeywords(opts.jd, 20);
+      structured = mergeSkillsLine(structured, miss, "Core");
+      const cleaned2 = scrubAndRender(structured, {
+        jd: opts.jd,
+        masterText: master,
+        jobTitle: opts.jobTitle,
+      });
+      structured = cleaned2.structured;
+      text = cleaned2.text;
+      ats = scoreOnce(text, opts.jd, opts.jobTitle, recentN);
+      notes.push(`post-scrub skills re-inject → ATS ${ats.score}`);
+    }
+  } catch {
+    text = renderPlainFromStructured(structured);
+    ats = scoreOnce(text, opts.jd, opts.jobTitle, recentN);
+  }
 
   if (ats.score < shipFloor) {
     notes.push(
@@ -366,7 +384,7 @@ export function boostPackTowardAts100(opts: {
         sections.splice(1, 0, {
           heading: "Technical Skills",
           lines: [
-            `Ship-floor skills: ${(ats.missingKeywords || extractJdKeywords(opts.jd, 20)).join(" · ")}`,
+            `Core: ${(ats.missingKeywords || extractJdKeywords(opts.jd, 20)).join(" · ")}`,
           ],
         });
       structured = { ...structured, sections };

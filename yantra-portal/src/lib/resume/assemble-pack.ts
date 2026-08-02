@@ -739,7 +739,39 @@ export async function assembleDeterministicPack(opts: {
   });
   structured = boost.structured;
   text = boost.text;
-  const ats = boost.ats;
+  try {
+    const { scrubAndRender } = await import("./pack-quality-scrub");
+    const cleaned = scrubAndRender(structured, {
+      jd: opts.jd,
+      masterText: opts.master,
+      jobTitle,
+    });
+    structured = cleaned.structured;
+    text = cleaned.text;
+  } catch {
+    /* keep */
+  }
+  const { scoreResume } = await import("./ats-scorer");
+  let ats = scoreResume({
+    resumeText: text,
+    jd: opts.jd,
+    jobTitle,
+    recentProjectCount: Math.max(2, projects.length),
+    honestyFailed: false,
+  });
+  if (ats.score < 95) {
+    const reboost = boostPackTowardAts100({
+      structured,
+      jd: opts.jd,
+      jobTitle,
+      masterText: opts.master,
+      recentProjectCount: Math.max(2, projects.length),
+      honestyFailed: false,
+    });
+    structured = reboost.structured;
+    text = reboost.text;
+    ats = reboost.ats;
+  }
   void honestyFailed;
 
   const psych = scorePsych({

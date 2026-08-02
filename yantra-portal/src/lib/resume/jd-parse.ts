@@ -343,6 +343,9 @@ function cleanTitle(t: string) {
   return t
     .replace(/\s+/g, " ")
     .replace(/[|•].*$/, "")
+    // JD bullets / markdown debris: "- SAP ATTP …"
+    .replace(/^[\-\–—•*]+[\s:]*/, "")
+    .replace(/^(job\s*title|role|position)\s*[:\-]\s*/i, "")
     .trim()
     .slice(0, 120);
 }
