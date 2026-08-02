@@ -732,6 +732,7 @@ export async function assembleDeterministicPack(opts: {
     structured,
     jd: opts.jd,
     jobTitle,
+    masterText: opts.master,
     recentProjectCount: Math.min(
       Math.max(1, policy.recentTitleCount || 2),
       projects.length
@@ -761,8 +762,9 @@ export async function assembleDeterministicPack(opts: {
     `Domain: ${domain} · Projects: ${projects.length}`,
     `ATS: ${ats.score}/100 · Psych: ${psych.score}/100 · Dual: ${dualBest ? "BEST" : "REVIEW"}`,
     boost.boosted
-      ? `ATS boost: ${boost.rounds}r · ${boost.injected.slice(0, 6).join(", ") || "title/verbs"}`
-      : "ATS boost: n/a",
+      ? `ATS fix (master-grounded): ${boost.rounds}r · +[${boost.injected.slice(0, 6).join(", ") || "title"}] · skip ${boost.skippedUngrounded.length}`
+      : "ATS fix: n/a",
+    ...boost.notes.slice(0, 2).map((n) => `ATS: ${n}`),
     formatEducationNote(edu),
     ...psych.warnings.slice(0, 3).map((w) => `Psych: ${w}`),
   ];

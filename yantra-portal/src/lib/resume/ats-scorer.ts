@@ -8,6 +8,7 @@ import {
   extractJobTitle,
   skillFingerprint,
 } from "./jd-parse";
+import { textHasKeywordOrSynonym } from "./keyword-synonyms";
 
 export { extractJdKeywords, extractJobTitle, skillFingerprint };
 
@@ -77,17 +78,20 @@ export function scoreResume(opts: {
 
   let hit = 0;
   for (const k of keywords) {
-    if (new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(text)) {
+    // Exact OR known synonym family (S/4HANA ↔ S4HANA, EDC ↔ electronic data capture, …)
+    if (textHasKeywordOrSynonym(text, k)) {
       hit++;
     } else {
       missing.push(k);
     }
   }
   const coverageRatio = keywords.length ? hit / keywords.length : 1;
-  // Slightly softer: full keyword points once ≥85% of JD terms appear (was 90%)
+  // Full keyword points once ≥85% of JD terms appear (exact or synonym)
   const keywordCoverage = Math.round(25 * Math.min(1, coverageRatio / 0.85));
   if (coverageRatio < 0.85) {
-    warnings.push(`Keyword coverage only ${Math.round(coverageRatio * 100)}% (target ≥85%)`);
+    warnings.push(
+      `Keyword coverage only ${Math.round(coverageRatio * 100)}% (target ≥85%, synonyms count)`
+    );
   }
 
   let roleMatch = 0;
@@ -95,18 +99,15 @@ export function scoreResume(opts: {
     .split(/\s+/)
     .filter((t) => t.length > 2 && !STOP.has(t.toLowerCase()));
   const titleHits = titleTokens.filter((t) =>
-    new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(text)
+    textHasKeywordOrSynonym(text, t)
   ).length;
   const titleRatio = titleTokens.length ? titleHits / titleTokens.length : 1;
   roleMatch = Math.round(12 * titleRatio);
-  // Bonus: full job title string appears (schema match / primacy of role)
+  // Bonus: full job title string or synonym family appears
   if (
     opts.jobTitle &&
     opts.jobTitle.length > 8 &&
-    new RegExp(
-      opts.jobTitle.slice(0, 48).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-      "i"
-    ).test(text)
+    textHasKeywordOrSynonym(text, opts.jobTitle)
   ) {
     roleMatch = Math.min(14, roleMatch + 2);
   }
