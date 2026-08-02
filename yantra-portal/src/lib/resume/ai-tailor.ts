@@ -429,7 +429,9 @@ export async function generateResumeWithOpenAi(
   // Strict removed — always JD titles + progressive JD family
   const titleRule = `- projects[0..${Math.max(0, (policy.recentTitleCount || 2) - 1)}] title = exact JD title "${jobTitle}" (NOT master specialty titles like FICO if JD is ATTP/etc.).
 - Later projects: progressive variants of the SAME JD title family only — never leave unrelated master titles.
-- Rewrite ALL bullets with STRONG JD language (tools, verbs, outcomes from the JD) using master facts as proof only.`;
+- Rewrite ALL bullets with STRONG JD language (tools, verbs, outcomes from the JD) using master facts as proof only.
+- modules/environment per project: ONLY tools relevant to "${jobTitle}" / JD domain. If JD is ATTP/serialization, NEVER put SAP FICO, CFIN, New GL, Asset Accounting, CO-PA, FP&A on Environment lines — use SAP ATTP, EPCIS, GS1, serialization, integration tools instead.
+- SELECTED IMPACT: must support this JD specialty, not pure master FICO/finance impact.`;
 
   const vars = {
     job_requirement: input.jd.slice(0, 14000),

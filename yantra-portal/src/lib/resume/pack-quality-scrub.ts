@@ -18,11 +18,16 @@ const BOOSTER_BULLET =
 const SKILL_GARBAGE =
   /\b(ability to|should have|must have|years of experience|location|looking for|we are seeking)\b/i;
 
+/** Pure finance / FICO stack — must NOT appear when JD is ATTP/serialization */
 const FICO_HEAVY =
-  /\b(fico|fi\/co|product costing|new gl|asset accounting|co-?pa|profit center|cost center|month-end closing|financial reporting|controlling process|chart of accounts|document splitting|fixed assets?|wip calculation|standard cost)\b/i;
+  /\b(fico|fi\s*\/?\s*co|fi-co|product costing|new gl|asset accounting|co-?pa|copa|profit center|cost center|month-end|financial reporting|controlling|chart of accounts|document splitting|fixed assets?|wip|standard cost|fp&a|fpa|cfin|central finance|lockbox|vertex|in-house cash|general ledger|accounts payable|accounts receivable|ap\b|ar\b|gl\b)\b/i;
 
 const ATTP_SIGNAL =
-  /\b(attp|serialization|epcis|gs1|gtin|sscc|dscsa|fmd|track\s*and\s*trace|serial\s*number|cmo|3pl)\b/i;
+  /\b(attp|serialization|epcis|gs1|gtin|sscc|dscsa|fmd|track\s*and\s*trace|serial\s*number|cmo|3pl|boomi|sftp|repository)\b/i;
+
+/** Tokens allowed on ATTP env even if "SAP" appears */
+const ATTP_STACK_OK =
+  /\b(attp|s\/4|s4hana|hana|epcis|gs1|gtin|sscc|dscsa|mdg|ariba|concur|coupa|boomi|sftp|fiori|cpi|pi\/po|odata|btp|integration)\b/i;
 
 const INDUSTRY_ENV_LEAK =
   /\b(pharmaceutical|pharma|biotech|life\s+sciences?|rise\b)\b/i;
@@ -105,45 +110,68 @@ function scrubImpactLines(lines: string[], jd: string): string[] {
     .slice(0, 8);
 }
 
+/**
+ * WHY FICO still showed on ATTP packs:
+ * scrub previously KEPT any token matching \bSAP\b — so "SAP FICO" survived.
+ * Rule now: on ATTP JDs, drop FICO/finance tokens hard; keep only ATTP/JD stack.
+ */
 function scrubEnvironmentLine(line: string, jd: string, master: string): string {
   if (!/^(environment|stack|modules|chapter stack)\s*:/i.test(line)) return line;
   const label = line.match(/^([^:]+):\s*/)?.[1] || "Environment";
   const body = line.replace(/^[^:]+:\s*/, "");
-  const parts = body
+  let parts = body
     .split(/\s*[·|,]\s*/)
     .map((p) => p.trim())
     .filter(Boolean)
     .filter((p) => {
-      // Never leave bare industry tags on env unless master supports
-      if (INDUSTRY_ENV_LEAK.test(p)) {
-        if (!INDUSTRY_ENV_LEAK.test(master || "")) return false;
-        // For ATTP JD, pharma tag OK if master has GSK/Genentech etc. — keep only if master has pharma
-        if (isAttpJd(jd) && !/\b(pharma|gsk|genentech|pfizer|novartis|merck)\b/i.test(master))
-          return false;
-      }
-      // Strip FICO-only modules from env when JD is pure ATTP-serialization and part is not ATTP
-      if (isAttpJd(jd) && FICO_HEAVY.test(p) && !ATTP_SIGNAL.test(p) && !/\bsap\b|s\/4|mdg|cfin/i.test(p)) {
-        // keep core SAP platform tokens, drop pure finance jargon tags only if too many
-      }
+      if (p.length >= 40) return false;
       if (SKILL_GARBAGE.test(p)) return false;
-      return p.length < 40;
+      if (INDUSTRY_ENV_LEAK.test(p) && !INDUSTRY_ENV_LEAK.test(master || "")) {
+        return false;
+      }
+
+      // ATTP / serialization JD: NEVER leave FICO / pure finance stack
+      if (isAttpJd(jd)) {
+        // "SAP FICO", "FICO", "CFIN", "New GL", "FP&A" — drop
+        if (FICO_HEAVY.test(p)) return false;
+        // Bare "SAP" alone is weak; keep only if ATTP-relevant compound or platform
+        if (/^sap$/i.test(p)) return false;
+        // Keep ATTP/platform tokens; drop random finance leftovers
+        if (ATTP_STACK_OK.test(p) || ATTP_SIGNAL.test(p)) return true;
+        // Drop clear non-ATTP module tags
+        if (/\b(fico|cfin|copa|mm-fi|sd-fi|asset|ledger)\b/i.test(p)) return false;
+        return true; // other short tools (Ariba etc.) OK if AI put them for ATTP landscape
+      }
+
+      if (isClinicalOnlyJd(jd) && (FICO_HEAVY.test(p) || /\bsap\b|s\/4|fico/i.test(p))) {
+        return false;
+      }
+      return true;
     });
 
-  // Prefer ATTP-relevant first when JD is ATTP
   if (isAttpJd(jd)) {
     parts.sort((a, b) => {
-      const sa = ATTP_SIGNAL.test(a) ? 0 : 1;
-      const sb = ATTP_SIGNAL.test(b) ? 0 : 1;
+      const sa = ATTP_SIGNAL.test(a) || ATTP_STACK_OK.test(a) ? 0 : 1;
+      const sb = ATTP_SIGNAL.test(b) || ATTP_STACK_OK.test(b) ? 0 : 1;
       return sa - sb;
     });
+    // Ensure ATTP appears on recent-style env when JD is ATTP
+    if (!parts.some((p) => ATTP_SIGNAL.test(p))) {
+      parts = ["SAP ATTP", "EPCIS", "GS1", ...parts];
+    }
   }
 
-  if (!parts.length) return `${label}: SAP`;
-  return `${label}: ${parts.slice(0, 10).join(" · ")}`;
+  if (!parts.length) {
+    return isAttpJd(jd)
+      ? `${label}: SAP ATTP · EPCIS · GS1`
+      : `${label}: SAP`;
+  }
+  return `${label}: ${Array.from(new Set(parts)).slice(0, 8).join(" · ")}`;
 }
 
 function scrubExperienceBlock(lines: string[], jd: string, master: string): string[] {
   const out: string[] = [];
+  let bulletCount = 0;
   for (const raw of lines) {
     const line = raw.trim();
     if (!line) {
@@ -159,16 +187,37 @@ function scrubExperienceBlock(lines: string[], jd: string, master: string): stri
       out.push(scrubEnvironmentLine(line, jd, master));
       continue;
     }
-    // Title line: strip leading dash debris
+    // Title line
     if (
-      out.length === 0 ||
-      (out.filter((l) => l.trim()).length === 0)
+      !/^[•\-–—*▸]/.test(line) &&
+      !/\|\s*\d{4}/.test(line) &&
+      line.length < 100 &&
+      bulletCount === 0 &&
+      !/^(environment|stack)/i.test(line)
     ) {
-      out.push(line.replace(/^[\-\–—•*]+\s*/, "").trim());
+      // Prefer JD-family titles already set; strip accidental "FICO" if JD is ATTP
+      let t = line.replace(/^[\-\–—•*]+\s*/, "").trim();
+      if (isAttpJd(jd) && FICO_HEAVY.test(t) && !ATTP_SIGNAL.test(t)) {
+        // leave progressive title from code; if title still FICO, force ATTP framing
+        t = t.replace(/\bFICO\b/gi, "ATTP").replace(/\bFI\/CO\b/gi, "ATTP");
+      }
+      out.push(t);
       continue;
     }
-    // Last few booster spam bullets
-    if (BOOSTER_BULLET.test(line)) continue;
+    // Bullets: on ATTP JD, drop pure FICO bullets (month-end, CO-PA, etc.)
+    if (/^[•\-–—*▸]/.test(line) || line.startsWith("•")) {
+      const body = line.replace(/^[•\-–—*▸]\s*/, "");
+      if (isAttpJd(jd) && FICO_HEAVY.test(body) && !ATTP_SIGNAL.test(body)) {
+        // skip pure finance bullets on ATTP packs
+        continue;
+      }
+      if (isClinicalOnlyJd(jd) && (FICO_HEAVY.test(body) || /\bsap\s+fico\b/i.test(body))) {
+        continue;
+      }
+      bulletCount++;
+      out.push(line.startsWith("•") ? line : `• ${body}`);
+      continue;
+    }
     out.push(line);
   }
   return out;

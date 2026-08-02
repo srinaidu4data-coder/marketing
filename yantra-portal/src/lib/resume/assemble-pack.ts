@@ -259,17 +259,28 @@ function pickAiProject(
   );
 }
 
+/** Finance stack banned when packing for ATTP/serialization JDs */
+const FICO_ENV_BAN =
+  /\b(fico|fi\s*\/?\s*co|fi-co|cfin|co-?pa|copa|new gl|asset accounting|fp&a|product costing|chart of accounts|document splitting|fixed assets?|general ledger|month-end)\b/i;
+
 function parseModules(
   aiP: AiProjectInput,
   domain: DomainHint,
-  policy: ResumeEnginePolicy
+  policy: ResumeEnginePolicy,
+  jobTitle = ""
 ): string[] {
+  const attpTarget =
+    /\battp\b|serialization|epcis|gs1|dscsa|track\s*and\s*trace/i.test(
+      `${domain} ${jobTitle}`
+    );
   return String(aiP.modules || aiP.environment || "")
-    .split(/[,;|]/)
+    .split(/[,;|·]/)
     .map((s) => s.trim())
     .filter((s) => s.length > 1 && s.length < 60)
     .filter((s) => !isMetaStackLine(s))
-    .filter((s) => !isOffDomainText(s, domain, policy));
+    .filter((s) => !isOffDomainText(s, domain, policy))
+    // WHY FICO appeared on ATTP env: AI returned master FICO modules and we kept them
+    .filter((s) => !(attpTarget && FICO_ENV_BAN.test(s)));
 }
 
 function fillBullets(opts: {
@@ -493,12 +504,39 @@ export function buildProjects(opts: {
       allowEmergencyFill,
     });
 
-    const modules = parseModules(aiP, opts.domain, opts.policy);
-    const fill = bank.slice(0, skillCap);
+    const modules = parseModules(
+      aiP,
+      opts.domain,
+      opts.policy,
+      opts.jobTitle
+    );
+    const fill = bank
+      .slice(0, skillCap)
+      .filter(
+        (s) =>
+          !(
+            /\battp\b|serialization|epcis/i.test(opts.jobTitle) &&
+            FICO_ENV_BAN.test(s)
+          )
+      );
+    // Prefer JD-critical modules on recent ATTP roles
+    const attpTarget = /\battp\b|serialization|epcis/i.test(opts.jobTitle);
+    const jdLean =
+      attpTarget && isRecent
+        ? ["SAP ATTP", "EPCIS", "GS1", "Serialization", ...fill]
+        : fill;
     const skills = Array.from(
-      new Set([...(modules.length ? modules : fill), ...fill.slice(0, 2)])
+      new Set([
+        ...(modules.length ? modules : []),
+        ...jdLean,
+        ...fill.slice(0, 2),
+      ])
     )
       .filter((s) => !isOffDomainText(s, opts.domain, opts.policy))
+      .filter(
+        (s) =>
+          !(attpTarget && FICO_ENV_BAN.test(s))
+      )
       .slice(0, skillCap);
 
     return {
