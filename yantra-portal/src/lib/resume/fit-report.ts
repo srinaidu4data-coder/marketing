@@ -202,27 +202,45 @@ export function buildFitReport(opts: {
 
   const requirements: FitRequirement[] = [];
 
-  // Layout structure applied (assigned layoutId vs pack headings)
-  const layoutApplied = checkLayoutApplied(text, opts.layoutId);
+  // Layout structure applied — first rows in the JD proof checklist
+  const layoutApplied = checkLayoutApplied(
+    text,
+    (opts.layoutId || "").trim() || "ats_classic"
+  );
   if (layoutApplied) {
     requirements.push({
       id: "layout-applied",
-      label: `Layout applied: ${layoutApplied.layoutName}`,
+      label: `Layout structure applied (${layoutApplied.layoutName})`,
       kind: "layout",
       present: layoutApplied.applied,
-      proof: layoutApplied.note,
+      proof: layoutApplied.applied
+        ? `${layoutApplied.matchedCount}/${layoutApplied.expectedCount} expected sections · ${layoutApplied.note}`
+        : layoutApplied.missingHeadings.length
+          ? `Missing: ${layoutApplied.missingHeadings.slice(0, 4).join(", ")} · ${layoutApplied.note}`
+          : layoutApplied.note,
     });
     requirements.push({
       id: "layout-first-section",
-      label: `Opens with “${layoutApplied.firstExpected}”`,
+      label: `Layout opens with “${layoutApplied.firstExpected}”`,
       kind: "layout",
       present:
         !!layoutApplied.firstFound &&
         normHead(layoutApplied.firstFound) ===
           normHead(layoutApplied.firstExpected),
       proof: layoutApplied.firstFound
-        ? `Found: ${layoutApplied.firstFound}`
+        ? `Found first section: ${layoutApplied.firstFound}`
         : "No section heading detected at top of pack",
+    });
+    requirements.push({
+      id: "layout-heading-coverage",
+      label: `Layout sections present (${layoutApplied.matchedCount}/${layoutApplied.expectedCount})`,
+      kind: "layout",
+      present: layoutApplied.expectedCount
+        ? layoutApplied.matchedCount / layoutApplied.expectedCount >= 0.6
+        : false,
+      proof: layoutApplied.foundHeadings.length
+        ? `Found: ${layoutApplied.foundHeadings.slice(0, 5).join(" → ")}`
+        : "No layout headings detected in pack text",
     });
   }
 
@@ -248,7 +266,7 @@ export function buildFitReport(opts: {
   const hasEmployer = /employer\s*\/\s*client:/i.test(text);
   requirements.push({
     id: "struct-summary",
-    label: "Summary / pitch section present",
+    label: "Professional Summary present",
     kind: "structure",
     present: hasSummary,
   });

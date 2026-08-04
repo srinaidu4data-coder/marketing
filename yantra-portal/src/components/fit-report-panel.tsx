@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Fit dashboard — coverage checklist + confidence (localhost research lab UI).
+ * Fit dashboard — coverage checklist + confidence + layout structure checks.
  */
 
 import { useMemo, useState } from "react";
@@ -20,8 +20,8 @@ export function FitReportPanel({
   jobTitle?: string | null;
   layoutId?: string | null;
 }) {
-  const [open, setOpen] = useState(false);
-  // Default so layout check always runs (packs without layoutId still get ats_classic)
+  const [open, setOpen] = useState(true);
+  // Default so layout rows always appear in the checklist
   const resolvedLayoutId = (layoutId || "").trim() || "ats_classic";
   const report = useMemo(
     () =>
@@ -36,8 +36,8 @@ export function FitReportPanel({
 
   if (!resumeText || resumeText.length < 80) return null;
 
-  const layoutReqs = report.requirements.filter((r) => r.kind === "layout");
-  const otherReqs = report.requirements.filter((r) => r.kind !== "layout");
+  // Single unified checklist — layout rules first (same list as screenshot)
+  const checklist = report.requirements.slice(0, 32);
 
   return (
     <div className="border-t border-black/[0.04] bg-[#f8fafc]/90">
@@ -123,78 +123,19 @@ export function FitReportPanel({
             />
           </div>
 
-          {/* Pinned layout structure block — always visible above JD scroll list */}
-          {report.layoutApplied ? (
-            <div
-              className={cn(
-                "rounded-xl border px-3 py-2.5 text-[12.5px]",
-                report.layoutApplied.applied
-                  ? "border-emerald-200 bg-emerald-50/80 text-emerald-950"
-                  : "border-amber-200 bg-amber-50/80 text-amber-950"
-              )}
-            >
-              <p className="font-semibold">
-                {report.layoutApplied.applied ? "✓ " : "○ "}
-                Layout structure applied: {report.layoutApplied.layoutName}
-              </p>
-              <p className="mt-0.5 leading-relaxed opacity-90">
-                {report.layoutApplied.note}
-              </p>
-              {!report.layoutApplied.applied &&
-              report.layoutApplied.missingHeadings.length ? (
-                <p className="mt-1 text-[11px] opacity-80">
-                  Missing headings:{" "}
-                  {report.layoutApplied.missingHeadings.slice(0, 5).join(", ")}
-                </p>
-              ) : null}
-              {report.layoutApplied.foundHeadings.length ? (
-                <p className="mt-1 text-[11px] opacity-75">
-                  Found:{" "}
-                  {report.layoutApplied.foundHeadings.slice(0, 6).join(" → ")}
-                </p>
-              ) : null}
-              {layoutReqs.length ? (
-                <ul className="mt-2 space-y-1 border-t border-black/5 pt-2">
-                  {layoutReqs.map((r) => (
-                    <li
-                      key={r.id}
-                      className="flex items-start gap-2 text-[12px]"
-                    >
-                      <span
-                        className={
-                          r.present ? "text-emerald-600" : "text-amber-600"
-                        }
-                      >
-                        {r.present ? "✓" : "○"}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="font-medium">{r.label}</span>
-                        {r.proof ? (
-                          <span className="mt-0.5 block text-[11px] opacity-80">
-                            {r.proof}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="shrink-0 text-[10px] uppercase opacity-50">
-                        layout
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          ) : null}
-
           <div>
             <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#86868b]">
               <ListChecks className="h-3.5 w-3.5" />
               JD → proof checklist
             </p>
-            <ul className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-black/[0.06] bg-white p-2 text-[12px]">
-              {otherReqs.slice(0, 28).map((r) => (
+            <ul className="max-h-64 space-y-1 overflow-y-auto rounded-xl border border-black/[0.06] bg-white p-2 text-[12px]">
+              {checklist.map((r) => (
                 <li
                   key={r.id}
-                  className="flex items-start gap-2 rounded-lg px-2 py-1 hover:bg-[#f5f5f7]"
+                  className={cn(
+                    "flex items-start gap-2 rounded-lg px-2 py-1 hover:bg-[#f5f5f7]",
+                    r.kind === "layout" && "bg-sky-50/80"
+                  )}
                 >
                   <span
                     className={
@@ -211,7 +152,14 @@ export function FitReportPanel({
                       </span>
                     ) : null}
                   </span>
-                  <span className="shrink-0 text-[10px] uppercase text-[#c7c7cc]">
+                  <span
+                    className={cn(
+                      "shrink-0 text-[10px] uppercase",
+                      r.kind === "layout"
+                        ? "font-semibold text-sky-600"
+                        : "text-[#c7c7cc]"
+                    )}
+                  >
                     {r.kind}
                   </span>
                 </li>
@@ -235,8 +183,8 @@ export function FitReportPanel({
           )}
 
           <p className="text-[10px] leading-relaxed text-[#a1a1a6]">
-            Fit checks: layout structure applied, primacy, peak–end, n-grams,
-            anti-prototype, impersonal 10-line summary, calibrated confidence.
+            Layout rows check that the assigned template structure is present in
+            the generated pack (first section + heading coverage).
           </p>
         </div>
       ) : null}
