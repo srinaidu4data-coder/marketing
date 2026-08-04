@@ -17,6 +17,8 @@ model User {
   id           String        @id @default(uuid())
   name         String
   email        String        @unique
+  /// Optional work phone (E.164-ish free text)
+  phone        String        @default("")
   passwordHash String
   role         String
   deletedAt    DateTime?

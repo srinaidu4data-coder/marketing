@@ -92,6 +92,7 @@ export default async function AdminEmployeeDetailPage({
             employeeId={user.id}
             name={user.name}
             email={user.email}
+            phone={user.phone || ""}
             role={user.role}
           />
         </Card>

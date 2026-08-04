@@ -69,6 +69,16 @@ export function CreateEmployeeForm() {
         />
       </div>
       <div className="space-y-1">
+        <Label htmlFor="emp-phone">Phone number</Label>
+        <Input
+          id="emp-phone"
+          name="phone"
+          type="tel"
+          autoComplete="tel"
+          placeholder="+1 (555) 123-4567"
+        />
+      </div>
+      <div className="space-y-1">
         <Label htmlFor="emp-password">Temporary password</Label>
         <Input
           id="emp-password"
@@ -102,11 +112,13 @@ export function EditEmployeeForm({
   employeeId,
   name,
   email,
+  phone = "",
   role,
 }: {
   employeeId: string;
   name: string;
   email: string;
+  phone?: string;
   role: string;
 }) {
   const router = useRouter();
@@ -142,6 +154,17 @@ export function EditEmployeeForm({
       <div className="space-y-1">
         <Label htmlFor="edit-email">Email</Label>
         <Input id="edit-email" name="email" type="email" required defaultValue={email} />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="edit-phone">Phone number</Label>
+        <Input
+          id="edit-phone"
+          name="phone"
+          type="tel"
+          autoComplete="tel"
+          placeholder="+1 (555) 123-4567"
+          defaultValue={phone || ""}
+        />
       </div>
       <div className="space-y-1">
         <Label htmlFor="edit-role">Role</Label>

@@ -10,12 +10,23 @@ function normalizeEmail(email: string) {
   return email.toLowerCase().trim();
 }
 
+/** Keep digits, +, spaces, dashes, parens — strip junk. Max 32 chars. */
+function normalizePhone(raw: string): string {
+  const s = String(raw || "")
+    .trim()
+    .replace(/[^\d+()\-.\s]/g, "")
+    .replace(/\s+/g, " ")
+    .slice(0, 32);
+  return s;
+}
+
 export type EmployeeActionResult = { ok: true } | { ok: false; error: string };
 
 export async function createEmployee(formData: FormData): Promise<EmployeeActionResult> {
   const admin = await requireAdmin();
   const name = String(formData.get("name") || "").trim();
   const email = normalizeEmail(String(formData.get("email") || ""));
+  const phone = normalizePhone(String(formData.get("phone") || ""));
   const password = String(formData.get("password") || "");
   const role = String(formData.get("role") || "EMPLOYEE").toUpperCase();
 
@@ -38,13 +49,14 @@ export async function createEmployee(formData: FormData): Promise<EmployeeAction
 
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
-    data: { name, email, passwordHash, role },
+    data: { name, email, phone, passwordHash, role },
   });
 
   await audit("employee.create", admin.id, {
     employeeId: user.id,
     name,
     email,
+    phone,
     role,
   });
 
@@ -62,6 +74,7 @@ export async function updateEmployee(
   const admin = await requireAdmin();
   const name = String(formData.get("name") || "").trim();
   const email = normalizeEmail(String(formData.get("email") || ""));
+  const phone = normalizePhone(String(formData.get("phone") || ""));
   const role = String(formData.get("role") || "EMPLOYEE").toUpperCase();
 
   if (!name || !email) return { ok: false, error: "Name and email are required." };
@@ -89,13 +102,14 @@ export async function updateEmployee(
 
   await prisma.user.update({
     where: { id: employeeId },
-    data: { name, email, role },
+    data: { name, email, phone, role },
   });
 
   await audit("employee.update", admin.id, {
     employeeId,
     name,
     email,
+    phone,
     role,
   });
 

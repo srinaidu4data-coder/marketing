@@ -71,6 +71,7 @@ export default async function AdminEmployeesPage({
             <tr>
               <th className="px-4 py-3 font-medium">Name</th>
               <th className="px-4 py-3 font-medium">Email</th>
+              <th className="px-4 py-3 font-medium">Phone</th>
               <th className="px-4 py-3 font-medium">Role</th>
               <th className="px-4 py-3 font-medium">Pool</th>
               <th className="px-4 py-3 font-medium">Chains</th>
@@ -82,7 +83,7 @@ export default async function AdminEmployeesPage({
           <tbody>
             {users.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
                   No profiles yet. Add an employee above.
                 </td>
               </tr>
@@ -94,6 +95,9 @@ export default async function AdminEmployeesPage({
                 >
                   <td className="px-4 py-3 font-medium">{u.name}</td>
                   <td className="px-4 py-3 text-slate-600">{u.email}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {u.phone?.trim() ? u.phone : "—"}
+                  </td>
                   <td className="px-4 py-3">
                     <Badge status={u.role === "ADMIN" ? "ACTIVE" : "READY"}>
                       {u.role === "ADMIN" ? "Admin" : "Employee"}
