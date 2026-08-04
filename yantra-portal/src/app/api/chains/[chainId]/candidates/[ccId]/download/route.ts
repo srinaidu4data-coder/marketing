@@ -26,6 +26,7 @@ import {
 } from "@/lib/resume/pack-ship-ready";
 import { packDownloadFilename } from "@/lib/resume/pack-filename";
 import { stripEngineFooter } from "@/lib/resume/strip-engine-footer";
+import { sanitizePostgresText } from "@/lib/resume/extract-master";
 
 async function tryRead(stored: string | null | undefined): Promise<Buffer | null> {
   if (!stored) return null;
@@ -187,12 +188,14 @@ export async function GET(
     await prisma.chainCandidate.update({
       where: { id: row.id },
       data: {
-        tailoredResumeText: tailored.text,
-        jobTitle: tailored.structured.meta.jobTitle,
-        skillFingerprint: tailored.structured.meta.skillFingerprint,
+        tailoredResumeText: sanitizePostgresText(tailored.text || ""),
+        jobTitle: sanitizePostgresText(tailored.structured.meta.jobTitle || ""),
+        skillFingerprint: sanitizePostgresText(
+          tailored.structured.meta.skillFingerprint || ""
+        ),
         atsScore: tailored.ats.score,
         atsReady: tailored.ats.ready && ship.ok,
-        atsBreakdownJson: JSON.stringify(breakdown),
+        atsBreakdownJson: sanitizePostgresText(JSON.stringify(breakdown)),
       },
     });
     // Keep nameOpts in sync for this response when AI just ran

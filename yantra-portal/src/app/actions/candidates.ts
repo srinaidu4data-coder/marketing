@@ -9,7 +9,10 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { RESUME_LAYOUTS } from "@/lib/resume/templates";
 import { getSystemConfig } from "@/lib/system-settings";
-import { extractMasterText } from "@/lib/resume/extract-master";
+import {
+  extractMasterText,
+  sanitizePostgresText,
+} from "@/lib/resume/extract-master";
 import {
   parseMasterProfile,
   parseStoredMasterProfile,
@@ -53,8 +56,10 @@ async function persistMasterFile(file: File): Promise<{
 
   const extracted = await extractMasterText(file.name, buf);
   // Karpathy: parse once at upload → structured ground truth
-  const profile = parseMasterProfile(extracted.text || "");
-  const masterProfileJson = serializeMasterProfile(profile);
+  // Sanitize again before DB — Postgres rejects U+0000 in text (error 22021).
+  const masterResumeText = sanitizePostgresText(extracted.text || "");
+  const profile = parseMasterProfile(masterResumeText);
+  const masterProfileJson = sanitizePostgresText(serializeMasterProfile(profile));
 
   const dir = masterUploadDir();
   let masterResumePath = `uploads/masters/memory_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
@@ -71,7 +76,7 @@ async function persistMasterFile(file: File): Promise<{
   }
 
   return {
-    masterResumeText: extracted.text,
+    masterResumeText,
     masterResumePath,
     masterProfileJson,
     profile,
@@ -97,7 +102,9 @@ export async function createCandidate(formData: FormData): Promise<void> {
   );
   const file = formData.get("resume");
 
-  if (!name || !email) {
+  const safeName = sanitizePostgresText(name);
+  const safeEmail = sanitizePostgresText(email);
+  if (!safeName || !safeEmail) {
     redirect("/admin/candidates?error=" + encodeURIComponent("Name and email are required."));
   }
 
@@ -117,8 +124,8 @@ export async function createCandidate(formData: FormData): Promise<void> {
 
     const c = await prisma.candidate.create({
       data: {
-        name,
-        email,
+        name: safeName,
+        email: safeEmail,
         masterResumeText,
         masterResumePath,
         masterProfileJson,
@@ -132,8 +139,8 @@ export async function createCandidate(formData: FormData): Promise<void> {
 
     await audit("candidate.create", admin.id, {
       candidateId: c.id,
-      name,
-      email,
+      name: safeName,
+      email: safeEmail,
       layoutId: c.layoutId,
       exportFormat: c.exportFormat,
       engagementCount,
@@ -170,8 +177,8 @@ export async function createCandidate(formData: FormData): Promise<void> {
 
 export async function updateCandidate(candidateId: string, formData: FormData) {
   const admin = await requireAdmin();
-  const name = String(formData.get("name") || "").trim();
-  const email = String(formData.get("email") || "").trim();
+  const name = sanitizePostgresText(String(formData.get("name") || "").trim());
+  const email = sanitizePostgresText(String(formData.get("email") || "").trim());
   const layoutId = String(formData.get("layoutId") || "ats_classic");
   const exportFormat = String(formData.get("exportFormat") || "DOCX");
   if (!name || !email) return;

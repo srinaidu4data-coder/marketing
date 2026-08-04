@@ -1,6 +1,8 @@
 /**
  * Extract plain text from uploaded master resumes (.txt / .docx / .doc / .pdf).
  * DOCX uses mammoth; binary PDF gets a readable placeholder + any UTF-8 recoverable text.
+ *
+ * Always strips NUL (0x00) — Postgres rejects it in UTF-8 text columns (error 22021).
  */
 
 import mammoth from "mammoth";
@@ -11,6 +13,16 @@ export type ExtractMasterResult = {
   format: "txt" | "docx" | "pdf" | "doc" | "unknown";
   warning?: string;
 };
+
+/**
+ * Postgres text/json cannot store U+0000. PDF/DOCX extractors and binary
+ * mis-reads sometimes leave NULs in strings; strip them before any DB write.
+ */
+export function sanitizePostgresText(input: string): string {
+  if (!input) return input;
+  // Remove NUL and other C0 controls except tab/LF/CR
+  return input.replace(/\u0000/g, "").replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+}
 
 function detectFormat(fileName: string, buf: Buffer): ExtractMasterResult["format"] {
   const lower = fileName.toLowerCase();
@@ -49,7 +61,15 @@ function roughPdfText(buf: Buffer): string {
       .replace(/\\(.)/g, "$1");
     if (/[A-Za-z]{3,}/.test(s)) chunks.push(s);
   }
-  return chunks.join(" ").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  return sanitizePostgresText(
+    chunks.join(" ").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim()
+  );
+}
+
+function okResult(
+  partial: Omit<ExtractMasterResult, "text"> & { text: string }
+): ExtractMasterResult {
+  return { ...partial, text: sanitizePostgresText(partial.text) };
 }
 
 export async function extractMasterText(
@@ -59,73 +79,78 @@ export async function extractMasterText(
   const format = detectFormat(fileName, buf);
 
   if (format === "txt" || format === "unknown") {
-    const asUtf8 = buf.toString("utf8");
-    if (!asUtf8.includes("\u0000") && asUtf8.replace(/\s/g, "").length > 40) {
-      return { text: asUtf8, extracted: true, format: format === "unknown" ? "txt" : format };
+    // Binary files often decode with NULs; strip them and accept if enough text remains.
+    const asUtf8 = sanitizePostgresText(buf.toString("utf8"));
+    if (asUtf8.replace(/\s/g, "").length > 40) {
+      return okResult({
+        text: asUtf8,
+        extracted: true,
+        format: format === "unknown" ? "txt" : format,
+      });
     }
   }
 
   if (format === "docx") {
     try {
       const result = await mammoth.extractRawText({ buffer: buf });
-      const text = (result.value || "").replace(/\r\n/g, "\n").trim();
+      const text = sanitizePostgresText((result.value || "").replace(/\r\n/g, "\n").trim());
       if (text.length > 40) {
-        return {
+        return okResult({
           text,
           extracted: true,
           format: "docx",
           warning: result.messages?.length
             ? result.messages.map((m) => m.message).join("; ")
             : undefined,
-        };
+        });
       }
-      return {
+      return okResult({
         text: `[Uploaded master resume: ${fileName} (${buf.length} bytes)]\nDOCX parsed but little text found — check the file contents.`,
         extracted: false,
         format: "docx",
         warning: "DOCX extraction returned empty text",
-      };
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      return {
+      return okResult({
         text: `[Uploaded master resume: ${fileName} (${buf.length} bytes)]\nDOCX extraction failed: ${msg}`,
         extracted: false,
         format: "docx",
         warning: msg,
-      };
+      });
     }
   }
 
   if (format === "pdf") {
     const rough = roughPdfText(buf);
     if (rough.length > 80) {
-      return {
+      return okResult({
         text: rough,
         extracted: true,
         format: "pdf",
         warning: "PDF text extracted with best-effort parser (complex PDFs may be incomplete).",
-      };
+      });
     }
-    return {
+    return okResult({
       text: `[Uploaded master resume: ${fileName} (${buf.length} bytes)]\nPDF text could not be extracted automatically — paste a .txt export or DOCX for full progressive tailoring from master facts.`,
       extracted: false,
       format: "pdf",
       warning: "PDF text extraction limited",
-    };
+    });
   }
 
   if (format === "doc") {
-    return {
+    return okResult({
       text: `[Uploaded master resume: ${fileName} (${buf.length} bytes)]\nLegacy .doc is not fully supported — please re-save as .docx or .txt and replace again.`,
       extracted: false,
       format: "doc",
       warning: "Legacy .doc not supported",
-    };
+    });
   }
 
-  return {
+  return okResult({
     text: `[Uploaded master resume: ${fileName} (${buf.length} bytes)]\nUnrecognized format — use .txt, .docx, or .pdf.`,
     extracted: false,
     format: "unknown",
-  };
+  });
 }

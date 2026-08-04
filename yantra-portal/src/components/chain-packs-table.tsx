@@ -23,6 +23,7 @@ import { extractJobTitle } from "@/lib/resume/jd-parse";
 import type { PackShipReport } from "@/lib/resume/pack-ship-ready";
 import { cn } from "@/lib/utils";
 import { ResumePreviewModal } from "@/components/resume-preview-modal";
+import { FitReportPanel } from "@/components/fit-report-panel";
 
 export type ChainPackRow = {
   id: string;
@@ -298,6 +299,15 @@ export function ChainPacksTable({
                   />
                 </div>
               </div>
+
+              {/* Research lab: JD fit checklist + confidence (localhost) */}
+              {hasText ? (
+                <FitReportPanel
+                  resumeText={cc.tailoredResumeText}
+                  jd={rawJobText}
+                  jobTitle={cc.jobTitle || role}
+                />
+              ) : null}
 
               {/* Actions */}
               <div className="flex flex-col gap-3 border-t border-black/[0.04] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">

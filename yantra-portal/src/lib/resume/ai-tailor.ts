@@ -913,7 +913,22 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
     /* keep boosted text */
   }
 
-  // Re-score after final scrub
+  // Research enhance (psych / IR / primacy / peak-end / n-grams / anti-prototype)
+  try {
+    const { researchEnhancePack } = await import("./research-enhance-pack");
+    const enhanced = researchEnhancePack({
+      structured,
+      jd: input.jd,
+      masterText: input.master,
+      jobTitle,
+    });
+    structured = enhanced.structured;
+    text = enhanced.text;
+  } catch (e) {
+    console.warn("[ai-tailor] researchEnhancePack skipped", e);
+  }
+
+  // Re-score after final scrub + research enhance
   const { scoreResume } = await import("./ats-scorer");
   let ats = scoreResume({
     resumeText: text,
@@ -936,7 +951,28 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
     });
     structured = reboost.structured;
     text = reboost.text;
-    ats = reboost.ats;
+    try {
+      const { researchEnhancePack } = await import("./research-enhance-pack");
+      const enhanced = researchEnhancePack({
+        structured,
+        jd: input.jd,
+        masterText: input.master,
+        jobTitle,
+      });
+      structured = enhanced.structured;
+      text = enhanced.text;
+    } catch {
+      /* keep */
+    }
+    ats = scoreResume({
+      resumeText: text,
+      jd: input.jd,
+      jobTitle,
+      recentProjectCount: Math.max(2, projects.length),
+      temporalViolations: 0,
+      earlyCareerOversell: false,
+      honestyFailed: false,
+    });
   }
 
   if (honestyFailed && ats.score > 70) {

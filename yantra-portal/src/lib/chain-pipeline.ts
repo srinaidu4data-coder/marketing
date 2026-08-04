@@ -24,6 +24,7 @@ import {
 import { assessCandidateReady } from "@/lib/candidate-ready";
 import { inspectPackShipReady } from "@/lib/resume/pack-ship-ready";
 import { serializeMasterProfile, parseMasterProfile } from "@/lib/resume/master-profile";
+import { sanitizePostgresText } from "@/lib/resume/extract-master";
 
 /** Chains older than this in GENERATING/SENDING are considered abandoned. */
 export const STALE_CHAIN_MS = 10 * 60 * 1000; // 10 minutes (OpenAI multi-candidate)
@@ -280,8 +281,10 @@ export async function generateChainResumes(
           );
           const stored = parseStoredMasterProfile(masterProfileJson);
           if (!stored || stored.engagements.length === 0) {
-            masterProfileJson = serializeMasterProfile(
-              parseMasterProfile(c.masterResumeText || "")
+            masterProfileJson = sanitizePostgresText(
+              serializeMasterProfile(
+                parseMasterProfile(c.masterResumeText || "")
+              )
             );
             try {
               await prisma.candidate.update({
@@ -403,34 +406,39 @@ export async function generateChainResumes(
           where: { chainId, candidateId: c.id },
         });
         const packData = {
-          tailoredResumeText: tailored.text,
+          // Strip NULs — Postgres rejects U+0000 in UTF-8 text (error 22021)
+          tailoredResumeText: sanitizePostgresText(tailored.text || ""),
           tailoredResumePath: textRel,
           docxPath,
           pdfPath,
           layoutId: c.layoutId,
-          jobTitle: tailored.structured.meta.jobTitle,
-          skillFingerprint: tailored.structured.meta.skillFingerprint,
+          jobTitle: sanitizePostgresText(tailored.structured.meta.jobTitle || ""),
+          skillFingerprint: sanitizePostgresText(
+            tailored.structured.meta.skillFingerprint || ""
+          ),
           atsScore: tailored.ats.score,
           psychScore: tailored.psych?.score ?? 0,
           tailorMode: tailored.modeResult?.mode || tailored.structured.meta.tailorMode || "",
           atsReady: tailored.ats.score >= 95, // ship floor; BEST = dual 100 on best flag
-          atsBreakdownJson: JSON.stringify({
-            ats: tailored.ats,
-            psych: tailored.psych,
-            mode: tailored.modeResult,
-            best: tailored.best,
-            packValidation: tailored.packValidation
-              ? {
-                  ok: tailored.packValidation.ok,
-                  score: tailored.packValidation.score,
-                  summary: tailored.packValidation.summary,
-                  clientsFound: tailored.packValidation.clientsFound.length,
-                  clientsMissing: tailored.packValidation.clientsMissing,
-                  yearsClaims: tailored.packValidation.yearsClaimsInSummary,
-                }
-              : null,
-            progressiveNotes: tailored.structured.meta.progressiveNotes,
-          }),
+          atsBreakdownJson: sanitizePostgresText(
+            JSON.stringify({
+              ats: tailored.ats,
+              psych: tailored.psych,
+              mode: tailored.modeResult,
+              best: tailored.best,
+              packValidation: tailored.packValidation
+                ? {
+                    ok: tailored.packValidation.ok,
+                    score: tailored.packValidation.score,
+                    summary: tailored.packValidation.summary,
+                    clientsFound: tailored.packValidation.clientsFound.length,
+                    clientsMissing: tailored.packValidation.clientsMissing,
+                    yearsClaims: tailored.packValidation.yearsClaimsInSummary,
+                  }
+                : null,
+              progressiveNotes: tailored.structured.meta.progressiveNotes,
+            })
+          ),
         };
         if (existing) {
           await prisma.chainCandidate.update({

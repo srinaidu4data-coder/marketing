@@ -745,6 +745,19 @@ export async function assembleDeterministicPack(opts: {
   } catch {
     /* keep */
   }
+  try {
+    const { researchEnhancePack } = await import("./research-enhance-pack");
+    const enhanced = researchEnhancePack({
+      structured,
+      jd: opts.jd,
+      masterText: opts.master,
+      jobTitle,
+    });
+    structured = enhanced.structured;
+    text = enhanced.text;
+  } catch {
+    /* keep */
+  }
   const { scoreResume } = await import("./ats-scorer");
   let ats = scoreResume({
     resumeText: text,
@@ -764,7 +777,26 @@ export async function assembleDeterministicPack(opts: {
     });
     structured = reboost.structured;
     text = reboost.text;
-    ats = reboost.ats;
+    try {
+      const { researchEnhancePack } = await import("./research-enhance-pack");
+      const enhanced = researchEnhancePack({
+        structured,
+        jd: opts.jd,
+        masterText: opts.master,
+        jobTitle,
+      });
+      structured = enhanced.structured;
+      text = enhanced.text;
+    } catch {
+      /* keep */
+    }
+    ats = scoreResume({
+      resumeText: text,
+      jd: opts.jd,
+      jobTitle,
+      recentProjectCount: Math.max(2, projects.length),
+      honestyFailed: false,
+    });
   }
   void honestyFailed;
 
