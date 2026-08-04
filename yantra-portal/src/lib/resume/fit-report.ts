@@ -5,15 +5,19 @@
  */
 
 import { extractJdKeywords, extractJobTitle } from "./jd-parse";
-import { extractJdNgrams } from "./research-enhance-pack";
+import {
+  dedupeJdPhrases,
+  extractJdNgrams,
+} from "./research-enhance-pack";
 import { stripEngineFooter } from "./strip-engine-footer";
 import { getStructureDef, STRUCTURE_CATALOG } from "./layout-structures";
 import { getLayoutConfig } from "./layout-config";
+import { checkPackEducationDupes } from "./education-filter";
 
 export type FitRequirement = {
   id: string;
   label: string;
-  kind: "title" | "keyword" | "phrase" | "structure" | "layout";
+  kind: "title" | "keyword" | "phrase" | "structure" | "layout" | "quality";
   present: boolean;
   proof?: string;
 };
@@ -198,7 +202,9 @@ export function buildFitReport(opts: {
     (opts.jobTitle || "").trim() || extractJobTitle(jd) || "Target role";
 
   const keywords = extractJdKeywords(jd, 28);
-  const ngrams = extractJdNgrams(jd, 16);
+  // N-grams already deduped; run again so checklist never shows span fragments
+  // like "Location New" next to "Location New Brunswick NJ".
+  const ngrams = dedupeJdPhrases(extractJdNgrams(jd, 24), 12);
 
   const requirements: FitRequirement[] = [];
 
@@ -283,8 +289,40 @@ export function buildFitReport(opts: {
     present: hasEmployer,
   });
 
-  // Keywords
+  // Education / cert near-duplicates (punctuation twins like "Certified." vs "Certified")
+  const eduDupes = checkPackEducationDupes(text);
+  requirements.push({
+    id: "edu-no-near-dupes",
+    label: "No near-duplicate education/certs",
+    kind: "quality",
+    present: eduDupes.ok,
+    proof: eduDupes.ok
+      ? eduDupes.note
+      : `${eduDupes.note}${
+          eduDupes.examples.length
+            ? ` · ${eduDupes.examples[0]}`
+            : ""
+        }`,
+  });
+
+  // Keywords — skip if fully covered by a longer checklist phrase (same proof)
+  const phraseKeys = ngrams.map((p) => p.toLowerCase());
+  const keywordSeen = new Set<string>();
   for (const k of keywords.slice(0, 18)) {
+    const key = k.toLowerCase();
+    if (keywordSeen.has(key)) continue;
+    // Covered by a longer n-gram → drop from checklist (avoids duplicate ticks)
+    if (
+      phraseKeys.some(
+        (ph) =>
+          ph === key ||
+          ph.split(/\s+/).includes(key) ||
+          (key.length >= 4 && ph.includes(key))
+      )
+    ) {
+      continue;
+    }
+    keywordSeen.add(key);
     const present = has(text, k);
     requirements.push({
       id: `kw-${k}`,
@@ -295,8 +333,12 @@ export function buildFitReport(opts: {
     });
   }
 
-  // Phrases / n-grams
-  for (const p of ngrams.slice(0, 10)) {
+  // Phrases / n-grams (deduped — longest wins, substring fragments dropped)
+  const phraseSeen = new Set<string>();
+  for (const p of ngrams) {
+    const key = p.toLowerCase();
+    if (phraseSeen.has(key)) continue;
+    phraseSeen.add(key);
     const present = has(text, p);
     requirements.push({
       id: `ph-${p.slice(0, 40)}`,
@@ -319,6 +361,9 @@ export function buildFitReport(opts: {
   if (layoutApplied && !layoutApplied.applied) {
     confidence = Math.min(confidence, 78);
   }
+  if (!eduDupes.ok) {
+    confidence = Math.min(confidence, 82);
+  }
   // Summary density preference
   const summaryBlock = extractSummaryBlock(text);
   const summaryLines = summaryBlock.filter((l) => l.trim().length > 20).length;
@@ -326,6 +371,9 @@ export function buildFitReport(opts: {
   if (summaryLines < 6) confidence = Math.min(confidence, confidence - 5);
   if (summaryLines >= 10) confidence = Math.min(100, confidence + 3);
   if (layoutApplied?.applied) confidence = Math.min(100, confidence + 2);
+  if (eduDupes.ok && eduDupes.rawCount >= 2) {
+    confidence = Math.min(100, confidence + 1);
+  }
   confidence = Math.max(0, Math.min(100, Math.round(confidence)));
 
   const confidenceLabel: FitReport["confidenceLabel"] =
@@ -360,6 +408,7 @@ export function buildFitReport(opts: {
     layoutApplied,
     researchNotes: [
       "Layout: first section + expected headings match assigned layout",
+      "Education: near-dedupe degrees/certs before ship (punctuation twins)",
       "Primacy: JD proof first in experience bullets",
       "Peak–end: impact-coded close on roles",
       "Schema: title isomorphism",

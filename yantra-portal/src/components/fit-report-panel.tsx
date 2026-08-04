@@ -134,7 +134,8 @@ export function FitReportPanel({
                   key={r.id}
                   className={cn(
                     "flex items-start gap-2 rounded-lg px-2 py-1 hover:bg-[#f5f5f7]",
-                    r.kind === "layout" && "bg-sky-50/80"
+                    r.kind === "layout" && "bg-sky-50/80",
+                    r.kind === "quality" && "bg-violet-50/80"
                   )}
                 >
                   <span
@@ -157,7 +158,9 @@ export function FitReportPanel({
                       "shrink-0 text-[10px] uppercase",
                       r.kind === "layout"
                         ? "font-semibold text-sky-600"
-                        : "text-[#c7c7cc]"
+                        : r.kind === "quality"
+                          ? "font-semibold text-violet-600"
+                          : "text-[#c7c7cc]"
                     )}
                   >
                     {r.kind}

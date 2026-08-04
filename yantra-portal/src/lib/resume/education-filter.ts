@@ -117,7 +117,10 @@ export function dedupeEducationLines(lines: string[]): string[] {
       // Same key, or one is a prefix of the other (period / "Associate level" variants)
       if (
         k === prev ||
-        (k.length >= 18 && prev.length >= 18 && (k.startsWith(prev.slice(0, 28)) || prev.startsWith(k.slice(0, 28))))
+        (k.length >= 18 &&
+          prev.length >= 18 &&
+          (k.startsWith(prev.slice(0, 28)) ||
+            prev.startsWith(k.slice(0, 28))))
       ) {
         subsumed = true;
         // Prefer the longer / more informative existing line; if new is longer, replace
@@ -133,6 +136,130 @@ export function dedupeEducationLines(lines: string[]): string[] {
     out.push(t);
   }
   return out;
+}
+
+export type EducationDupeCheck = {
+  /** true when no near-duplicates (or no education block to judge) */
+  ok: boolean;
+  rawCount: number;
+  uniqueCount: number;
+  dupeCount: number;
+  /** Example twin pairs for Fit proof */
+  examples: string[];
+  note: string;
+};
+
+/**
+ * Pull body lines under Education / Certifications / Credentials from pack text.
+ */
+export function extractEducationBlockFromPack(text: string): string[] {
+  const lines = (text || "").replace(/\r\n/g, "\n").split("\n");
+  const out: string[] = [];
+  let inBlock = false;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) {
+      if (inBlock && out.length) continue;
+      continue;
+    }
+    // Section headers (plain or ALL CAPS)
+    if (
+      /^(education|academic(\s+background)?|degrees?|certifications?|certificates?|licenses?|credentials?|education\s*&\s*cert|certifications?\s*&\s*education)\b/i.test(
+        line
+      ) &&
+      line.length < 64
+    ) {
+      inBlock = true;
+      continue;
+    }
+    if (inBlock) {
+      // Next major section
+      if (
+        /^(professional summary|summary|executive brief|core competencies|technical skills|skills|professional experience|experience|employment|selected impact|capability|systems|career arc|methodology|references|—|\- Role Forge|\- YANTRA)/i.test(
+          line
+        ) &&
+        line.length < 80
+      ) {
+        break;
+      }
+      if (/^[-–—=]{3,}$/.test(line)) continue;
+      if (/^employer\s*\/\s*client:/i.test(line)) break;
+      // Skip pure noise / footer
+      if (/progressive tailor|internal ats|ready\s*·/i.test(line)) break;
+      if (line.length < 4 || line.length > 220) continue;
+      out.push(cleanLine(line));
+      if (out.length >= 20) break;
+    }
+  }
+  return out;
+}
+
+/**
+ * Fit / QA helper: detect near-duplicate education & cert lines on a generated pack.
+ */
+export function checkPackEducationDupes(text: string): EducationDupeCheck {
+  const raw = extractEducationBlockFromPack(text);
+  if (raw.length < 2) {
+    return {
+      ok: true,
+      rawCount: raw.length,
+      uniqueCount: raw.length,
+      dupeCount: 0,
+      examples: [],
+      note:
+        raw.length === 0
+          ? "No education/cert block detected"
+          : "Single education line — no duplicate risk",
+    };
+  }
+  const unique = dedupeEducationLines(raw);
+  const dupeCount = raw.length - unique.length;
+  const ok = dupeCount === 0;
+  // Surface which lines collapsed (first occurrence of each key that had a twin)
+  const examples: string[] = [];
+  if (!ok) {
+    const seen = new Map<string, string>();
+    for (const line of raw) {
+      const k = normalizeEduKey(line);
+      if (!k) continue;
+      if (seen.has(k)) {
+        const a = seen.get(k)!;
+        const pair = `"${a.slice(0, 48)}" ≈ "${line.slice(0, 48)}"`;
+        if (!examples.includes(pair)) examples.push(pair);
+      } else {
+        // also check prefix near-match already in map
+        let twin: string | null = null;
+        const entries = Array.from(seen.entries());
+        for (let ei = 0; ei < entries.length; ei++) {
+          const [pk, pv] = entries[ei];
+          if (
+            k.length >= 18 &&
+            pk.length >= 18 &&
+            (k.startsWith(pk.slice(0, 28)) || pk.startsWith(k.slice(0, 28)))
+          ) {
+            twin = pv;
+            break;
+          }
+        }
+        if (twin) {
+          const pair = `"${twin.slice(0, 48)}" ≈ "${line.slice(0, 48)}"`;
+          if (!examples.includes(pair)) examples.push(pair);
+        } else {
+          seen.set(k, line);
+        }
+      }
+    }
+  }
+  return {
+    ok,
+    rawCount: raw.length,
+    uniqueCount: unique.length,
+    dupeCount,
+    examples: examples.slice(0, 3),
+    note: ok
+      ? `Education clean (${unique.length} unique line${unique.length === 1 ? "" : "s"})`
+      : `${dupeCount} near-duplicate education/cert line${dupeCount === 1 ? "" : "s"} — regenerate pack`,
+  };
 }
 
 /**
