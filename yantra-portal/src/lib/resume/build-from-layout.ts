@@ -135,9 +135,10 @@ function sectionLines(
       return c.methodologyLines.length
         ? c.methodologyLines
         : skills.length
-          ? [`JD focus: ${skills.slice(0, 8).join(sep)}.`]
+          ? // Real skill tokens only — never "JD focus:" with location/position crumbs
+            [`Methods: ${skills.slice(0, 8).join(sep)}.`]
           : c.jobTitle
-            ? [`Role focus: ${c.jobTitle}.`]
+            ? [`Role methods aligned to ${c.jobTitle}.`]
             : [];
     case "highlights":
       return c.impactLines.slice(0, 6);

@@ -13,7 +13,10 @@ import {
 } from "./environment-stack";
 
 const BOOSTER_LINE =
-  /^(delivery focus:|ship-floor skills:|jd keywords:|core \/ jd-aligned skills:|target role:)/i;
+  /^(delivery focus:|ship-floor skills:|jd keywords:|jd focus phrases?:|jd focus:|core \/ jd-aligned skills:|target role:)/i;
+
+/** Entire line is JD meta dump — drop; tokens may be recovered if skill-like */
+const JD_FOCUS_DUMP_LINE = /^\s*JD\s+focus(\s+phrases?)?\s*:/i;
 
 const BOOSTER_BULLET =
   /^[•\-–—*]\s*applied\s+.+\s+within\s+engagement\s+delivery/i;
@@ -52,6 +55,21 @@ function cleanSkillToken(t: string): string | null {
   const s = t.replace(/\s+/g, " ").trim();
   if (s.length < 2 || s.length > 48) return null;
   if (SKILL_GARBAGE.test(s)) return null;
+  // JD posting crumbs leaked as skill tokens
+  if (
+    /^(location|position|duration|title|role|job|site|city|state|office|new\s+brunswick|brunswick\s+nj)\b/i.test(
+      s
+    )
+  ) {
+    return null;
+  }
+  if (
+    /\b(location|position|duration)\b/i.test(s) &&
+    !/\b(SAP|FSCD|ATTP|EPCIS|FICO|HANA|ABAP|API)\b/i.test(s)
+  ) {
+    return null;
+  }
+  if (/^\d+\+?\s*(months?|years?)\b/i.test(s)) return null;
   if (/^[-–—*•]+$/.test(s)) return null;
   if (/\s{2,}/.test(s) && s.split(" ").length > 6) return null;
   // Drop long sentence-like fragments
@@ -60,6 +78,22 @@ function cleanSkillToken(t: string): string | null {
 }
 
 function scrubSkillsLine(line: string): string | null {
+  // Legacy "JD focus phrases: Location · Position · …" — never keep the dump line
+  if (JD_FOCUS_DUMP_LINE.test(line.trim())) {
+    const body = line.replace(/^[^:]+:\s*/, "");
+    const parts = body
+      .split(/\s*[·|•,]\s*/)
+      .map(cleanSkillToken)
+      .filter(Boolean) as string[];
+    // Only recover clearly technical tokens; drop geo/meta entirely
+    const tech = parts.filter((p) =>
+      /SAP|FSCD|ATTP|EPCIS|GS1|DSCSA|HANA|S\/4|FICO|ABAP|API|RAR|IFRS|BW|BTP|CPI|EWM|Agile|Scrum|SQL|ETL|OData|JSON|XML/i.test(
+        p
+      )
+    );
+    if (!tech.length) return null;
+    return `Core: ${tech.slice(0, 12).join(" · ")}`;
+  }
   if (BOOSTER_LINE.test(line.trim())) {
     // Keep tokens after label only if clean
     const body = line.replace(/^[^:]+:\s*/, "");
