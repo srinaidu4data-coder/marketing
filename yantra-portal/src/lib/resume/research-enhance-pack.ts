@@ -93,6 +93,151 @@ function bulletJdScore(bullet: string, jdTokens: Set<string>): number {
   return score;
 }
 
+/**
+ * Dedupe JD phrases for checklist / weave:
+ * keep longer, more specific phrases; drop exact dups, contiguous
+ * word-substring fragments (e.g. "Location New" ⊂ "Location New Brunswick NJ"),
+ * and high-overlap sliding windows from the same JD line.
+ */
+export function dedupeJdPhrases(phrases: string[], limit = 24): string[] {
+  const cleaned = phrases
+    .map((p) => (p || "").replace(/\s+/g, " ").trim())
+    .filter((p) => p.length >= 4 && !isWeakJdPhrase(p));
+
+  // Prefer longer / more token-rich first; slight boost for technical tokens
+  const ranked = [...cleaned].sort((a, b) => {
+    const score = (s: string) =>
+      s.split(/\s+/).length * 10 +
+      s.length +
+      (/[A-Z]{2,}|\d|SAP|ATTP|EPCIS|GS1|DSCSA|S\/4|HANA|API|ABAP/i.test(s)
+        ? 15
+        : 0);
+    return score(b) - score(a);
+  });
+
+  const kept: string[] = [];
+  const keptKeys: string[] = [];
+
+  for (const phrase of ranked) {
+    const key = phrase.toLowerCase();
+    if (keptKeys.includes(key)) continue;
+
+    // Contiguous word-span containment or high sliding-window overlap
+    const redundant = keptKeys.some(
+      (k) => phraseIsSubspanOf(key, k) || phrasesHighlyOverlap(key, k)
+    );
+    if (redundant) continue;
+
+    // If a shorter kept item is a subspan / high-overlap of this one, replace it
+    for (let i = keptKeys.length - 1; i >= 0; i--) {
+      if (
+        phraseIsSubspanOf(keptKeys[i]!, key) ||
+        phrasesHighlyOverlap(keptKeys[i]!, key)
+      ) {
+        keptKeys.splice(i, 1);
+        kept.splice(i, 1);
+      }
+    }
+
+    kept.push(phrase);
+    keptKeys.push(key);
+    if (kept.length >= limit) break;
+  }
+
+  return kept;
+}
+
+/** True if `inner` is the same as `outer` or a contiguous word subspan of it. */
+function phraseIsSubspanOf(inner: string, outer: string): boolean {
+  if (!inner || !outer) return false;
+  if (inner === outer) return true;
+  const a = inner.split(/\s+/).filter(Boolean);
+  const b = outer.split(/\s+/).filter(Boolean);
+  if (a.length === 0 || a.length > b.length) return false;
+  for (let i = 0; i <= b.length - a.length; i++) {
+    let ok = true;
+    for (let j = 0; j < a.length; j++) {
+      if (a[j] !== b[i + j]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return true;
+  }
+  // Tight char containment for punctuation variants
+  if (outer.includes(inner) && inner.length >= 8 && a.length >= 2) return true;
+  return false;
+}
+
+/**
+ * Sliding-window near-dupes: share ≥2 consecutive tokens OR
+ * Jaccard ≥ 0.6 on word sets for short phrases.
+ */
+function phrasesHighlyOverlap(a: string, b: string): boolean {
+  if (!a || !b || a === b) return a === b;
+  const wa = a.split(/\s+/).filter(Boolean);
+  const wb = b.split(/\s+/).filter(Boolean);
+  if (wa.length < 2 || wb.length < 2) return false;
+
+  // Shared bigram / trigram
+  const grams = (words: string[], n: number) => {
+    const s = new Set<string>();
+    for (let i = 0; i <= words.length - n; i++) {
+      s.add(words.slice(i, i + n).join(" "));
+    }
+    return s;
+  };
+  const bigA = grams(wa, 2);
+  for (const g of Array.from(grams(wb, 2))) {
+    if (bigA.has(g)) return true;
+  }
+
+  const setA = new Set(wa);
+  const setB = new Set(wb);
+  let inter = 0;
+  for (const w of Array.from(setA)) if (setB.has(w)) inter++;
+  const union = setA.size + setB.size - inter;
+  if (union > 0 && inter / union >= 0.6 && Math.min(wa.length, wb.length) >= 3) {
+    return true;
+  }
+  return false;
+}
+
+/** Drop low-value meta fragments that pollute the proof checklist. */
+function isWeakJdPhrase(phrase: string): boolean {
+  const p = phrase.trim();
+  const low = p.toLowerCase();
+  // Truncated header crumbs: "Location New", "Position SAP"
+  if (
+    /^(location|position|title|role|job|site|city|state|office)\s+\S+$/i.test(p)
+  ) {
+    return true;
+  }
+  // Leading/trailing function words from bad n-gram windows
+  if (
+    /^(and|or|the|for|with|from|this|that|will|must|have|our|your|know|should|can|may|a|an|to|of|in|on|at)\b/i.test(
+      low
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(and|or|the|for|with|from|to|of|a|an|in|on|at|know)$/i.test(low)
+  ) {
+    return true;
+  }
+  // Cut-off windows like "serialization and Track" (vs full "Track and Trace")
+  if (
+    /\band\s+[A-Za-z][a-z]+$/i.test(p) &&
+    !/\b(trace|reporting|controlling|treasury|analytics|integration|management|support|operations|development|accounting|compliance)\s*$/i.test(
+      p
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /** Extract multi-word phrases (2–4 tokens) from JD for n-gram weave. */
 export function extractJdNgrams(jd: string, limit = 24): string[] {
   const lines = (jd || "")
@@ -114,6 +259,7 @@ export function extractJdNgrams(jd: string, limit = 24): string[] {
         if (key.length < 6 || key.length > 64) continue;
         if (/^(and|the|for|with|from|this|that|will|must|have)\b/i.test(phrase))
           continue;
+        if (isWeakJdPhrase(phrase)) continue;
         if (seen.has(key)) continue;
         // Prefer technical-looking phrases
         if (
@@ -126,20 +272,23 @@ export function extractJdNgrams(jd: string, limit = 24): string[] {
         }
         seen.add(key);
         out.push(phrase);
-        if (out.length >= limit) return out;
+        // Collect extra then dedupe — don't return early on raw limit
+        if (out.length >= limit * 3) break;
       }
+      if (out.length >= limit * 3) break;
     }
+    if (out.length >= limit * 3) break;
   }
   // Fallback: keywords as soft phrases
   if (out.length < 8) {
     for (const k of extractJdKeywords(jd, 20)) {
-      if (!seen.has(k.toLowerCase())) {
+      if (!seen.has(k.toLowerCase()) && !isWeakJdPhrase(k)) {
         out.push(k);
         seen.add(k.toLowerCase());
       }
     }
   }
-  return out.slice(0, limit);
+  return dedupeJdPhrases(out, limit);
 }
 
 function dehedge(line: string): string {
