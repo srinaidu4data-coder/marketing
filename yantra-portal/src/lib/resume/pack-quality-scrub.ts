@@ -7,6 +7,10 @@
 
 import type { StructuredResume } from "./templates";
 import { renderPlainFromStructured } from "./build-from-layout";
+import {
+  isEnvironmentMetaLine,
+  scrubEnvironmentLineText,
+} from "./environment-stack";
 
 const BOOSTER_LINE =
   /^(delivery focus:|ship-floor skills:|jd keywords:|core \/ jd-aligned skills:|target role:)/i;
@@ -111,14 +115,24 @@ function scrubImpactLines(lines: string[], jd: string): string[] {
 }
 
 /**
- * WHY FICO still showed on ATTP packs:
- * scrub previously KEPT any token matching \bSAP\b — so "SAP FICO" survived.
- * Rule now: on ATTP JDs, drop FICO/finance tokens hard; keep only ATTP/JD stack.
+ * Environment = tools/platforms only.
+ * 1) Drop soft duties / title fragments (shared filter)
+ * 2) Domain scrub (ATTP vs FICO, clinical)
  */
 function scrubEnvironmentLine(line: string, jd: string, master: string): string {
-  if (!/^(environment|stack|modules|chapter stack)\s*:/i.test(line)) return line;
-  const label = line.match(/^([^:]+):\s*/)?.[1] || "Environment";
-  const body = line.replace(/^[^:]+:\s*/, "");
+  if (!isEnvironmentMetaLine(line) && !/^environment\s*:/i.test(line.trim())) {
+    return line;
+  }
+  // Tools-only first pass (kills "facilitating workshops", truncated titles)
+  let cleaned = scrubEnvironmentLineText(line, { max: 10 });
+  if (!cleaned) {
+    return isAttpJd(jd)
+      ? "Environment: SAP ATTP · EPCIS · GS1"
+      : ""; // drop empty junk lines
+  }
+
+  const label = cleaned.match(/^([^:]+):\s*/)?.[1] || "Environment";
+  const body = cleaned.replace(/^[^:]+:\s*/, "");
   let parts = body
     .split(/\s*[·|,]\s*/)
     .map((p) => p.trim())
@@ -132,18 +146,17 @@ function scrubEnvironmentLine(line: string, jd: string, master: string): string 
 
       // ATTP / serialization JD: NEVER leave FICO / pure finance stack
       if (isAttpJd(jd)) {
-        // "SAP FICO", "FICO", "CFIN", "New GL", "FP&A" — drop
         if (FICO_HEAVY.test(p)) return false;
-        // Bare "SAP" alone is weak; keep only if ATTP-relevant compound or platform
         if (/^sap$/i.test(p)) return false;
-        // Keep ATTP/platform tokens; drop random finance leftovers
         if (ATTP_STACK_OK.test(p) || ATTP_SIGNAL.test(p)) return true;
-        // Drop clear non-ATTP module tags
         if (/\b(fico|cfin|copa|mm-fi|sd-fi|asset|ledger)\b/i.test(p)) return false;
-        return true; // other short tools (Ariba etc.) OK if AI put them for ATTP landscape
+        return true;
       }
 
-      if (isClinicalOnlyJd(jd) && (FICO_HEAVY.test(p) || /\bsap\b|s\/4|fico/i.test(p))) {
+      if (
+        isClinicalOnlyJd(jd) &&
+        (FICO_HEAVY.test(p) || /\bsap\b|s\/4|fico/i.test(p))
+      ) {
         return false;
       }
       return true;
@@ -155,7 +168,6 @@ function scrubEnvironmentLine(line: string, jd: string, master: string): string 
       const sb = ATTP_SIGNAL.test(b) || ATTP_STACK_OK.test(b) ? 0 : 1;
       return sa - sb;
     });
-    // Ensure ATTP appears on recent-style env when JD is ATTP
     if (!parts.some((p) => ATTP_SIGNAL.test(p))) {
       parts = ["SAP ATTP", "EPCIS", "GS1", ...parts];
     }
@@ -164,7 +176,7 @@ function scrubEnvironmentLine(line: string, jd: string, master: string): string 
   if (!parts.length) {
     return isAttpJd(jd)
       ? `${label}: SAP ATTP · EPCIS · GS1`
-      : `${label}: SAP`;
+      : "";
   }
   return `${label}: ${Array.from(new Set(parts)).slice(0, 8).join(" · ")}`;
 }
@@ -183,8 +195,9 @@ function scrubExperienceBlock(lines: string[], jd: string, master: string): stri
       out.push(line);
       continue;
     }
-    if (/^(environment|stack|modules|chapter stack)\s*:/i.test(line)) {
-      out.push(scrubEnvironmentLine(line, jd, master));
+    if (isEnvironmentMetaLine(line) || /^environment\s*:/i.test(line)) {
+      const env = scrubEnvironmentLine(line, jd, master);
+      if (env) out.push(env);
       continue;
     }
     // Title line

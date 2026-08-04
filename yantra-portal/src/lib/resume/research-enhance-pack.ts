@@ -21,6 +21,10 @@ import { renderPlainFromStructured } from "./build-from-layout";
 import { extractJdKeywords, extractJobTitle } from "./jd-parse";
 import { isBullet, stripBullet, isEmployerClientLine, isEnvToolsLine } from "./line-class";
 import { isEngineFooterLine } from "./strip-engine-footer";
+import {
+  filterEnvironmentTokens,
+  formatEnvironmentLine,
+} from "./environment-stack";
 
 const HEDGE_RE =
   /\b(helped with|assisted with|involved in|participated in|various|etc\.?|and so on|tried to|attempted to)\b/gi;
@@ -454,21 +458,29 @@ function reinforceEnvKeywordSink(
   ngrams: string[],
   skills: string[]
 ): string[] {
-  const stack = [...ngrams.slice(0, 6), ...skills.slice(0, 8)]
-    .filter(Boolean)
-    .slice(0, 12);
+  // Tools only — never dump soft n-grams / duty phrases into Environment
+  const stack = filterEnvironmentTokens(
+    [...skills.slice(0, 12), ...ngrams.slice(0, 6)],
+    { max: 10 }
+  );
   if (!stack.length) return lines;
-  const envLine = `Environment / tools in period: ${stack.join(", ")}`;
+  const envLine =
+    formatEnvironmentLine("Environment / tools in period", stack, {
+      max: 10,
+      sep: " · ",
+    }) || `Environment / tools in period: ${stack.join(" · ")}`;
   let replaced = false;
   const out = lines.map((l) => {
-    if (isEnvToolsLine(l) || /^Environment\s*\/\s*tools/i.test(l)) {
+    if (
+      isEnvToolsLine(l) ||
+      /^Environment\s*\/\s*tools/i.test(l) ||
+      /^Environment\s*:/i.test(l)
+    ) {
       replaced = true;
       return envLine;
     }
     return l;
   });
-  // Only inject into recent-ish blocks: if no env line, append after first employer block end is hard;
-  // leave as-is if none found
   void replaced;
   return out;
 }

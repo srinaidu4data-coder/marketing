@@ -68,7 +68,7 @@ export function isSkillLine(line: string) {
 }
 
 export function isEnvToolsLine(line: string) {
-  return /^(Environment\s*\/\s*tools|Tools in period|Stack:|Modules:|Program stack:|Chapter stack:|Engagement stack:)/i.test(
+  return /^(Environment(\s*\/\s*tools(\s+in\s+period)?)?|Tools(\s+in\s+period)?|Stack|Modules|Program stack|Chapter stack|Engagement stack)\s*:/i.test(
     line.trim()
   );
 }

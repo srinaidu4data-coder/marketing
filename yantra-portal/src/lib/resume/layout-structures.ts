@@ -15,6 +15,7 @@
 import type { ResumeLayoutId, ResumeSection } from "./templates";
 import type { DomainHint } from "./jd-parse";
 import { LAYOUT_RHETORIC } from "./research-foundations";
+import { filterEnvironmentTokens } from "./environment-stack";
 
 /** Minimal project shape — avoids circular import with progressive-tailor */
 export type StructureProject = {
@@ -236,11 +237,15 @@ function expLines(
     // MANDATORY: employer/client on its own line for every project (all layouts)
     out.push(`Employer / Client: ${client}`);
     out.push(`${p.location}  |  ${p.startYear} – ${end}`);
-    const stack =
+    // Environment = tools/platforms ONLY (never soft duties or role-title fragments)
+    const stackRaw =
       p.era === "recent"
-        ? Array.from(new Set([...cleanSkills.slice(0, 12), ...p.skills])).slice(0, 14)
-        : p.skills.slice(0, 10);
-    out.push(`${opts.stackLabel || "Stack"}: ${stack.join(sep)}`);
+        ? [...p.skills, ...cleanSkills.slice(0, 12)]
+        : p.skills.slice(0, 12);
+    const stack = filterEnvironmentTokens(stackRaw, { max: 10 });
+    if (stack.length) {
+      out.push(`${opts.stackLabel || "Stack"}: ${stack.join(sep)}`);
+    }
     out.push("");
     // ONE LAW: never render more than 12 bullets per employer
     const bulletCap = Math.min(12, opts.maxBullets ?? 12);

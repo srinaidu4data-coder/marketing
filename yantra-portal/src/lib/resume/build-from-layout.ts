@@ -12,6 +12,7 @@ import {
   STRUCTURE_CATALOG,
   type StructureProject,
 } from "./layout-structures";
+import { filterEnvironmentTokens } from "./environment-stack";
 import type { ResumeSection, StructuredResume } from "./templates";
 
 export type ContentBundle = {
@@ -66,7 +67,8 @@ function expBlock(
     if (loc && datePart) out.push(`${loc}  |  ${datePart}`);
     else if (loc) out.push(loc);
     else if (datePart) out.push(datePart);
-    const stack = Array.from(new Set(p.skills.filter(Boolean))).slice(0, 10);
+    // Tools only — soft skills / title fragments never on Environment
+    const stack = filterEnvironmentTokens(p.skills || [], { max: 10 });
     if (stack.length) out.push(`${stackLabel}: ${stack.join(sep)}`);
     out.push("");
     for (const b of p.bullets) {
