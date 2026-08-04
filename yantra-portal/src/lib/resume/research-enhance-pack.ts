@@ -407,7 +407,7 @@ export function researchEnhancePack(opts: {
   const ngrams = extractJdNgrams(jd, 24);
   const notes: string[] = ["research-enhance:v1"];
 
-  let sections: ResumeSection[] = opts.structured.sections.map((sec) => {
+  const sections: ResumeSection[] = opts.structured.sections.map((sec) => {
     const h = sec.heading || "";
 
     // Summary
