@@ -111,7 +111,8 @@ export default async function AdminHomePage() {
     {
       href: "/admin/analytics",
       title: "Analytics",
-      description: "Pipeline KPIs, employee leaderboard, AI cost, audit coverage.",
+      description:
+        "Effort depth: dual ATS/Psych quality, ship funnel, mode hardness, unit economics, leaderboard.",
       stat: `Today $${todayCost.toFixed(3)} / $${cap} cap`,
       badge: "Ops",
     },
