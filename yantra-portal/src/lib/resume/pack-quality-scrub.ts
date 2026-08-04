@@ -333,24 +333,45 @@ export function scrubPackQuality(
       return { ...sec, lines: impact };
     }
 
-    // Summary
+    // Summary — always keep dense impersonal block (target 10 lines).
+    // Never inject third-person bio ("Name targets…", "positioned as…").
     if (/summary|profile|pitch/i.test(h)) {
-      const lines = sec.lines
+      let lines = sec.lines
         .filter((l) => !BOOSTER_LINE.test(l.trim()))
         .filter((l) => !/^delivery focus:/i.test(l.trim()))
         .map((l) =>
           l
-            .replace(/^positioned as a\s*-\s*/i, "positioned as a ")
+            .replace(/\bis positioned as (an?|the)\s+/gi, "")
+            .replace(/\bpositioned as (an?|the)\s+/gi, "")
+            .replace(/\bI am (an?|the)\s+/gi, "")
+            .replace(/\bI'm (an?|the)\s+/gi, "")
+            .replace(/\bI have\b/gi, "Holds")
+            .replace(/\bI\b/g, "")
+            .replace(/\bmy\b/gi, "the")
             .replace(/\s*-\s*SAP/g, " SAP")
             .replace(/\s+/g, " ")
             .trim()
         )
-        .filter((l) => l.length > 20);
-      // Ensure job title appears cleanly once
-      if (jobTitle && lines[0] && !new RegExp(jobTitle.slice(0, 20).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(lines[0])) {
-        lines[0] = `${(structured.candidateName || "Candidate").split(/\s+/)[0]} targets ${jobTitle}, drawing on progressive SAP delivery history with honest mapping to this role.`;
+        .filter(
+          (l) =>
+            l.length > 28 &&
+            !/\bis positioned as\b/i.test(l) &&
+            !/without claiming a specialty career/i.test(l)
+        );
+      // Product rule: keep up to 10 jargon-dense summary lines
+      if (jobTitle && lines[0]) {
+        const titleRe = new RegExp(
+          jobTitle.slice(0, 24).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+          "i"
+        );
+        if (!titleRe.test(lines[0]) && !titleRe.test(lines.join(" "))) {
+          lines = [
+            `${jobTitle} profile with progressive enterprise delivery across design, configuration, integration, and production support.`,
+            ...lines,
+          ];
+        }
       }
-      return { ...sec, lines: lines.slice(0, 5) };
+      return { ...sec, lines: lines.slice(0, 10) };
     }
 
     // Experience
@@ -390,7 +411,8 @@ export function scrubPackTextQuality(text: string): string {
     .filter((l) => !/^ship-floor skills:/i.test(l.trim()))
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
-    .replace(/positioned as a\s*-\s*/gi, "positioned as a ")
+    .replace(/\bis positioned as (an?|the)\s+/gi, "")
+    .replace(/positioned as a\s*-\s*/gi, "")
     .replace(/^[\-\–—]\s*SAP/gm, "SAP");
 }
 
