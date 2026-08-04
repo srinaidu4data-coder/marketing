@@ -1,40 +1,55 @@
 # Resend email (Role Forge / Yantra-compatible)
 
+## Status
+
+| Item | Ready? |
+|------|--------|
+| From address + domain | Yes — `Role Forge <noreply@contact.srsoftllc.com>` |
+| Dry-run off | Yes — `EMAIL_DRY_RUN=false` |
+| BCC / CC / reply-to support in code | Yes (Yantra-compatible) |
+| Word + PDF attachments | Yes (rebuild from DB text if disk gone) |
+| **`RESEND_API_KEY` on Vercel** | **No — add when available** |
+
+Until the key is set, sends stay in **`simulated`** mode (audit log only).
+
 ## Can we copy keys from Yantra login?
 
 **No.** Resend API keys live only in **server environment variables** (Vercel → Project → Settings → Environment Variables). They are never returned to the browser after login.
 
-## Env vars (same layout as live Yantra)
+## Env vars
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `RESEND_API_KEY` | Yes for real mail | Resend secret (`re_…`) |
-| `EMAIL_FROM` | Yes for production | `Name <user@verified-domain.com>` |
+| `RESEND_API_KEY` | **Yes for real mail** | Resend secret (`re_…`) |
+| `EMAIL_FROM` | Yes | `Role Forge <noreply@contact.srsoftllc.com>` |
+| `RESEND_FROM_EMAIL` | No | Bare-from alias (Yantra) |
 | `EMAIL_REPLY_TO` | No | Default reply-to; else employee email |
 | `EMAIL_CC` | No | Always-CC (comma-separated) |
-| `EMAIL_DRY_RUN` | No | `true` = log only, no Resend API call |
+| `EMAIL_BCC_OPS` | No | Yantra ops BCC |
+| `EMAIL_DRY_RUN` | No | `true` = log only; **use `false` for live** |
 
-Aliases accepted: `RESEND_KEY`, `RESEND_FROM`, `RESEND_REPLY_TO`, `RESEND_CC`, `RESEND_DRY_RUN`.
+Aliases: `RESEND_KEY`, `RESEND_FROM`, `RESEND_REPLY_TO`, `RESEND_CC`, `RESEND_BCC`, `RESEND_DRY_RUN`.
 
-## How to copy from Yantra production
+## One-step when key arrives
 
-1. Open [Vercel Dashboard](https://vercel.com) → project **yantra-mvp-gray** (or your Yantra project).
-2. **Settings → Environment Variables**.
-3. Copy `RESEND_API_KEY`, `EMAIL_FROM`, and any `EMAIL_*` / `RESEND_*` vars.
-4. Paste into local `yantra-portal/.env` (or host env for Role Forge deploy).
-5. Restart the app (`npm run build && npm start`).
+```bash
+# From yantra-portal
+node scripts/upsert-resend-env.mjs --with-key re_YOUR_KEY
+# then redeploy production
+```
 
-Alternatively create a new key at [resend.com/api-keys](https://resend.com/api-keys) and a verified domain at [resend.com/domains](https://resend.com/domains).
+Or paste `RESEND_API_KEY` in Vercel dashboard and redeploy.
 
-## Where Role Forge uses it
+## How Role Forge uses Resend
 
 - `sendChain` → `sendWithResend()` with:
   - **To:** chain `vendorEmail`
   - **From:** `EMAIL_FROM`
   - **Reply-To:** employee email (or `EMAIL_REPLY_TO`)
-  - **Attachments:** DOCX / PDF when generated
+  - **CC / BCC:** from env defaults
+  - **Attachments:** DOCX + PDF (rebuilt from pack text if needed)
 - Audit: `chain.email_sent` stores `to`, `from`, `resendId`, `emailMode`
-- UI: **Admin → Settings** (status) and **Admin → Email Activity** (log)
+- UI: chain detail delivery strip, **Admin → Settings**, **Admin → Email Activity**
 
 ## Modes
 
@@ -43,10 +58,3 @@ Alternatively create a new key at [resend.com/api-keys](https://resend.com/api-k
 | `simulated` | No API key | No |
 | `dry_run` | Key set + `EMAIL_DRY_RUN=true` | No |
 | `resend` | Key set, dry run off | Yes (if domain verified) |
-
-## Verify correct address
-
-1. Create chain with known **Vendor email**.
-2. Send all.
-3. Open **Admin → Email Activity** — check **To** column matches.
-4. In Resend dashboard → Emails — confirm delivery / bounce.

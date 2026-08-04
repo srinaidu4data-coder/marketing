@@ -110,23 +110,80 @@ OPENAI_MODEL=gpt-4o-mini
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-medium">Resend email (Yantra-compatible)</h2>
-          <Badge status={email.apiKeyPresent ? "SENT" : "FAILED"}>
+          <Badge
+            status={
+              email.liveReady ? "SENT" : email.apiKeyPresent ? "READY" : "PENDING"
+            }
+          >
             {email.mode}
           </Badge>
         </div>
         <p className="text-sm text-slate-500">
-          Live Yantra stores these in <strong>Vercel Environment Variables</strong> — they are not
-          readable after login. Copy the same keys into this app&apos;s{" "}
-          <code className="rounded bg-slate-100 px-1 text-xs">.env</code> (local) or host env
-          (production).
+          Non-secret settings are preconfigured for{" "}
+          <code className="rounded bg-slate-100 px-1 text-xs">contact.srsoftllc.com</code>.
+          Add only <strong>RESEND_API_KEY</strong> on Vercel, then redeploy.
         </p>
+
+        <ul className="space-y-1.5 text-sm">
+          <li className="flex items-center gap-2">
+            <span
+              className={
+                email.readiness.hasApiKey
+                  ? "text-emerald-600"
+                  : "text-amber-600"
+              }
+            >
+              {email.readiness.hasApiKey ? "✓" : "○"}
+            </span>
+            <span>
+              <strong>RESEND_API_KEY</strong>
+              {email.readiness.hasApiKey
+                ? " — configured"
+                : " — waiting (add on Vercel when ready)"}
+            </span>
+          </li>
+          <li className="flex items-center gap-2">
+            <span
+              className={
+                email.readiness.fromConfigured
+                  ? "text-emerald-600"
+                  : "text-red-600"
+              }
+            >
+              {email.readiness.fromConfigured ? "✓" : "×"}
+            </span>
+            <span>
+              <strong>EMAIL_FROM</strong> — ready
+            </span>
+          </li>
+          <li className="flex items-center gap-2">
+            <span
+              className={
+                email.readiness.dryRunOff ? "text-emerald-600" : "text-amber-600"
+              }
+            >
+              {email.readiness.dryRunOff ? "✓" : "○"}
+            </span>
+            <span>
+              <strong>EMAIL_DRY_RUN</strong> = {String(email.dryRun)}{" "}
+              {email.readiness.dryRunOff ? "(live path)" : "(blocks real send)"}
+            </span>
+          </li>
+          <li className="flex items-center gap-2">
+            <span
+              className={
+                email.readiness.fromUsesVerifiedDomainHint
+                  ? "text-emerald-600"
+                  : "text-amber-600"
+              }
+            >
+              {email.readiness.fromUsesVerifiedDomainHint ? "✓" : "○"}
+            </span>
+            <span>Domain looks production (not resend.dev sandbox)</span>
+          </li>
+        </ul>
+
         <dl className="grid gap-2 text-sm sm:grid-cols-2">
-          <div className="rounded border bg-slate-50 p-3">
-            <dt className="text-xs uppercase text-slate-500">RESEND_API_KEY</dt>
-            <dd className="mt-1 font-medium">
-              {email.apiKeyPresent ? "Configured (hidden)" : "Not set — simulated sends only"}
-            </dd>
-          </div>
           <div className="rounded border bg-slate-50 p-3">
             <dt className="text-xs uppercase text-slate-500">EMAIL_FROM</dt>
             <dd className="mt-1 break-all font-mono text-xs">{email.from}</dd>
@@ -138,22 +195,34 @@ OPENAI_MODEL=gpt-4o-mini
             </dd>
           </div>
           <div className="rounded border bg-slate-50 p-3">
-            <dt className="text-xs uppercase text-slate-500">EMAIL_DRY_RUN / EMAIL_CC</dt>
+            <dt className="text-xs uppercase text-slate-500">CC / BCC</dt>
             <dd className="mt-1 text-xs">
-              dryRun={String(email.dryRun)}
               {email.ccDefault.length
-                ? ` · cc=${email.ccDefault.join(", ")}`
-                : " · no default CC"}
+                ? `cc=${email.ccDefault.join(", ")}`
+                : "no default CC"}
+              {" · "}
+              {email.bccDefault.length
+                ? `bcc=${email.bccDefault.join(", ")}`
+                : "no BCC"}
+            </dd>
+          </div>
+          <div className="rounded border bg-slate-50 p-3">
+            <dt className="text-xs uppercase text-slate-500">Live ready</dt>
+            <dd className="mt-1 text-xs font-medium">
+              {email.liveReady
+                ? "Yes — sends hit Resend"
+                : "No — waiting on RESEND_API_KEY (or dry-run)"}
             </dd>
           </div>
         </dl>
         <pre className="overflow-x-auto rounded-md bg-slate-900 p-3 text-[11px] text-slate-100">
-{`# Copy from Yantra Vercel → Settings → Environment Variables
+{`# Only missing piece (Vercel → roleforge → Environment Variables)
 RESEND_API_KEY=re_xxxxxxxx
-EMAIL_FROM="Role Forge <marketing@your-verified-domain.com>"
-EMAIL_REPLY_TO=optional@your-domain.com
-# EMAIL_CC=ops@your-domain.com
-# EMAIL_DRY_RUN=true`}
+
+# Already set for production:
+# EMAIL_FROM=Role Forge <noreply@contact.srsoftllc.com>
+# EMAIL_DRY_RUN=false
+# Then redeploy.`}
         </pre>
         <Link
           href="/admin/email-activity"

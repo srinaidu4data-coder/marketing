@@ -11,53 +11,69 @@
 | `OPENAI_API_KEY` | Yes | AI resumes | Set |
 | `OPENAI_MODEL` | Recommended | Default `gpt-4o-mini` | Set |
 | `OPENAI_BASE_URL` | Recommended | `https://api.openai.com/v1` | Set |
-| `EMAIL_FROM` | Yes for real mail | `Role Forge <you@verified-domain>` | Set (verify value) |
-| `EMAIL_DRY_RUN` | Yes | `false` for real delivery | Set to `false` |
-| **`RESEND_API_KEY`** | **Yes for real mail** | `re_…` from Resend | **MISSING — add this** |
+| `EMAIL_FROM` | Yes for real mail | `Role Forge <noreply@contact.srsoftllc.com>` | **Ready** (Yantra domain) |
+| `EMAIL_DRY_RUN` | Yes | `false` for real delivery | **Ready** (`false`) |
+| `RESEND_FROM_EMAIL` | Optional | Bare-from alias | Ready |
+| **`RESEND_API_KEY`** | **Yes for real mail** | `re_…` from Resend / Yantra | **WAITING — add when you have it** |
 | `EMAIL_REPLY_TO` | Optional | Default reply-to | Optional |
 | `EMAIL_CC` | Optional | Always CC | Optional |
+| `EMAIL_BCC_OPS` | Optional | Yantra ops BCC | Optional |
 
-## Add Resend (required for vendor inbox)
+## Add Resend API key only (when ready)
 
-1. Open [https://resend.com/api-keys](https://resend.com/api-keys) → create key.
-2. Open [https://resend.com/domains](https://resend.com/domains) → add/verify your domain (DNS).
-3. In Vercel → **roleforge** → **Settings → Environment Variables**:
+Everything else is already configured. When you have the key:
+
+### Option A — Vercel Dashboard
+
+1. [Vercel](https://vercel.com) → **roleforge** → **Settings → Environment Variables**
+2. Add:
+   ```text
+   RESEND_API_KEY=re_xxxxxxxx
+   ```
+   Targets: **Production** (+ Preview if you want)
+3. **Redeploy** production
+
+### Option B — CLI (from `yantra-portal`)
+
+```bash
+node scripts/upsert-resend-env.mjs --with-key re_YOUR_KEY
+```
+
+Then redeploy (push or Vercel Redeploy).
+
+### Where to get the key
+
+- Copy from **Yantra** Vercel project env (`RESEND_API_KEY`), **or**
+- [resend.com/api-keys](https://resend.com/api-keys) on the same account that verified `contact.srsoftllc.com`
+
+## Already set for you
 
 ```text
-RESEND_API_KEY=re_xxxxxxxx
-EMAIL_FROM=Role Forge <marketing@YOUR_VERIFIED_DOMAIN.com>
+EMAIL_FROM=Role Forge <noreply@contact.srsoftllc.com>
+RESEND_FROM_EMAIL=noreply@contact.srsoftllc.com
 EMAIL_DRY_RUN=false
 ```
 
-4. Apply to **Production** (and Preview if you want).
-5. **Redeploy** production (env changes need a new deploy).
+Domain **`contact.srsoftllc.com`** is the same verified domain Yantra uses.
 
-CLI alternative (from `yantra-portal`):
+## Verify after key + redeploy
 
-```bash
-echo re_YOUR_KEY | npx vercel env add RESEND_API_KEY production
-echo "Role Forge <marketing@yourdomain.com>" | npx vercel env add EMAIL_FROM production --force
-npx vercel deploy --prod --yes
-```
-
-## Local `.env`
-
-```bash
-cp .env.example .env
-# paste OPENAI_API_KEY, RESEND_API_KEY, EMAIL_FROM, etc.
-```
-
-## Verify after deploy
-
-1. Open **Admin → Settings** → Email section should show Resend **configured**.
-2. Chain → **Send to vendor** → mode must be **`resend`** (not `simulated` / `dry_run`).
-3. **Admin → Email activity** → `to` / `from` / Resend id.
-4. Resend dashboard → Emails → delivery status.
+1. **Admin → Settings** → Resend mode should be **`resend`** (not `simulated` / `dry_run`)
+2. Chain → **Send to vendor** → vendor inbox receives mail
+3. **Admin → Email activity** → Resend id present
+4. [Resend dashboard](https://resend.com/emails) → delivery status
 
 ## Modes
 
 | Mode | Meaning |
 |------|---------|
-| `resend` | Real email |
+| `resend` | Real email (key set, dry-run off) |
 | `dry_run` | Key present but `EMAIL_DRY_RUN=true` |
 | `simulated` | No `RESEND_API_KEY` — app marks sent, **no inbox delivery** |
+
+## Local `.env`
+
+```bash
+cp .env.example .env
+# Uncomment and paste RESEND_API_KEY when you have it
+```

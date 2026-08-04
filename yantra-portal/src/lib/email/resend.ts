@@ -2,20 +2,27 @@
  * Resend email client for Role Forge (Yantra-compatible env layout).
  *
  * Live Yantra keeps secrets server-side (Vercel env). They are NOT available
- * via login/API. Configure the same variable names here:
+ * via login/API. Configure:
  *
- *   RESEND_API_KEY=re_xxxxxxxx
- *   EMAIL_FROM="Role Forge <marketing@your-verified-domain.com>"
- *   EMAIL_REPLY_TO=optional-default-reply@domain.com   (optional)
- *   EMAIL_DRY_RUN=true                                 (optional: log only, no API call)
- *   EMAIL_CC=optional@domain.com                       (optional)
+ *   RESEND_API_KEY=re_xxxxxxxx          ← only missing piece for live mail
+ *   EMAIL_FROM="Role Forge <noreply@contact.srsoftllc.com>"
+ *   EMAIL_REPLY_TO=optional@domain.com  (optional)
+ *   EMAIL_CC=ops@domain.com             (optional always-CC)
+ *   EMAIL_BCC_OPS=ops@domain.com        (Yantra alias → BCC)
+ *   EMAIL_DRY_RUN=false                 (true = log only, no API call)
  *
- * Fallback if RESEND_API_KEY is missing: dry audit-only send (legacy clone mode).
+ * Aliases: RESEND_KEY, RESEND_FROM, RESEND_FROM_EMAIL, RESEND_REPLY_TO,
+ *          RESEND_CC, RESEND_DRY_RUN
+ *
+ * Without RESEND_API_KEY: simulated mode (audit only, no inbox).
  */
 
 import { readFile } from "fs/promises";
 import { PRODUCT_NAME } from "@/lib/brand";
 import { resolveUploadPath } from "@/lib/paths";
+
+/** Production default From once domain is verified (matches Yantra domain). */
+export const DEFAULT_EMAIL_FROM = `${PRODUCT_NAME} <noreply@contact.srsoftllc.com>`;
 
 export type EmailAttachment = {
   filename: string;
@@ -30,6 +37,7 @@ export type SendEmailInput = {
   html?: string;
   replyTo?: string;
   cc?: string[];
+  bcc?: string[];
   attachments?: EmailAttachment[];
   tags?: { name: string; value: string }[];
 };
@@ -44,45 +52,116 @@ export type ResendRuntimeConfig = {
   from: string;
   replyToDefault: string | null;
   ccDefault: string[];
+  bccDefault: string[];
   dryRun: boolean;
   mode: "resend" | "dry_run" | "simulated";
+  /** True when key present, dry-run off, and From is not the Resend sandbox. */
+  liveReady: boolean;
+  readiness: {
+    hasApiKey: boolean;
+    dryRunOff: boolean;
+    fromConfigured: boolean;
+    fromUsesVerifiedDomainHint: boolean;
+  };
 };
+
+function splitAddrs(raw: string): string[] {
+  return raw
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function extractEmailDomain(from: string): string | null {
+  const m = from.match(/@([\w.-]+)/);
+  return m ? m[1].toLowerCase() : null;
+}
 
 /** Yantra-compatible env resolution */
 export function getResendConfig(): ResendRuntimeConfig {
-  const apiKey = (process.env.RESEND_API_KEY || process.env.RESEND_KEY || "").trim();
+  const apiKey = (
+    process.env.RESEND_API_KEY ||
+    process.env.RESEND_KEY ||
+    ""
+  ).trim();
+
   const from =
-    (process.env.EMAIL_FROM || process.env.RESEND_FROM || "").trim() ||
-    `${PRODUCT_NAME} <onboarding@resend.dev>`;
+    (
+      process.env.EMAIL_FROM ||
+      process.env.RESEND_FROM ||
+      process.env.RESEND_FROM_EMAIL ||
+      ""
+    ).trim() || DEFAULT_EMAIL_FROM;
+
+  // Bare address → wrap with product display name for Resend
+  const fromNormalized =
+    from.includes("<") || !from.includes("@")
+      ? from
+      : `${PRODUCT_NAME} <${from}>`;
+
   const replyToDefault =
-    (process.env.EMAIL_REPLY_TO || process.env.RESEND_REPLY_TO || "").trim() || null;
+    (process.env.EMAIL_REPLY_TO || process.env.RESEND_REPLY_TO || "").trim() ||
+    null;
+
   const ccRaw = (process.env.EMAIL_CC || process.env.RESEND_CC || "").trim();
-  const ccDefault = ccRaw
-    ? ccRaw.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
-    : [];
+  const ccDefault = ccRaw ? splitAddrs(ccRaw) : [];
+
+  // Yantra EMAIL_BCC_OPS + optional EMAIL_BCC
+  const bccRaw = (
+    process.env.EMAIL_BCC_OPS ||
+    process.env.EMAIL_BCC ||
+    process.env.RESEND_BCC ||
+    ""
+  ).trim();
+  const bccDefault = bccRaw ? splitAddrs(bccRaw) : [];
+
   const dryRun =
     process.env.EMAIL_DRY_RUN === "1" ||
     process.env.EMAIL_DRY_RUN === "true" ||
-    process.env.RESEND_DRY_RUN === "1";
+    process.env.RESEND_DRY_RUN === "1" ||
+    process.env.RESEND_DRY_RUN === "true";
 
   const apiKeyPresent = Boolean(apiKey);
   let mode: ResendRuntimeConfig["mode"] = "simulated";
   if (apiKeyPresent && dryRun) mode = "dry_run";
   else if (apiKeyPresent) mode = "resend";
 
+  const domain = extractEmailDomain(fromNormalized);
+  const fromUsesVerifiedDomainHint = Boolean(
+    domain &&
+      domain !== "resend.dev" &&
+      !domain.endsWith(".resend.dev")
+  );
+  const fromConfigured = Boolean(fromNormalized && fromNormalized.includes("@"));
+  const dryRunOff = !dryRun;
+  const liveReady =
+    apiKeyPresent && dryRunOff && fromConfigured && fromUsesVerifiedDomainHint;
+
   return {
     configured: apiKeyPresent,
     apiKeyPresent,
-    from,
+    from: fromNormalized,
     replyToDefault,
     ccDefault,
+    bccDefault,
     dryRun,
     mode,
+    liveReady,
+    readiness: {
+      hasApiKey: apiKeyPresent,
+      dryRunOff,
+      fromConfigured,
+      fromUsesVerifiedDomainHint,
+    },
   };
 }
 
 function getApiKey(): string | null {
-  const key = (process.env.RESEND_API_KEY || process.env.RESEND_KEY || "").trim();
+  const key = (
+    process.env.RESEND_API_KEY ||
+    process.env.RESEND_KEY ||
+    ""
+  ).trim();
   return key || null;
 }
 
@@ -189,9 +268,11 @@ export async function loadChainAttachments(opts: {
 
 /**
  * Send one email via Resend HTTP API (same contract as official SDK).
- * https://resend.com/docs/api-reference/emails/send-email
+ * https://resend.com/docs/api-reference/emails/send
  */
-export async function sendWithResend(input: SendEmailInput): Promise<SendEmailResult> {
+export async function sendWithResend(
+  input: SendEmailInput
+): Promise<SendEmailResult> {
   const cfg = getResendConfig();
   const to = input.to.trim().toLowerCase();
   if (!to || !to.includes("@")) {
@@ -200,14 +281,18 @@ export async function sendWithResend(input: SendEmailInput): Promise<SendEmailRe
 
   const replyTo = input.replyTo || cfg.replyToDefault || undefined;
   const cc = [...(cfg.ccDefault || []), ...(input.cc || [])].filter(Boolean);
+  const bcc = [...(cfg.bccDefault || []), ...(input.bcc || [])].filter(Boolean);
   const uniqueCc = Array.from(new Set(cc.map((c) => c.toLowerCase()))).filter(
     (c) => c !== to
+  );
+  const uniqueBcc = Array.from(new Set(bcc.map((c) => c.toLowerCase()))).filter(
+    (c) => c !== to && !uniqueCc.includes(c)
   );
 
   // No API key → simulated success (legacy clone behavior)
   if (!cfg.apiKeyPresent) {
     console.info(
-      `[email:simulated] to=${to} from=${cfg.from} subject=${input.subject.slice(0, 80)}`
+      `[email:simulated] to=${to} from=${cfg.from} subject=${input.subject.slice(0, 80)} (add RESEND_API_KEY for live delivery)`
     );
     return { ok: true, id: `sim_${Date.now()}`, mode: "simulated" };
   }
@@ -229,6 +314,7 @@ export async function sendWithResend(input: SendEmailInput): Promise<SendEmailRe
   if (input.html) payload.html = input.html;
   if (replyTo) payload.reply_to = replyTo;
   if (uniqueCc.length) payload.cc = uniqueCc;
+  if (uniqueBcc.length) payload.bcc = uniqueBcc;
   if (input.tags?.length) payload.tags = input.tags;
   if (input.attachments?.length) {
     payload.attachments = input.attachments.map((a) => ({
@@ -254,10 +340,7 @@ export async function sendWithResend(input: SendEmailInput): Promise<SendEmailRe
       statusCode?: number;
     };
     if (!res.ok) {
-      const err =
-        data.message ||
-        data.name ||
-        `Resend HTTP ${res.status}`;
+      const err = data.message || data.name || `Resend HTTP ${res.status}`;
       console.error("[email:resend] fail", res.status, data);
       return { ok: false, error: err, mode: "resend" };
     }
