@@ -119,9 +119,10 @@ OPENAI_MODEL=gpt-4o-mini
           </Badge>
         </div>
         <p className="text-sm text-slate-500">
-          Non-secret settings are preconfigured for{" "}
-          <code className="rounded bg-slate-100 px-1 text-xs">contact.srsoftllc.com</code>.
-          Add only <strong>RESEND_API_KEY</strong> on Vercel, then redeploy.
+          Sends use the <strong>employee&apos;s email as From</strong> (must be on a
+          verified Resend domain, e.g. @srsoftllc.com) and{" "}
+          <strong>CC the candidate</strong>. Fallback From:{" "}
+          <code className="rounded bg-slate-100 px-1 text-xs">{email.from}</code>.
         </p>
 
         <ul className="space-y-1.5 text-sm">

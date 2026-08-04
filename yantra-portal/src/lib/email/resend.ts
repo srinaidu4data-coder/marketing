@@ -21,8 +21,8 @@ import { readFile } from "fs/promises";
 import { PRODUCT_NAME } from "@/lib/brand";
 import { resolveUploadPath } from "@/lib/paths";
 
-/** Production default From once domain is verified (matches Yantra domain). */
-export const DEFAULT_EMAIL_FROM = `${PRODUCT_NAME} <noreply@contact.srsoftllc.com>`;
+/** Fallback From if employee email missing (verified domain). */
+export const DEFAULT_EMAIL_FROM = `${PRODUCT_NAME} <noreply@srsoftllc.com>`;
 
 export type EmailAttachment = {
   filename: string;
@@ -35,12 +35,35 @@ export type SendEmailInput = {
   subject: string;
   text: string;
   html?: string;
+  /**
+   * Override From (e.g. employee Name <email@verified-domain>).
+   * Falls back to EMAIL_FROM / DEFAULT_EMAIL_FROM when omitted.
+   */
+  from?: string;
   replyTo?: string;
   cc?: string[];
   bcc?: string[];
   attachments?: EmailAttachment[];
   tags?: { name: string; value: string }[];
 };
+
+/** Build Resend "Display Name <email>" From for the sending employee. */
+export function formatEmployeeFrom(opts: {
+  name?: string | null;
+  email?: string | null;
+  fallback?: string;
+}): string {
+  const email = (opts.email || "").trim();
+  const name = (opts.name || "").trim();
+  const fallback = (opts.fallback || DEFAULT_EMAIL_FROM).trim();
+  if (!email || !email.includes("@")) return fallback;
+  if (name) {
+    // Escape quotes in display name for safety
+    const safe = name.replace(/"/g, "");
+    return `${safe} <${email}>`;
+  }
+  return email;
+}
 
 export type SendEmailResult =
   | { ok: true; id: string; mode: "resend" | "dry_run" | "simulated" }
@@ -279,6 +302,7 @@ export async function sendWithResend(
     return { ok: false, error: `Invalid recipient: ${input.to}`, mode: cfg.mode };
   }
 
+  const from = (input.from || cfg.from).trim() || cfg.from;
   const replyTo = input.replyTo || cfg.replyToDefault || undefined;
   const cc = [...(cfg.ccDefault || []), ...(input.cc || [])].filter(Boolean);
   const bcc = [...(cfg.bccDefault || []), ...(input.bcc || [])].filter(Boolean);
@@ -292,21 +316,21 @@ export async function sendWithResend(
   // No API key → simulated success (legacy clone behavior)
   if (!cfg.apiKeyPresent) {
     console.info(
-      `[email:simulated] to=${to} from=${cfg.from} subject=${input.subject.slice(0, 80)} (add RESEND_API_KEY for live delivery)`
+      `[email:simulated] to=${to} from=${from} cc=${uniqueCc.join(",")} subject=${input.subject.slice(0, 80)} (add RESEND_API_KEY for live delivery)`
     );
     return { ok: true, id: `sim_${Date.now()}`, mode: "simulated" };
   }
 
   if (cfg.dryRun) {
     console.info(
-      `[email:dry_run] to=${to} from=${cfg.from} subject=${input.subject.slice(0, 80)} attachments=${input.attachments?.length || 0}`
+      `[email:dry_run] to=${to} from=${from} cc=${uniqueCc.join(",")} subject=${input.subject.slice(0, 80)} attachments=${input.attachments?.length || 0}`
     );
     return { ok: true, id: `dry_${Date.now()}`, mode: "dry_run" };
   }
 
   const apiKey = getApiKey()!;
   const payload: Record<string, unknown> = {
-    from: cfg.from,
+    from,
     to: [to],
     subject: input.subject,
     text: input.text,

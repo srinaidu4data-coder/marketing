@@ -44,10 +44,13 @@ Or paste `RESEND_API_KEY` in Vercel dashboard and redeploy.
 
 - `sendChain` → `sendWithResend()` with:
   - **To:** chain `vendorEmail`
-  - **From:** `EMAIL_FROM`
+  - **From:** employee `Name <employee@…>` (fallback `EMAIL_FROM` if missing)
+  - **CC:** candidate email (plus optional env `EMAIL_CC`)
   - **Reply-To:** employee email (or `EMAIL_REPLY_TO`)
-  - **CC / BCC:** from env defaults
+  - **BCC:** optional env `EMAIL_BCC_OPS`
   - **Attachments:** DOCX + PDF (rebuilt from pack text if needed)
+
+Employee addresses must use a domain verified in Resend (e.g. `@srsoftllc.com`).
 - Audit: `chain.email_sent` stores `to`, `from`, `resendId`, `emailMode`
 - UI: chain detail delivery strip, **Admin → Settings**, **Admin → Email Activity**
 

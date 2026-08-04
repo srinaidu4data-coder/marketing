@@ -167,8 +167,11 @@ export default async function ChainDetailPage({
 
       {searchParams?.sent === "1" ? (
         <ChainBanner variant="success" title="Send finished">
-          Check each candidate’s email status. Simulated mode does not hit a real
-          inbox.
+          {emailCfg.mode === "resend"
+            ? "Mail was handed to Resend. Check each candidate’s email status and the vendor inbox."
+            : emailCfg.mode === "dry_run"
+              ? "Dry-run mode — no real delivery. Turn off EMAIL_DRY_RUN for live sends."
+              : "Simulated mode — no RESEND_API_KEY; nothing hit a real inbox."}
         </ChainBanner>
       ) : null}
 

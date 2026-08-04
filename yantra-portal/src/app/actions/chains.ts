@@ -17,6 +17,7 @@ import {
   retryGenerateChain,
 } from "@/lib/chain-pipeline";
 import {
+  formatEmployeeFrom,
   getResendConfig,
   loadChainAttachments,
   sendWithResend,
@@ -313,12 +314,26 @@ export async function sendChain(chainId: string) {
       const subject = renderEmailTemplate(subjectTpl?.content || "{{candidate_name}}", ctx);
       const body = renderEmailTemplate(bodyTpl?.content || "", ctx);
       const emailCfg = getResendConfig();
+      // From = sending employee (e.g. Akanksha <akanksha@srsoftllc.com>)
+      const fromAddr = formatEmployeeFrom({
+        name: chain.employee.name,
+        email: chain.employee.email,
+        fallback: emailCfg.from,
+      });
+      // CC candidate so they see vendor outreach; also keep env default CC
+      const candidateEmail = (cc.candidate.email || "").trim();
+      const ccList = [
+        ...(candidateEmail && candidateEmail.includes("@")
+          ? [candidateEmail]
+          : []),
+      ];
 
       try {
         await audit("chain.email_enqueued", user.id, {
           chainId,
           to: chain.vendorEmail,
-          from: emailCfg.from,
+          from: fromAddr,
+          cc: ccList,
           subject,
           candidateId: cc.candidateId,
           layoutId: cc.layoutId,
@@ -347,7 +362,7 @@ export async function sendChain(chainId: string) {
             chainId,
             candidateId: cc.candidateId,
             to: chain.vendorEmail,
-            from: emailCfg.from,
+            from: fromAddr,
             error: "No resume attachment available (empty pack)",
             emailMode: emailCfg.mode,
           });
@@ -356,10 +371,16 @@ export async function sendChain(chainId: string) {
 
         const sent = await sendWithResend({
           to: chain.vendorEmail,
+          from: fromAddr,
           subject,
           text: body,
           html: textToSimpleHtml(body),
-          replyTo: chain.employee.email || emailCfg.replyToDefault || undefined,
+          // Reply-To: employee (same as From usually); candidate already on CC
+          replyTo:
+            chain.employee.email ||
+            emailCfg.replyToDefault ||
+            undefined,
+          cc: ccList,
           attachments,
           tags: [
             { name: "chain_id", value: chainId.slice(0, 36) },
@@ -377,7 +398,8 @@ export async function sendChain(chainId: string) {
             chainId,
             candidateId: cc.candidateId,
             to: chain.vendorEmail,
-            from: emailCfg.from,
+            from: fromAddr,
+            cc: ccList,
             error: sent.error,
             emailMode: sent.mode,
           });
@@ -391,7 +413,8 @@ export async function sendChain(chainId: string) {
         await audit("chain.email_sent", user.id, {
           chainId,
           to: chain.vendorEmail,
-          from: emailCfg.from,
+          from: fromAddr,
+          cc: ccList,
           subject,
           bodyPreview: body.slice(0, 200),
           candidateId: cc.candidateId,
