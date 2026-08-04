@@ -5,7 +5,10 @@ import { prisma } from "@/lib/db";
 import { readFile } from "fs/promises";
 import { resolveUploadPath } from "@/lib/paths";
 import { tailorResume } from "@/lib/resume-tailor";
-import { renderDocxBuffer } from "@/lib/resume/render-docx";
+import {
+  renderDocxBuffer,
+  renderDocxFromPlainText,
+} from "@/lib/resume/render-docx";
 import { renderPdfBuffer } from "@/lib/resume/render-pdf";
 import { detectDomain, extractJobTitle } from "@/lib/resume/jd-parse";
 import {
@@ -27,14 +30,17 @@ async function tryRead(stored: string | null | undefined): Promise<Buffer | null
   }
 }
 
-/** Stale / thin / dishonest / non-AI / missing JD specialty → regenerate */
-async function needRegenerate(opts: {
+/**
+ * Only force full AI re-tailor when pack content is missing/bad.
+ * Disk files are best-effort (Vercel /tmp is wiped on cold start) — missing
+ * docxPath or a missing file must NOT trigger OpenAI. DB text is source of truth.
+ */
+async function needAiRegen(opts: {
   text: string;
   jd: string;
   master: string;
   masterProfileJson?: string | null;
   force?: boolean;
-  hasDocxPath?: boolean;
 }): Promise<boolean> {
   if (opts.force) return true;
   if (!opts.text || opts.text.length < 80) return true;
@@ -48,7 +54,6 @@ async function needRegenerate(opts: {
   ) {
     return true;
   }
-  if (!opts.hasDocxPath) return true;
 
   const policy = await getResumeEnginePolicy();
   const title = extractJobTitle(opts.jd);
@@ -58,6 +63,16 @@ async function needRegenerate(opts: {
     return true;
   }
   return false;
+}
+
+function docxHeaders(filename: string) {
+  return {
+    "Content-Type":
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    // Avoid browser/CDN caching a slow AI response forever
+    "Cache-Control": "private, no-store",
+  };
 }
 
 export async function GET(
@@ -98,13 +113,12 @@ export async function GET(
     );
   }
 
-  const needAi = await needRegenerate({
+  const needAi = await needAiRegen({
     text: storedText,
     jd,
     master,
     masterProfileJson,
     force,
-    hasDocxPath: !!row.docxPath,
   });
 
   async function runAi() {
@@ -159,32 +173,59 @@ export async function GET(
     });
   }
 
+  /** Fast DOCX from already-generated pack text (no OpenAI). */
+  async function docxFromStoredText(text: string): Promise<Buffer> {
+    return renderDocxFromPlainText({
+      candidateName: row.candidate.name,
+      jobTitle: row.jobTitle || undefined,
+      text,
+    });
+  }
+
   if (fmt === "docx") {
+    // 1) Prefer cached file on disk when pack is still valid
     if (!needAi) {
       const fromDisk = await tryRead(row.docxPath);
       if (fromDisk) {
         return new NextResponse(new Uint8Array(fromDisk), {
-          headers: {
-            "Content-Type":
-              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "Content-Disposition": `attachment; filename="${base}_tailored.docx"`,
-          },
+          headers: docxHeaders(`${base}_tailored.docx`),
         });
       }
+      // 2) Disk gone (Vercel /tmp) but DB text is good — rebuild in ~100ms
+      if (storedText.length >= 80) {
+        try {
+          const buf = await docxFromStoredText(storedText);
+          return new NextResponse(new Uint8Array(buf), {
+            headers: docxHeaders(`${base}_tailored.docx`),
+          });
+        } catch (e) {
+          console.error("docx rebuild from stored text failed", e);
+          // fall through to AI only if rebuild fails
+        }
+      }
     }
+
+    // 3) Only when pack missing/stale or ?regen=1 — full AI (slow)
     try {
       const tailored = await runAi();
       await persistPack(tailored);
       const buf = await renderDocxBuffer(tailored.structured);
       return new NextResponse(new Uint8Array(buf), {
-        headers: {
-          "Content-Type":
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          "Content-Disposition": `attachment; filename="${base}_tailored.docx"`,
-        },
+        headers: docxHeaders(`${base}_tailored.docx`),
       });
     } catch (e) {
       console.error("docx AI regenerate failed", e);
+      // Last resort: still serve stored text as DOCX if we have it
+      if (storedText.length >= 80) {
+        try {
+          const buf = await docxFromStoredText(storedText);
+          return new NextResponse(new Uint8Array(buf), {
+            headers: docxHeaders(`${base}_tailored.docx`),
+          });
+        } catch {
+          /* ignore */
+        }
+      }
       return NextResponse.json(
         {
           error:
@@ -205,6 +246,7 @@ export async function GET(
           headers: {
             "Content-Type": "application/pdf",
             "Content-Disposition": `attachment; filename="${base}_tailored.pdf"`,
+            "Cache-Control": "private, no-store",
           },
         });
       }
@@ -217,6 +259,7 @@ export async function GET(
         headers: {
           "Content-Type": "application/pdf",
           "Content-Disposition": `attachment; filename="${base}_tailored.pdf"`,
+          "Cache-Control": "private, no-store",
         },
       });
     } catch (e) {
@@ -242,6 +285,7 @@ export async function GET(
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
           "Content-Disposition": `attachment; filename="${base}_tailored.txt"`,
+          "Cache-Control": "private, no-store",
         },
       });
     } catch (e) {
@@ -277,6 +321,7 @@ export async function GET(
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Content-Disposition": `attachment; filename="${base}_tailored.txt"`,
+      "Cache-Control": "private, no-store",
     },
   });
 }

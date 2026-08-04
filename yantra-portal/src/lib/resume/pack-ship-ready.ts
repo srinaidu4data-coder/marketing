@@ -286,6 +286,14 @@ export function countBulletsInBlock(block: string): number {
   return n;
 }
 
+/**
+ * Whether pack *content* is missing/bad and needs a full AI re-tailor.
+ * Disk presence (docxPath) is intentionally ignored — /tmp is ephemeral on
+ * Vercel; DB tailoredResumeText is the source of truth.
+ *
+ * "Role Forge" footer is a soft signal only (older packs / vendor-stripped
+ * exports may omit it). Structural ship-ready is the hard gate.
+ */
 export function mustRegeneratePack(opts: {
   text: string;
   masterText?: string;
@@ -294,6 +302,5 @@ export function mustRegeneratePack(opts: {
 }): boolean {
   const ship = inspectPackShipReady(opts);
   if (!ship.ok) return true;
-  if (opts.text && !/Role Forge/i.test(opts.text)) return true;
   return false;
 }
