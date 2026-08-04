@@ -6,16 +6,17 @@ import {
   retryGenerateChainAction,
   sendChain,
 } from "@/app/actions/chains";
-import { Badge, Button, Card, PageHeader } from "@/components/ui";
-import { formatDateTime } from "@/lib/utils";
 import { getResendConfig } from "@/lib/email/resend";
-import { Mail, AlertTriangle, CheckCircle2 } from "lucide-react";
 import {
   decodeShipErrorMessage,
   encodeShipErrorMessage,
   shipReportsForChain,
 } from "@/lib/chain-ship-ui";
 import { ChainPacksTable } from "@/components/chain-packs-table";
+import {
+  ChainBanner,
+  ChainDetailShell,
+} from "@/components/chain-detail-shell";
 
 export default async function ChainDetailPage({
   params,
@@ -90,14 +91,12 @@ export default async function ChainDetailPage({
   const total = chain.candidates.length;
   const lowAts = chain.candidates.filter((c) => c.atsScore < 95);
   const shipReports = shipReportsForChain(chain.candidates);
-  // Bad packs (have text but fail quality) block send; missing packs are PARTIAL noise
   const badPacks = shipReports.filter((r) => !r.missingPack && !r.ship.ok);
   const missingPacks = shipReports.filter((r) => r.missingPack);
   const goodPacks = shipReports.filter((r) => !r.missingPack && r.ship.ok);
   const notShipReady = shipReports.filter((r) => !r.ship.ok);
   const stuck = chain.status === "GENERATING" || chain.status === "SENDING";
   const emptyFailed = chain.status === "FAILED" && total === 0;
-  // Send when at least one good pack and zero bad packs (missing = partial, use Retry)
   const canSend =
     goodPacks.length > 0 &&
     badPacks.length === 0 &&
@@ -107,6 +106,13 @@ export default async function ChainDetailPage({
       chain.status === "FAILED" ||
       chain.status === "SENT");
   const shipErrorMsg = decodeShipErrorMessage(searchParams?.ship);
+  const showRetry =
+    !stuck &&
+    (emptyFailed ||
+      chain.status === "FAILED" ||
+      chain.status === "PARTIAL" ||
+      missingPacks.length > 0 ||
+      badPacks.length > 0);
 
   async function sendAction() {
     "use server";
@@ -144,203 +150,114 @@ export default async function ChainDetailPage({
     await retryGenerateChainAction(params.id);
   }
 
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Chain"
-        description={`${formatDateTime(chain.createdAt)} · ${sent}/${total} emailed · ${chain.id.slice(0, 8)}`}
-        actions={
-          <>
-            <Badge status={chain.status}>{chain.status}</Badge>
-            {stuck ? (
-              <form action={recoverAction}>
-                <Button type="submit" variant="destructive">
-                  Recover
-                </Button>
-              </form>
-            ) : null}
-            {!stuck &&
-            (emptyFailed ||
-              chain.status === "FAILED" ||
-              chain.status === "PARTIAL" ||
-              missingPacks.length > 0 ||
-              badPacks.length > 0) ? (
-              <form action={retryAction}>
-                <Button type="submit" variant="outline">
-                  Retry failed packs
-                </Button>
-              </form>
-            ) : null}
-            {canSend ? (
-              <form action={sendAction}>
-                <Button type="submit" variant="soft">
-                  <Mail className="h-4 w-4" />
-                  Send to vendor
-                  {goodPacks.length ? ` (${goodPacks.length})` : ""}
-                </Button>
-              </form>
-            ) : null}
-          </>
-        }
-      />
-
-      {/* Email transport status */}
-      <Card className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          <span
-            className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-              emailCfg.mode === "resend"
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-amber-50 text-amber-800"
-            }`}
-          >
-            <Mail className="h-4 w-4" />
-          </span>
-          <div>
-            <p className="text-sm font-semibold text-zinc-900">Email delivery</p>
-            <p className="mt-0.5 text-xs text-zinc-500">
-              Mode: <strong className="text-zinc-800">{emailCfg.mode}</strong>
-              {" · "}
-              From: <span className="font-mono text-[11px]">{emailCfg.from}</span>
-            </p>
-            {emailCfg.mode === "simulated" ? (
-              <p className="mt-1 text-xs text-amber-800">
-                No <code className="rounded bg-amber-100 px-1">RESEND_API_KEY</code> on
-                the server — sends are logged only, not delivered. Add the key in Vercel
-                → Environment Variables.
-              </p>
-            ) : emailCfg.mode === "dry_run" ? (
-              <p className="mt-1 text-xs text-amber-800">
-                <code className="rounded bg-amber-100 px-1">EMAIL_DRY_RUN=true</code> —
-                no real delivery.
-              </p>
-            ) : (
-              <p className="mt-1 text-xs text-emerald-700">
-                Live Resend — emails go to the vendor inbox (domain must be verified).
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="text-xs text-zinc-500">
-          To: <strong className="text-zinc-800">{chain.vendorEmail}</strong>
-        </div>
-      </Card>
-
+  const banners = (
+    <>
       {searchParams?.ready === "1" ? (
-        <div className="flex items-start gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          <div>
-            <p className="font-medium">Packs generated</p>
-            <p className="mt-0.5 text-xs text-emerald-800/80">
-              Review ship-ready below, download DOCX, then Send to vendor.
-            </p>
-          </div>
-        </div>
+        <ChainBanner variant="success" title="Packs are ready">
+          Review scores below, download Word or PDF, then send to the vendor.
+        </ChainBanner>
       ) : null}
 
       {searchParams?.partial === "1" || chain.status === "PARTIAL" ? (
-        <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <p className="font-medium">Partial generation</p>
-          <p className="mt-0.5 text-xs">
-            Some candidates failed (missing master, density, or AI). Fix masters
-            or Retry generation. Send only includes ship-ready packs if all rows
-            pass — regenerate failed ones first.
-          </p>
-        </div>
+        <ChainBanner variant="warning" title="Partial generation">
+          Some candidates failed. Fix masters or use Retry — only ship-ready
+          packs can be emailed.
+        </ChainBanner>
       ) : null}
 
       {searchParams?.sent === "1" ? (
-        <div className="flex items-start gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          <div>
-            <p className="font-medium">Send finished</p>
-            <p className="mt-0.5 text-xs text-emerald-800/80">
-              Check send status per candidate below. If mode is{" "}
-              <strong>simulated</strong>, nothing hit a real inbox.
-            </p>
-          </div>
-        </div>
+        <ChainBanner variant="success" title="Send finished">
+          Check each candidate’s email status. Simulated mode does not hit a real
+          inbox.
+        </ChainBanner>
       ) : null}
 
       {searchParams?.failed === "1" || chain.status === "FAILED" ? (
-        <div className="space-y-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
-          <p className="flex items-center gap-2 font-medium">
-            <AlertTriangle className="h-4 w-4" />
-            {emptyFailed
-              ? "No resumes generated."
+        <ChainBanner
+          variant="error"
+          title={
+            emptyFailed
+              ? "No resumes generated"
               : shipErrorMsg
                 ? "Send blocked — pack quality"
-                : "Chain did not finish cleanly."}
-          </p>
-          {shipErrorMsg ? (
-            <p className="text-xs text-red-900">{shipErrorMsg}</p>
-          ) : null}
+                : "Chain did not finish cleanly"
+          }
+        >
+          {shipErrorMsg ? <p>{shipErrorMsg}</p> : null}
           {uniqueHints.length > 0 ? (
-            <ul className="list-disc pl-5 text-xs text-red-900">
+            <ul className="mt-1 list-disc pl-4">
               {uniqueHints.map((h) => (
                 <li key={h}>{h}</li>
               ))}
             </ul>
           ) : null}
-        </div>
+        </ChainBanner>
       ) : null}
 
       {stuck ? (
-        <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Still <strong>{chain.status}</strong>. Use <strong>Recover</strong> if frozen.
-        </div>
+        <ChainBanner variant="warning" title={`Still ${chain.status}`}>
+          If this has been stuck for several minutes, use Recover.
+        </ChainBanner>
       ) : null}
 
       {total > 0 && lowAts.length > 0 ? (
-        <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {lowAts.length} resume(s) below ATS 95 — review before sending.
-        </div>
+        <ChainBanner variant="warning" title="ATS below target">
+          {lowAts.length} resume{lowAts.length === 1 ? "" : "s"} under 95 —
+          review before sending.
+        </ChainBanner>
       ) : null}
 
       {total > 0 && notShipReady.length > 0 ? (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-900">
-          <p className="font-medium">
-            {missingPacks.length > 0
-              ? `${missingPacks.length} missing pack(s)`
-              : ""}
-            {missingPacks.length > 0 && badPacks.length > 0 ? " · " : ""}
-            {badPacks.length > 0
-              ? `${badPacks.length} pack(s) fail quality`
-              : ""}
-            {" — use Retry failed packs."}
-          </p>
-          <ul className="mt-1 list-disc pl-5 text-xs">
-            {notShipReady.slice(0, 8).map((r) => (
+        <ChainBanner
+          variant="error"
+          title={
+            [
+              missingPacks.length
+                ? `${missingPacks.length} missing pack${missingPacks.length === 1 ? "" : "s"}`
+                : "",
+              badPacks.length
+                ? `${badPacks.length} quality issue${badPacks.length === 1 ? "" : "s"}`
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" · ") + " — use Retry failed"
+          }
+        >
+          <ul className="mt-1 list-disc pl-4">
+            {notShipReady.slice(0, 6).map((r) => (
               <li key={r.id}>
                 {r.name}: {r.ship.issues.map((i) => i.detail).join("; ")}
               </li>
             ))}
           </ul>
-        </div>
+        </ChainBanner>
       ) : null}
+    </>
+  );
 
-      <Card className="space-y-2 text-sm">
-        <div>
-          <span className="text-zinc-500">Vendor </span>
-          <span className="font-medium text-zinc-900">{chain.vendorName}</span>
-          <span className="text-zinc-500"> · {chain.vendorEmail}</span>
-        </div>
-        <div>
-          <span className="text-xs font-medium uppercase tracking-wider text-zinc-400">
-            Job requirement
-          </span>
-          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-zinc-50 p-3 text-xs text-zinc-700">
-            {chain.rawJobText}
-          </pre>
-        </div>
-      </Card>
-
+  return (
+    <ChainDetailShell
+      chain={chain}
+      backHref="/chains"
+      sent={sent}
+      total={total}
+      goodPacks={goodPacks.length}
+      canSend={canSend}
+      stuck={stuck}
+      showRetry={showRetry}
+      emailMode={emailCfg.mode}
+      emailFrom={emailCfg.from}
+      sendAction={sendAction}
+      recoverAction={recoverAction}
+      retryAction={retryAction}
+      banners={banners}
+    >
       <ChainPacksTable
         chainId={chain.id}
         rawJobText={chain.rawJobText}
         candidates={chain.candidates}
         shipById={new Map(shipReports.map((r) => [r.id, r.ship]))}
       />
-    </div>
+    </ChainDetailShell>
   );
 }

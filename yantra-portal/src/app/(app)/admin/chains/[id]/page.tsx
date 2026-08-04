@@ -6,14 +6,17 @@ import {
   retryGenerateChainAction,
   sendChain,
 } from "@/app/actions/chains";
-import { Badge, Button, Card, PageHeader } from "@/components/ui";
-import { formatDateTime } from "@/lib/utils";
+import { getResendConfig } from "@/lib/email/resend";
 import {
   decodeShipErrorMessage,
   encodeShipErrorMessage,
   shipReportsForChain,
 } from "@/lib/chain-ship-ui";
 import { ChainPacksTable } from "@/components/chain-packs-table";
+import {
+  ChainBanner,
+  ChainDetailShell,
+} from "@/components/chain-detail-shell";
 
 export default async function AdminChainDetailPage({
   params,
@@ -38,6 +41,7 @@ export default async function AdminChainDetailPage({
   });
   if (!chain) notFound();
 
+  const emailCfg = getResendConfig();
   const sent = chain.candidates.filter((c) => c.sendStatus === "SENT").length;
   const shipReports = shipReportsForChain(chain.candidates);
   const badPacks = shipReports.filter((r) => !r.missingPack && !r.ship.ok);
@@ -56,6 +60,13 @@ export default async function AdminChainDetailPage({
       chain.status === "SENT");
 
   const shipErrorMsg = decodeShipErrorMessage(searchParams?.ship);
+  const showRetry =
+    !stuck &&
+    (emptyFailed ||
+      chain.status === "FAILED" ||
+      chain.status === "PARTIAL" ||
+      missingPacks.length > 0 ||
+      badPacks.length > 0);
 
   async function sendAction() {
     "use server";
@@ -93,121 +104,87 @@ export default async function AdminChainDetailPage({
     await retryGenerateChainAction(params.id);
   }
 
-  return (
-    <div className="space-y-6 p-2 lg:p-4">
-      <PageHeader
-        title={
-          <>
-            Chain <span className="text-slate-400">{chain.id.slice(0, 8)}</span>
-          </>
-        }
-        description={`${chain.employee.name} · ${formatDateTime(chain.createdAt)} · ${sent} of ${chain.candidates.length} sent`}
-        actions={
-          <>
-            <Badge status={chain.status}>
-              {chain.status.charAt(0) + chain.status.slice(1).toLowerCase()}
-            </Badge>
-            {stuck ? (
-              <form action={recoverAction}>
-                <Button type="submit" variant="destructive">
-                  Recover stuck
-                </Button>
-              </form>
-            ) : null}
-            {!stuck &&
-            (emptyFailed ||
-              chain.status === "FAILED" ||
-              chain.status === "PARTIAL" ||
-              missingPacks.length > 0 ||
-              badPacks.length > 0) ? (
-              <form action={retryAction}>
-                <Button type="submit" variant="outline">
-                  Retry failed packs
-                </Button>
-              </form>
-            ) : null}
-            {canSend ? (
-              <form action={sendAction}>
-                <Button type="submit">
-                  Send ready packs
-                  {goodPacks.length ? ` (${goodPacks.length})` : ""}
-                </Button>
-              </form>
-            ) : null}
-          </>
-        }
-      />
-
+  const banners = (
+    <>
       {searchParams?.ready === "1" ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-          Packs generated. Review ship-ready → download → Send.
-        </div>
+        <ChainBanner variant="success" title="Packs are ready">
+          Review ship-ready → download → send.
+        </ChainBanner>
       ) : null}
-
       {searchParams?.partial === "1" || chain.status === "PARTIAL" ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          Partial generation — some candidates failed. Fix masters or Retry;
-          Send stays blocked until every pack is ship-ready.
-        </div>
+        <ChainBanner variant="warning" title="Partial generation">
+          Some candidates failed. Fix masters or Retry; send stays blocked until
+          packs are ship-ready.
+        </ChainBanner>
       ) : null}
-
       {searchParams?.sent === "1" ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-          Send finished. Check per-candidate send status below.
-        </div>
+        <ChainBanner variant="success" title="Send finished">
+          Check per-candidate email status below.
+        </ChainBanner>
       ) : null}
-
       {searchParams?.failed === "1" || chain.status === "FAILED" ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-          {emptyFailed
-            ? "Generation produced 0 packs (timeout or error). Use Retry generation — prefer 1–2 candidates on serverless."
-            : shipErrorMsg ||
-              "Chain failed, was recovered, or send was blocked. See ship-ready column."}
-        </div>
+        <ChainBanner
+          variant="error"
+          title={
+            emptyFailed
+              ? "Generation produced 0 packs"
+              : shipErrorMsg || "Chain failed or send was blocked"
+          }
+        >
+          {shipErrorMsg && !emptyFailed ? null : emptyFailed ? (
+            <p>Use Retry — prefer 1–2 candidates on serverless.</p>
+          ) : null}
+        </ChainBanner>
       ) : null}
-
       {stuck ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          In-flight status <strong>{chain.status}</strong>. If abandoned, recover to free the
-          queue; live jobs heartbeated recently will not auto-fail for ~3 minutes.
-        </div>
+        <ChainBanner variant="warning" title={`In-flight: ${chain.status}`}>
+          If abandoned, recover to free the queue. Live jobs heartbeated recently
+          will not auto-fail for a few minutes.
+        </ChainBanner>
       ) : null}
-
       {notShipReady.length > 0 ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
-          <p className="font-medium">
-            {notShipReady.length} pack(s) not ship-ready — Send blocked until regenerate.
-          </p>
-          <ul className="mt-1 list-disc pl-5 text-xs">
+        <ChainBanner
+          variant="error"
+          title={`${notShipReady.length} pack(s) not ship-ready — send blocked`}
+        >
+          <ul className="mt-1 list-disc pl-4">
             {notShipReady.slice(0, 8).map((r) => (
               <li key={r.id}>
                 {r.name}: {r.ship.issues.map((i) => i.detail).join("; ")}
               </li>
             ))}
           </ul>
-        </div>
+        </ChainBanner>
       ) : null}
+    </>
+  );
 
-      <Card className="space-y-2 text-sm">
-        <div>
-          <span className="text-slate-500">Employee: </span>
-          {chain.employee.name} ({chain.employee.email})
-        </div>
-        <div>
-          <span className="text-slate-500">Vendor: </span>
-          {chain.vendorName} ({chain.vendorEmail})
-        </div>
-        <pre className="mt-1 whitespace-pre-wrap rounded bg-slate-50 p-3 text-xs">
-          {chain.rawJobText}
-        </pre>
-      </Card>
-
-      <ChainPacksTable
-        chainId={chain.id}
-        rawJobText={chain.rawJobText}
-        candidates={chain.candidates}
-        shipById={new Map(shipReports.map((r) => [r.id, r.ship]))}
-      />
+  return (
+    <div className="p-2 lg:p-4">
+      <ChainDetailShell
+        chain={chain}
+        subtitleExtra={`${chain.employee.name}`}
+        backHref="/admin/chains"
+        sent={sent}
+        total={chain.candidates.length}
+        goodPacks={goodPacks.length}
+        canSend={canSend}
+        stuck={stuck}
+        showRetry={showRetry}
+        emailMode={emailCfg.mode}
+        emailFrom={emailCfg.from}
+        sendAction={sendAction}
+        recoverAction={recoverAction}
+        retryAction={retryAction}
+        banners={banners}
+      >
+        <ChainPacksTable
+          chainId={chain.id}
+          rawJobText={chain.rawJobText}
+          candidates={chain.candidates}
+          shipById={new Map(shipReports.map((r) => [r.id, r.ship]))}
+        />
+      </ChainDetailShell>
     </div>
   );
 }

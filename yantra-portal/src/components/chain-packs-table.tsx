@@ -1,10 +1,18 @@
 /**
- * Shared chain packs table — ATS + Psych + Best + Preview + downloads.
- * Used by employee and admin chain detail pages so columns never drift.
+ * Chain pack review — Fortune-100 style candidate cards.
+ * Scan quality → preview → download → send. Shared by employee + admin.
  */
 
 import Link from "next/link";
-import { Download, Eye } from "lucide-react";
+import {
+  CheckCircle2,
+  Download,
+  Eye,
+  FileText,
+  FileType2,
+  ShieldCheck,
+  XCircle,
+} from "lucide-react";
 import { Badge } from "@/components/ui";
 import { getLayout } from "@/lib/resume/templates";
 import { scorePsych } from "@/lib/resume/psych-scorer";
@@ -14,6 +22,7 @@ import {
 } from "@/lib/resume/tailor-mode";
 import { extractJobTitle } from "@/lib/resume/jd-parse";
 import type { PackShipReport } from "@/lib/resume/pack-ship-ready";
+import { cn } from "@/lib/utils";
 
 export type ChainPackRow = {
   id: string;
@@ -24,7 +33,6 @@ export type ChainPackRow = {
   psychScore?: number | null;
   tailorMode?: string | null;
   sendStatus: string;
-  /** retained for callers; PDF is always offered via on-demand render */
   pdfPath?: string | null;
   skillFingerprint?: string | null;
   candidate: {
@@ -35,10 +43,7 @@ export type ChainPackRow = {
   };
 };
 
-function resolvePsychScore(
-  cc: ChainPackRow,
-  rawJobText: string
-): number {
+function resolvePsychScore(cc: ChainPackRow, rawJobText: string): number {
   const stored = cc.psychScore ?? 0;
   if (stored > 0) return stored;
   const text = (cc.tailoredResumeText || "").trim();
@@ -62,25 +67,85 @@ function resolvePsychScore(
   }
 }
 
-function ScoreCell({ score, label }: { score: number; label: string }) {
-  const perfect = score === 100;
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function ScoreMeter({
+  label,
+  score,
+  hint,
+}: {
+  label: string;
+  score: number;
+  hint?: string;
+}) {
+  const perfect = score >= 100;
+  const good = score >= 95;
+  const color = perfect
+    ? "bg-emerald-500"
+    : good
+      ? "bg-sky-500"
+      : score >= 80
+        ? "bg-amber-500"
+        : "bg-red-500";
+  const text = perfect
+    ? "text-emerald-700"
+    : good
+      ? "text-sky-800"
+      : score >= 80
+        ? "text-amber-800"
+        : "text-red-700";
+
   return (
-    <td className="px-3 py-3 sm:px-4">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 sm:hidden">
-        {label}
+    <div className="min-w-[7.5rem] flex-1" title={hint || `${label} ${score}/100`}>
+      <div className="mb-1 flex items-baseline justify-between gap-2">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-[#86868b]">
+          {label}
+        </span>
+        <span className={cn("text-[13px] font-semibold tabular-nums", text)}>
+          {score}
+          <span className="font-normal text-[#86868b]">/100</span>
+        </span>
       </div>
-      <span
-        className={
-          perfect
-            ? "text-base font-semibold tabular-nums text-emerald-700"
-            : "text-base font-semibold tabular-nums text-amber-700"
-        }
-        title={`${label} score (100 = perfect)`}
-      >
-        {score}
-      </span>
-      <span className="text-xs text-zinc-400"> / 100</span>
-    </td>
+      <div className="h-1.5 overflow-hidden rounded-full bg-black/[0.06]">
+        <div
+          className={cn("h-full rounded-full transition-all duration-500", color)}
+          style={{ width: `${Math.min(100, Math.max(0, score))}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DownloadChip({
+  href,
+  label,
+  primary,
+  title,
+}: {
+  href: string;
+  label: string;
+  primary?: boolean;
+  title?: string;
+}) {
+  return (
+    <Link
+      href={href}
+      title={title}
+      className={cn(
+        "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[12.5px] font-semibold tracking-tight transition-all duration-200",
+        primary
+          ? "bg-[#0071e3] text-white shadow-soft hover:bg-[#0077ed] active:scale-[0.98]"
+          : "border border-black/[0.08] bg-white text-[#1d1d1f] shadow-soft hover:border-black/[0.12] hover:bg-[#fafafa]"
+      )}
+    >
+      <Download className="h-3.5 w-3.5 opacity-90" strokeWidth={2.25} />
+      {label}
+    </Link>
   );
 }
 
@@ -95,197 +160,209 @@ export function ChainPacksTable({
   candidates: ChainPackRow[];
   shipById: Map<string, PackShipReport>;
 }) {
-  return (
-    <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm">
-      <table className="w-full min-w-[920px] text-left text-sm">
-        <thead className="border-b border-zinc-100 bg-zinc-50/90">
-          <tr>
-            <th className="px-4 py-3 text-xs font-medium text-zinc-500">
-              Candidate
-            </th>
-            <th className="px-4 py-3 text-xs font-medium text-zinc-500">
-              Layout
-            </th>
-            <th className="px-4 py-3 text-xs font-medium text-zinc-500">
-              ATS
-            </th>
-            <th className="px-4 py-3 text-xs font-medium text-zinc-500">
-              Psych
-            </th>
-            <th className="px-4 py-3 text-xs font-medium text-zinc-500">
-              Best
-            </th>
-            <th className="px-4 py-3 text-xs font-medium text-zinc-500">
-              Ship-ready
-            </th>
-            <th className="px-4 py-3 text-xs font-medium text-zinc-500">
-              Email
-            </th>
-            <th className="px-4 py-3 text-xs font-medium text-zinc-500">
-              Files
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {candidates.length === 0 ? (
-            <tr>
-              <td
-                colSpan={8}
-                className="px-4 py-8 text-center text-sm text-zinc-400"
-              >
-                No resume packs yet
-              </td>
-            </tr>
-          ) : (
-            candidates.map((cc) => {
-              const ship = shipById.get(cc.id);
-              const psychScore = resolvePsychScore(cc, rawJobText);
-              const isBest = cc.atsScore === 100 && psychScore === 100;
-              const hasText = !!(cc.tailoredResumeText || "").trim();
+  if (candidates.length === 0) {
+    return (
+      <div className="rounded-3xl border border-dashed border-black/[0.08] bg-white/80 px-6 py-16 text-center">
+        <FileText className="mx-auto h-8 w-8 text-[#86868b]" strokeWidth={1.5} />
+        <p className="mt-3 text-[15px] font-semibold text-[#1d1d1f]">
+          No resume packs yet
+        </p>
+        <p className="mt-1 text-[13px] text-[#86868b]">
+          Generate packs for this chain, then review scores and download.
+        </p>
+      </div>
+    );
+  }
 
-              return (
-                <tr
-                  key={cc.id}
-                  className="border-b border-zinc-50 last:border-0"
-                >
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-zinc-900">
-                      {cc.candidate.name}
-                    </div>
-                    <div className="text-xs text-zinc-500">
-                      {cc.candidate.email}
-                    </div>
-                    {cc.jobTitle ? (
-                      <div className="text-[11px] text-zinc-400">
-                        {cc.jobTitle}
-                      </div>
-                    ) : null}
-                    {/* Mobile-friendly score strip under name */}
-                    <div className="mt-1.5 flex flex-wrap gap-2 text-[11px] sm:hidden">
-                      <span
-                        className={
-                          cc.atsScore === 100
-                            ? "font-semibold text-emerald-700"
-                            : "font-semibold text-amber-700"
-                        }
-                      >
-                        ATS {cc.atsScore}/100
-                      </span>
-                      <span
-                        className={
-                          psychScore === 100
-                            ? "font-semibold text-emerald-700"
-                            : "font-semibold text-amber-700"
-                        }
-                      >
-                        Psych {psychScore}/100
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-zinc-600">
-                    {getLayout(cc.layoutId).name}
-                  </td>
-                  <ScoreCell score={cc.atsScore} label="ATS" />
-                  <ScoreCell score={psychScore} label="Psych" />
-                  <td className="px-4 py-3 text-xs">
-                    {isBest ? (
-                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-500/20">
-                        BEST
-                      </span>
-                    ) : (
-                      <span className="text-zinc-400">—</span>
+  return (
+    <section className="space-y-3" aria-label="Candidate resume packs">
+      <div className="flex items-end justify-between gap-3 px-0.5">
+        <div>
+          <h2 className="text-[17px] font-semibold tracking-tight text-[#1d1d1f]">
+            Resume packs
+          </h2>
+          <p className="mt-0.5 text-[13px] text-[#86868b]">
+            Review quality, download files, then send to the vendor.
+          </p>
+        </div>
+        <p className="hidden text-[12px] font-medium tabular-nums text-[#86868b] sm:block">
+          {candidates.length} candidate{candidates.length === 1 ? "" : "s"}
+        </p>
+      </div>
+
+      <ul className="space-y-3">
+        {candidates.map((cc, index) => {
+          const ship = shipById.get(cc.id);
+          const psychScore = resolvePsychScore(cc, rawJobText);
+          const isBest = cc.atsScore === 100 && psychScore === 100;
+          const hasText = !!(cc.tailoredResumeText || "").trim();
+          const layoutName = getLayout(cc.layoutId).name;
+          const role =
+            cc.jobTitle || extractJobTitle(rawJobText) || "Targeted role";
+          const base = `/api/chains/${chainId}/candidates/${cc.id}/download`;
+          const fileLabel = `${cc.candidate.name} · ${role}`;
+
+          return (
+            <li
+              key={cc.id}
+              className={cn(
+                "group overflow-hidden rounded-3xl border bg-white shadow-soft transition-all duration-200",
+                ship?.ok
+                  ? "border-black/[0.06] hover:border-black/[0.1] hover:shadow-md"
+                  : "border-red-200/80 ring-1 ring-red-100"
+              )}
+            >
+              {/* Top: identity + status */}
+              <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
+                <div className="flex min-w-0 items-start gap-3.5">
+                  <div
+                    className={cn(
+                      "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-[14px] font-semibold tracking-tight",
+                      isBest
+                        ? "bg-emerald-500/10 text-emerald-800"
+                        : "bg-[#0071e3]/[0.08] text-[#0071e3]"
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-xs">
-                    {ship?.ok ? (
-                      <span className="font-semibold text-emerald-700">
-                        OK
-                        {ship.minBulletsSeen != null
-                          ? ` · ≥${ship.minBulletsSeen} bullets`
-                          : ""}
-                      </span>
-                    ) : (
-                      <span
-                        className="font-semibold text-red-700"
-                        title={ship?.issues.map((i) => i.detail).join("; ")}
-                      >
-                        Blocked
-                        {ship?.issues[0]
-                          ? ` · ${ship.issues[0].detail.slice(0, 40)}`
-                          : ""}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge status={cc.sendStatus}>{cc.sendStatus}</Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      {hasText ? (
-                        <details className="group relative">
-                          <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-full border border-[#0071e3]/25 bg-[#0071e3]/[0.06] px-2.5 py-1 font-semibold text-[#0071e3] hover:bg-[#0071e3]/[0.12] [&::-webkit-details-marker]:hidden">
-                            <Eye className="h-3.5 w-3.5" strokeWidth={2.25} />
-                            Preview
-                          </summary>
-                          <div className="absolute right-0 z-40 mt-2 flex max-h-[min(75vh,40rem)] w-[min(44rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-xl border border-black/[0.1] bg-white shadow-float">
-                            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-black/[0.06] bg-[#fafafa] px-3 py-2">
-                              <span className="text-[12px] font-semibold text-[#1d1d1f]">
-                                Full resume — {cc.candidate.name}
-                                {cc.jobTitle ? ` · ${cc.jobTitle}` : ""}
-                              </span>
-                              <span className="text-[11px] text-[#86868b]">
-                                {cc.tailoredResumeText.length.toLocaleString()}{" "}
-                                chars · ATS {cc.atsScore} · Psych {psychScore}
-                              </span>
-                            </div>
-                            <pre className="min-h-0 flex-1 overflow-auto p-4 text-[12px] leading-relaxed text-[#1d1d1f] whitespace-pre-wrap">
-                              {cc.tailoredResumeText}
-                            </pre>
-                          </div>
-                        </details>
-                      ) : (
-                        <span className="text-zinc-400">No pack</span>
-                      )}
-                      {hasText ? (
-                        <>
-                          <Link
-                            href={`/api/chains/${chainId}/candidates/${cc.id}/download?fmt=docx`}
-                            className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50/80 px-2.5 py-1 font-semibold text-indigo-700 hover:bg-indigo-100"
-                            title={`MS Word — ${cc.candidate.name}${cc.jobTitle ? ` · ${cc.jobTitle}` : ""}`}
-                          >
-                            <Download className="h-3 w-3" /> Word
-                          </Link>
-                          <Link
-                            href={`/api/chains/${chainId}/candidates/${cc.id}/download?fmt=pdf`}
-                            className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50/80 px-2.5 py-1 font-semibold text-rose-700 hover:bg-rose-100"
-                            title={`PDF — ${cc.candidate.name}${cc.jobTitle ? ` · ${cc.jobTitle}` : ""}`}
-                          >
-                            <Download className="h-3 w-3" /> PDF
-                          </Link>
-                          <Link
-                            href={`/api/chains/${chainId}/candidates/${cc.id}/download?fmt=txt`}
-                            className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 font-medium text-zinc-700 hover:bg-zinc-100"
-                            title={`Plain text — ${cc.candidate.name}${cc.jobTitle ? ` · ${cc.jobTitle}` : ""}`}
-                          >
-                            <Download className="h-3 w-3" /> TXT
-                          </Link>
-                          <Link
-                            href={`/api/chains/${chainId}/candidates/${cc.id}/download?fmt=html`}
-                            className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50/80 px-2.5 py-1 font-medium text-amber-900 hover:bg-amber-100"
-                            title={`HTML — ${cc.candidate.name}${cc.jobTitle ? ` · ${cc.jobTitle}` : ""}`}
-                          >
-                            <Download className="h-3 w-3" /> HTML
-                          </Link>
-                        </>
+                    aria-hidden
+                  >
+                    {initials(cc.candidate.name)}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="truncate text-[17px] font-semibold tracking-tight text-[#1d1d1f]">
+                        {cc.candidate.name}
+                      </h3>
+                      {isBest ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-500/20">
+                          <ShieldCheck className="h-3 w-3" strokeWidth={2.5} />
+                          Best match
+                        </span>
                       ) : null}
+                      <span className="text-[11px] font-medium tabular-nums text-[#c7c7cc]">
+                        #{index + 1}
+                      </span>
                     </div>
-                  </td>
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
-    </div>
+                    <p className="mt-0.5 truncate text-[13.5px] font-medium text-[#1d1d1f]/80">
+                      {role}
+                    </p>
+                    <p className="mt-0.5 truncate text-[12.5px] text-[#86868b]">
+                      {cc.candidate.email}
+                      <span className="mx-1.5 text-[#d2d2d7]">·</span>
+                      {layoutName}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  {ship?.ok ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11.5px] font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-500/15">
+                      <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2.25} />
+                      Ready to send
+                      {ship.minBulletsSeen != null
+                        ? ` · ${ship.minBulletsSeen}+ bullets`
+                        : ""}
+                    </span>
+                  ) : (
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 px-2.5 py-1 text-[11.5px] font-semibold text-red-800 ring-1 ring-inset ring-red-500/15"
+                      title={ship?.issues.map((i) => i.detail).join("; ")}
+                    >
+                      <XCircle className="h-3.5 w-3.5" strokeWidth={2.25} />
+                      Needs fix
+                      {ship?.issues[0]
+                        ? ` · ${ship.issues[0].detail.slice(0, 36)}`
+                        : ""}
+                    </span>
+                  )}
+                  <Badge status={cc.sendStatus}>
+                    {cc.sendStatus === "PENDING"
+                      ? "Not emailed"
+                      : cc.sendStatus === "SENT"
+                        ? "Emailed"
+                        : cc.sendStatus}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Scores */}
+              <div className="border-t border-black/[0.04] bg-[#fafafa]/80 px-5 py-4 sm:px-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-8">
+                  <ScoreMeter
+                    label="ATS match"
+                    score={cc.atsScore}
+                    hint="Applicant tracking system keyword & structure score"
+                  />
+                  <ScoreMeter
+                    label="Psych fit"
+                    score={psychScore}
+                    hint="Behavioral / narrative fit vs master profile"
+                  />
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex flex-col gap-3 border-t border-black/[0.04] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                {hasText ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <DownloadChip
+                        href={`${base}?fmt=docx`}
+                        label="Word"
+                        primary
+                        title={`Download MS Word — ${fileLabel}`}
+                      />
+                      <DownloadChip
+                        href={`${base}?fmt=pdf`}
+                        label="PDF"
+                        title={`Download PDF — ${fileLabel}`}
+                      />
+                      <DownloadChip
+                        href={`${base}?fmt=txt`}
+                        label="TXT"
+                        title={`Download plain text — ${fileLabel}`}
+                      />
+                      <DownloadChip
+                        href={`${base}?fmt=html`}
+                        label="HTML"
+                        title={`Download HTML — ${fileLabel}`}
+                      />
+                    </div>
+
+                    <details className="group/preview relative">
+                      <summary className="inline-flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-full border border-black/[0.08] bg-white px-3.5 text-[12.5px] font-semibold text-[#0071e3] shadow-soft hover:bg-[#f5f5f7] [&::-webkit-details-marker]:hidden">
+                        <Eye className="h-3.5 w-3.5" strokeWidth={2.25} />
+                        Preview
+                      </summary>
+                      <div className="absolute bottom-full right-0 z-40 mb-2 flex max-h-[min(70vh,36rem)] w-[min(42rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-black/[0.1] bg-white shadow-float sm:left-auto sm:right-0">
+                        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-black/[0.06] bg-[#fafafa] px-4 py-2.5">
+                          <div className="min-w-0">
+                            <p className="truncate text-[13px] font-semibold text-[#1d1d1f]">
+                              {cc.candidate.name}
+                            </p>
+                            <p className="truncate text-[11px] text-[#86868b]">
+                              {role}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-[11px] tabular-nums text-[#86868b]">
+                            ATS {cc.atsScore} · Psych {psychScore}
+                          </span>
+                        </div>
+                        <pre className="min-h-0 flex-1 overflow-auto p-4 text-[12.5px] leading-relaxed text-[#1d1d1f] whitespace-pre-wrap">
+                          {cc.tailoredResumeText}
+                        </pre>
+                      </div>
+                    </details>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2 text-[13px] text-[#86868b]">
+                    <FileType2 className="h-4 w-4" />
+                    No pack generated for this candidate yet.
+                  </div>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
