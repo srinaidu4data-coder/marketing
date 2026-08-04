@@ -21,18 +21,23 @@ export function FitReportPanel({
   layoutId?: string | null;
 }) {
   const [open, setOpen] = useState(false);
+  // Default so layout check always runs (packs without layoutId still get ats_classic)
+  const resolvedLayoutId = (layoutId || "").trim() || "ats_classic";
   const report = useMemo(
     () =>
       buildFitReport({
         resumeText: resumeText || "",
         jd: jd || "",
         jobTitle,
-        layoutId,
+        layoutId: resolvedLayoutId,
       }),
-    [resumeText, jd, jobTitle, layoutId]
+    [resumeText, jd, jobTitle, resolvedLayoutId]
   );
 
   if (!resumeText || resumeText.length < 80) return null;
+
+  const layoutReqs = report.requirements.filter((r) => r.kind === "layout");
+  const otherReqs = report.requirements.filter((r) => r.kind !== "layout");
 
   return (
     <div className="border-t border-black/[0.04] bg-[#f8fafc]/90">
@@ -41,7 +46,7 @@ export function FitReportPanel({
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center justify-between gap-2 px-5 py-3 text-left sm:px-6"
       >
-        <span className="inline-flex items-center gap-2 text-[12.5px] font-semibold text-[#1d1d1f]">
+        <span className="inline-flex flex-wrap items-center gap-2 text-[12.5px] font-semibold text-[#1d1d1f]">
           <Target className="h-3.5 w-3.5 text-[#0071e3]" strokeWidth={2.25} />
           Fit dashboard
           <span
@@ -55,10 +60,22 @@ export function FitReportPanel({
           <span className="text-[11px] font-medium text-[#86868b]">
             coverage {report.coveragePct}%
           </span>
+          {report.layoutApplied ? (
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                report.layoutApplied.applied
+                  ? "bg-emerald-500/15 text-emerald-800"
+                  : "bg-amber-500/15 text-amber-900"
+              )}
+            >
+              Layout {report.layoutApplied.applied ? "applied" : "mismatch"}
+            </span>
+          ) : null}
         </span>
         <ChevronDown
           className={cn(
-            "h-4 w-4 text-[#86868b] transition",
+            "h-4 w-4 shrink-0 text-[#86868b] transition",
             open && "rotate-180"
           )}
         />
@@ -106,6 +123,7 @@ export function FitReportPanel({
             />
           </div>
 
+          {/* Pinned layout structure block — always visible above JD scroll list */}
           {report.layoutApplied ? (
             <div
               className={cn(
@@ -117,7 +135,7 @@ export function FitReportPanel({
             >
               <p className="font-semibold">
                 {report.layoutApplied.applied ? "✓ " : "○ "}
-                Layout structure: {report.layoutApplied.layoutName}
+                Layout structure applied: {report.layoutApplied.layoutName}
               </p>
               <p className="mt-0.5 leading-relaxed opacity-90">
                 {report.layoutApplied.note}
@@ -131,8 +149,38 @@ export function FitReportPanel({
               ) : null}
               {report.layoutApplied.foundHeadings.length ? (
                 <p className="mt-1 text-[11px] opacity-75">
-                  Found: {report.layoutApplied.foundHeadings.slice(0, 6).join(" → ")}
+                  Found:{" "}
+                  {report.layoutApplied.foundHeadings.slice(0, 6).join(" → ")}
                 </p>
+              ) : null}
+              {layoutReqs.length ? (
+                <ul className="mt-2 space-y-1 border-t border-black/5 pt-2">
+                  {layoutReqs.map((r) => (
+                    <li
+                      key={r.id}
+                      className="flex items-start gap-2 text-[12px]"
+                    >
+                      <span
+                        className={
+                          r.present ? "text-emerald-600" : "text-amber-600"
+                        }
+                      >
+                        {r.present ? "✓" : "○"}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="font-medium">{r.label}</span>
+                        {r.proof ? (
+                          <span className="mt-0.5 block text-[11px] opacity-80">
+                            {r.proof}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="shrink-0 text-[10px] uppercase opacity-50">
+                        layout
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               ) : null}
             </div>
           ) : null}
@@ -143,7 +191,7 @@ export function FitReportPanel({
               JD → proof checklist
             </p>
             <ul className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-black/[0.06] bg-white p-2 text-[12px]">
-              {report.requirements.slice(0, 28).map((r) => (
+              {otherReqs.slice(0, 28).map((r) => (
                 <li
                   key={r.id}
                   className="flex items-start gap-2 rounded-lg px-2 py-1 hover:bg-[#f5f5f7]"
@@ -187,8 +235,8 @@ export function FitReportPanel({
           )}
 
           <p className="text-[10px] leading-relaxed text-[#a1a1a6]">
-            Research lab (local): primacy, peak–end, n-grams, anti-prototype,
-            impersonal 10-line summary, calibrated confidence.
+            Fit checks: layout structure applied, primacy, peak–end, n-grams,
+            anti-prototype, impersonal 10-line summary, calibrated confidence.
           </p>
         </div>
       ) : null}

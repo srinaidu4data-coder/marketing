@@ -39,6 +39,7 @@ export type ChainPackRow = {
   candidate: {
     name: string;
     email: string;
+    layoutId?: string | null;
     masterResumeText?: string | null;
     masterProfileJson?: string | null;
   };
@@ -306,7 +307,9 @@ export function ChainPacksTable({
                   resumeText={cc.tailoredResumeText}
                   jd={rawJobText}
                   jobTitle={cc.jobTitle || role}
-                  layoutId={cc.layoutId}
+                  layoutId={
+                    cc.layoutId || cc.candidate.layoutId || "ats_classic"
+                  }
                 />
               ) : null}
 
