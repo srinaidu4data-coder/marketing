@@ -1,14 +1,15 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/db";
-import { Badge, Card, PageHeader } from "@/components/ui";
+import { Badge, Button, Card, PageHeader } from "@/components/ui";
 import {
   EditEmployeeForm,
   EmployeeStatusActions,
   ResetPasswordForm,
 } from "@/components/employee-forms";
 import { formatDate, formatDateTime } from "@/lib/utils";
+import { hideEmployeeChainsAction } from "@/app/actions/chains";
 
 export default async function AdminEmployeeDetailPage({
   params,
@@ -156,12 +157,41 @@ export default async function AdminEmployeeDetailPage({
       </Card>
 
       <Card className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-medium">Recent chains</h2>
-          <Link href="/admin/chains" className="text-sm text-sky-700 underline underline-offset-2">
-            All chains →
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            {user.role === "EMPLOYEE" ? (
+              <form
+                action={async () => {
+                  "use server";
+                  const fd = new FormData();
+                  fd.set("scope", "employee");
+                  fd.set("employeeId", user.id);
+                  const r = await hideEmployeeChainsAction(fd);
+                  if (r.ok) {
+                    redirect(
+                      `/admin/employees/${user.id}?cleaned=1&count=${r.count}`
+                    );
+                  }
+                }}
+              >
+                <Button type="submit" variant="outline" size="sm">
+                  Clean this employee&apos;s chains
+                </Button>
+              </form>
+            ) : null}
+            <Link
+              href="/admin/chains"
+              className="text-sm text-sky-700 underline underline-offset-2"
+            >
+              All chains →
+            </Link>
+          </div>
         </div>
+        <p className="text-xs text-slate-500">
+          Cleaning hides chains from the employee workspace only. You still see full
+          history here and under Admin → Chains.
+        </p>
         {user.chains.length === 0 ? (
           <p className="text-sm text-slate-500">No chains yet.</p>
         ) : (
@@ -171,6 +201,7 @@ export default async function AdminEmployeeDetailPage({
                 <tr>
                   <th className="px-3 py-2 font-medium">Vendor</th>
                   <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">Employee view</th>
                   <th className="px-3 py-2 font-medium">Packs</th>
                   <th className="px-3 py-2 font-medium">Created</th>
                 </tr>
@@ -189,6 +220,13 @@ export default async function AdminEmployeeDetailPage({
                     </td>
                     <td className="px-3 py-2">
                       <Badge status={c.status}>{c.status}</Badge>
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {c.employeeHiddenAt ? (
+                        <span className="font-semibold text-amber-800">Hidden</span>
+                      ) : (
+                        <span className="font-semibold text-emerald-700">Visible</span>
+                      )}
                     </td>
                     <td className="px-3 py-2">{c._count.candidates}</td>
                     <td className="px-3 py-2 text-slate-600">{formatDate(c.createdAt)}</td>

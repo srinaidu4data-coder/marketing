@@ -42,6 +42,8 @@ export default async function ChainDetailPage({
     },
   });
   if (!chain || chain.employeeId !== user.id) notFound();
+  // Admin cleaned this chain from the employee workspace — still exists for admin audit
+  if (chain.employeeHiddenAt) notFound();
 
   const emailCfg = getResendConfig();
 

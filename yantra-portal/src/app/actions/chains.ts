@@ -155,6 +155,9 @@ export async function recoverStuckChainAction(chainId: string) {
   if (user.role === "EMPLOYEE" && chain.employeeId !== user.id) {
     return { ok: false as const, error: "Forbidden" };
   }
+  if (user.role === "EMPLOYEE" && chain.employeeHiddenAt) {
+    return { ok: false as const, error: "Not found" };
+  }
 
   const result = await failStuckChain(chainId, user.id, "user_recover");
   revalidatePath(`/chains/${chainId}`);
@@ -174,6 +177,9 @@ export async function retryGenerateChainAction(chainId: string) {
   if (!chain) return { ok: false as const, error: "Not found" };
   if (user.role === "EMPLOYEE" && chain.employeeId !== user.id) {
     return { ok: false as const, error: "Forbidden" };
+  }
+  if (user.role === "EMPLOYEE" && chain.employeeHiddenAt) {
+    return { ok: false as const, error: "Not found" };
   }
 
   const result = await retryGenerateChain(chainId, user.id);
@@ -204,6 +210,9 @@ export async function sendChain(chainId: string) {
   if (!chain) return { error: "Not found" };
   if (user.role === "EMPLOYEE" && chain.employeeId !== user.id) {
     return { error: "Forbidden" };
+  }
+  if (user.role === "EMPLOYEE" && chain.employeeHiddenAt) {
+    return { error: "Not found" };
   }
 
   // Cannot send while still generating — offer recover path via status
@@ -512,4 +521,119 @@ export async function sendChain(chainId: string) {
       status,
     };
   }
+}
+
+/**
+ * Hide chains from employee UI only. Admin retains full history.
+ * Only affects owners with role EMPLOYEE (never wipes admin-owned chains).
+ */
+export async function hideEmployeeChainsAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const employeeId = String(formData.get("employeeId") || "").trim() || null;
+  const scope = String(formData.get("scope") || "employee"); // employee | all_employees
+
+  const whereBase: {
+    employeeHiddenAt: null;
+    employeeId?: string;
+    employee: { role: "EMPLOYEE" };
+  } = {
+    employeeHiddenAt: null,
+    employee: { role: "EMPLOYEE" },
+  };
+
+  if (scope === "employee") {
+    if (!employeeId) return { ok: false as const, error: "employeeId required" };
+    const emp = await prisma.user.findUnique({ where: { id: employeeId } });
+    if (!emp || emp.role !== "EMPLOYEE") {
+      return { ok: false as const, error: "Only employee accounts can be cleaned" };
+    }
+    whereBase.employeeId = employeeId;
+  }
+
+  const result = await prisma.chain.updateMany({
+    where: whereBase,
+    data: {
+      employeeHiddenAt: new Date(),
+      employeeHiddenBy: admin.id,
+    },
+  });
+
+  await audit("chain.employee_hide", admin.id, {
+    employeeId: employeeId || "all_employees",
+    scope,
+    count: result.count,
+  });
+
+  revalidatePath("/chains");
+  revalidatePath("/admin/chains");
+  revalidatePath("/admin/employees");
+  if (employeeId) revalidatePath(`/admin/employees/${employeeId}`);
+  revalidatePath("/");
+  revalidatePath("/admin/queues");
+
+  return { ok: true as const, count: result.count };
+}
+
+/** Hide one chain from its employee owner (admin only). */
+export async function hideSingleEmployeeChainAction(chainId: string) {
+  const admin = await requireAdmin();
+  const chain = await prisma.chain.findUnique({
+    where: { id: chainId },
+    include: { employee: true },
+  });
+  if (!chain) return { ok: false as const, error: "Not found" };
+  if (chain.employee.role !== "EMPLOYEE") {
+    return { ok: false as const, error: "Only employee-owned chains can be cleaned" };
+  }
+
+  await prisma.chain.update({
+    where: { id: chainId },
+    data: {
+      employeeHiddenAt: new Date(),
+      employeeHiddenBy: admin.id,
+    },
+  });
+
+  await audit("chain.employee_hide", admin.id, {
+    chainId,
+    employeeId: chain.employeeId,
+    scope: "single",
+    count: 1,
+  });
+
+  revalidatePath(`/admin/chains/${chainId}`);
+  revalidatePath("/admin/chains");
+  revalidatePath("/chains");
+  revalidatePath(`/admin/employees/${chain.employeeId}`);
+  revalidatePath("/");
+
+  return { ok: true as const };
+}
+
+/** Restore a single chain to the employee’s list (admin only). */
+export async function unhideChainFromEmployeeAction(chainId: string) {
+  const admin = await requireAdmin();
+  const chain = await prisma.chain.findUnique({
+    where: { id: chainId },
+    include: { employee: true },
+  });
+  if (!chain) return { ok: false as const, error: "Not found" };
+
+  await prisma.chain.update({
+    where: { id: chainId },
+    data: { employeeHiddenAt: null, employeeHiddenBy: null },
+  });
+
+  await audit("chain.employee_unhide", admin.id, {
+    chainId,
+    employeeId: chain.employeeId,
+  });
+
+  revalidatePath(`/admin/chains/${chainId}`);
+  revalidatePath("/admin/chains");
+  revalidatePath("/chains");
+  revalidatePath(`/admin/employees/${chain.employeeId}`);
+  revalidatePath("/");
+
+  return { ok: true as const };
 }

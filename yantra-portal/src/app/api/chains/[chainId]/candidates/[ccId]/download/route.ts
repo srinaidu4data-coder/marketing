@@ -103,6 +103,9 @@ export async function GET(
   if (session.user.role === "EMPLOYEE" && cc.chain.employeeId !== session.user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  if (session.user.role === "EMPLOYEE" && cc.chain.employeeHiddenAt) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const row = cc;
   const url = new URL(req.url);

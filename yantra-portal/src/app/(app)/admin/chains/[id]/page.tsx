@@ -2,9 +2,11 @@ import { notFound, redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/session";
 import { prisma } from "@/lib/db";
 import {
+  hideSingleEmployeeChainAction,
   recoverStuckChainAction,
   retryGenerateChainAction,
   sendChain,
+  unhideChainFromEmployeeAction,
 } from "@/app/actions/chains";
 import { getResendConfig } from "@/lib/email/resend";
 import {
@@ -17,6 +19,7 @@ import {
   ChainBanner,
   ChainDetailShell,
 } from "@/components/chain-detail-shell";
+import { Button } from "@/components/ui";
 
 export default async function AdminChainDetailPage({
   params,
@@ -165,6 +168,44 @@ export default async function AdminChainDetailPage({
     </>
   );
 
+  const employeeViewBanner =
+    chain.employee.role === "EMPLOYEE" ? (
+      chain.employeeHiddenAt ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p>
+            <strong>Hidden from employee</strong> — they cannot open this chain.
+            Full pack history stays here for admin.
+          </p>
+          <form
+            action={async () => {
+              "use server";
+              await unhideChainFromEmployeeAction(chain.id);
+            }}
+          >
+            <Button type="submit" variant="outline" size="sm">
+              Restore to employee
+            </Button>
+          </form>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-black/[0.06] bg-white px-4 py-3 text-sm text-slate-700 shadow-soft">
+          <p>
+            Visible in the employee workspace. Cleaning hides it from them only.
+          </p>
+          <form
+            action={async () => {
+              "use server";
+              await hideSingleEmployeeChainAction(chain.id);
+            }}
+          >
+            <Button type="submit" variant="outline" size="sm">
+              Hide from employee
+            </Button>
+          </form>
+        </div>
+      )
+    ) : null;
+
   return (
     <div className="p-2 lg:p-4">
       <ChainDetailShell
@@ -184,7 +225,12 @@ export default async function AdminChainDetailPage({
         sendAction={sendAction}
         recoverAction={recoverAction}
         retryAction={retryAction}
-        banners={banners}
+        banners={
+          <>
+            {employeeViewBanner}
+            {banners}
+          </>
+        }
       >
         <ChainPacksTable
           chainId={chain.id}

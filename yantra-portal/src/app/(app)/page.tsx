@@ -17,7 +17,7 @@ export default async function EmployeeHomePage() {
   });
 
   const recentChains = await prisma.chain.findMany({
-    where: { employeeId: user.id },
+    where: { employeeId: user.id, employeeHiddenAt: null },
     include: { candidates: true },
     orderBy: { createdAt: "desc" },
     take: 5,

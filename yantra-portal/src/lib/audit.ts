@@ -32,6 +32,8 @@ export const AUDIT_ACTIONS = [
   "chain.stale_recovered",
   "chain.send_requested",
   "chain.status_changed",
+  "chain.employee_hide",
+  "chain.employee_unhide",
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number] | string;

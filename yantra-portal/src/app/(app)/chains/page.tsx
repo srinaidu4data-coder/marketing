@@ -10,7 +10,7 @@ export default async function ChainsPage() {
   if (user.role === "ADMIN") redirect("/admin/chains");
 
   const chains = await prisma.chain.findMany({
-    where: { employeeId: user.id },
+    where: { employeeId: user.id, employeeHiddenAt: null },
     include: { candidates: true },
     orderBy: { createdAt: "desc" },
   });
