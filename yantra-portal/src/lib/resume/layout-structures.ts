@@ -317,10 +317,10 @@ function buildExecutivePyramid(ctx: StructureCtx): ResumeSection[] {
     {
       heading: "Executive Brief",
       lines: [
-        `${fn} is positioned as ${ctx.headline} with ~${ctx.yearsHint}+ years progressive SAP delivery.`,
+        `${ctx.headline} profile with ~${ctx.yearsHint > 0 ? ctx.yearsHint + "+" : "multi-year"} years progressive enterprise delivery.`,
         `Strengths: functional ownership, stakeholder governance, and release accountability.`,
         `Core skills: ${ctx.cleanSkills.slice(0, 14).join(ctx.skillSeparator)}`,
-        ...ctx.summaryLines.slice(1, 5),
+        ...ctx.summaryLines.slice(0, 8),
       ].filter(Boolean),
     },
     {

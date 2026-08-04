@@ -241,12 +241,17 @@ function normalizeYearsInText(s: string, yearsHint: number): string {
     .trim();
 }
 
+/** Target vendor-facing summary density (always 10 lines). */
+const SUMMARY_LINE_TARGET = 10;
+
 /** Reject keyword-dump / template lines that read as machine fill, not prose. */
 function isSummaryJunk(line: string): boolean {
   const t = line.trim();
   if (!t || t.length < 28) return true;
   if (/^core focus includes\b/i.test(t)) return true;
   if (/^career progression moves from\b/i.test(t)) return true;
+  if (/\bis positioned as\b/i.test(t)) return true;
+  if (/without claiming a specialty career/i.test(t)) return true;
   if (/\baligned to\b/i.test(t) && (t.match(/,/g) || []).length >= 2) return true;
   if (/cutover,\s*and hypercare|build\/test cycles.*hypercare/i.test(t)) return true;
   // "aligned to Pharmaceutical, PowerPoint, CDISC" — skill list as career arc
@@ -255,8 +260,83 @@ function isSummaryJunk(line: string): boolean {
 }
 
 /**
- * Apple bar: one voice, one years claim, no AI+template stacking.
- * Prefer strong AI prose; else one short human template — never both year numbers.
+ * Impersonal resume voice: no first person, no “Name is positioned as…” third-person bio.
+ * US tech resume style: role/capability-led lines.
+ */
+function toImpersonalSummaryLine(line: string, candidateName: string): string {
+  let s = String(line || "").replace(/\s+/g, " ").trim();
+  if (!s) return s;
+  const first = (candidateName || "").split(/\s+/)[0] || "";
+  const full = (candidateName || "").trim();
+
+  // Drop third-person name openers
+  if (full) {
+    s = s.replace(new RegExp(`^${escapeRegExp(full)}\\s+`, "i"), "");
+  }
+  if (first && first.length > 1) {
+    s = s
+      .replace(new RegExp(`^${escapeRegExp(first)}\\s+(is|has|brings|offers|delivers)\\b`, "i"), "$1")
+      .replace(new RegExp(`^${escapeRegExp(first)}\\s+`, "i"), "");
+  }
+  s = s
+    .replace(/\bis positioned as (an?|the)\s+/gi, "")
+    .replace(/\bpositioned as (an?|the)\s+/gi, "")
+    .replace(/\bI am (an?|the)\s+/gi, "")
+    .replace(/\bI'm (an?|the)\s+/gi, "")
+    .replace(/\bI have\b/gi, "Holds")
+    .replace(/\bI've\b/gi, "Has")
+    .replace(/\bI\b/g, "")
+    .replace(/\bmy\b/gi, "the")
+    .replace(/\bmyself\b/gi, "")
+    .replace(/\bme\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.])/g, "$1")
+    .trim();
+
+  // Capitalize first letter after stripping
+  if (s && /^[a-z]/.test(s)) s = s.charAt(0).toUpperCase() + s.slice(1);
+  return s;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Technical jargon pad lines — impersonal, no name / no first person. */
+function jargonSummaryPads(opts: {
+  jobTitle: string;
+  yearsHint: number;
+  skills: string[];
+  critical: string[];
+}): string[] {
+  const skills = opts.skills.filter((s) => s.length > 1 && s.length < 48).slice(0, 18);
+  const crit = opts.critical.filter((s) => s.length > 1).slice(0, 12);
+  const bank = Array.from(new Set([...crit, ...skills]));
+  const y =
+    opts.yearsHint > 0
+      ? `approximately ${opts.yearsHint}+ years`
+      : "multi-year progressive delivery";
+  const t = opts.jobTitle || "enterprise consultant";
+  const pick = (i: number, n = 4) =>
+    bank.slice(i * 2, i * 2 + n).join(", ") || bank.slice(0, n).join(", ") || t;
+
+  return [
+    `${t} profile with ${y} of enterprise delivery spanning solution design, configuration, integration, and hypercare-adjacent support where applicable.`,
+    `Deep hands-on fluency across ${pick(0, 5)} with emphasis on production-grade implementation and validation rigor.`,
+    `End-to-end ownership of requirements workshops, fit-gap analysis, blueprint/design artifacts, build cycles, and defect triage in complex multi-system landscapes.`,
+    `Technical stack coverage includes ${pick(1, 5)} applied in integration, data movement, and interface reliability scenarios.`,
+    `Strong command of cross-functional coordination with business stakeholders, QA, basis/infra, and vendor partners through UAT and go-live readiness.`,
+    `Delivery discipline covers documentation standards, traceability, cutover checklists, knowledge transfer, and post-production stabilization patterns.`,
+    `Specialized depth in ${pick(2, 4)} with reusable accelerators, reusable configuration patterns, and environment-aware sequencing.`,
+    `Integration and data integrity focus: master data alignment, interface monitoring, exception handling, and controlled transport/release practices.`,
+    `Performance orientation: throughput, reconciliation controls, auditability, and operational metrics without free-form invented percentages.`,
+    `Ready for client submission as ${t} with JD-aligned terminology dense across summary, skills, and recent engagement narratives.`,
+  ];
+}
+
+/**
+ * Professional summary is ALWAYS AI-led, impersonal, and padded to 10 jargon-dense lines.
+ * Never third-person bio (“Name is positioned as…”) and never first person (“I am…”).
  */
 function buildCoherentSummary(opts: {
   candidateName: string;
@@ -270,8 +350,6 @@ function buildCoherentSummary(opts: {
   master: string;
   lowOverlap: boolean;
 }): string[] {
-  const first = opts.candidateName.split(/\s+/)[0] || opts.candidateName;
-
   // Substantive skills only — never soft JD noise in summary prose
   const skillPick = [
     ...opts.skills,
@@ -286,14 +364,14 @@ function buildCoherentSummary(opts: {
           s
         )
     )
-    .slice(0, 6);
-  const skillLine = skillPick.slice(0, 5).join(", ");
+    .slice(0, 14);
 
   let kept = opts.aiSummary
-    .map((s) => String(s).replace(/\s+/g, " ").trim())
+    .map((s) => toImpersonalSummaryLine(String(s), opts.candidateName))
+    .map((s) => s.replace(/\s+/g, " ").trim())
     .filter(
       (s) =>
-        s.length > 40 &&
+        s.length > 36 &&
         !/@/.test(s) &&
         !isSummaryJunk(s) &&
         !isOffDomainText(s, opts.domain, opts.policy)
@@ -318,37 +396,34 @@ function buildCoherentSummary(opts: {
       sawYears = true;
       return opts.yearsHint > 0 ? normalizeYearsInText(s, opts.yearsHint) : s;
     })
-    .filter((s) => s.length > 40 && !isSummaryJunk(s));
+    .filter((s) => s.length > 36 && !isSummaryJunk(s));
 
-  // Strong AI prose alone — do NOT append templates (was the 25 vs 27+ bug)
-  const proseChars = kept.join(" ").length;
-  if (kept.length >= 2 && proseChars >= 280) {
-    kept = dedupeBullets(kept).slice(0, 6);
-  } else if (kept.length >= 1 && proseChars >= 180) {
-    const pad: string[] = [];
-    if (skillLine && !kept.some((k) => /core focus|specializ|focus/i.test(k))) {
-      pad.push(`Strengths relevant to this search include ${skillLine}.`);
-    }
-    kept = dedupeBullets([...kept, ...pad]).slice(0, 5);
-  } else {
-    const yearsPart =
-      opts.yearsHint > 0
-        ? ` with approximately ${opts.yearsHint}+ years of progressive professional experience`
-        : " with progressive professional experience";
-    const fallback = [
-      `${first} is positioned as a ${opts.jobTitle}${yearsPart}, drawing on delivery history that is reframed toward this role’s requirements.`,
-      skillLine
-        ? `Focus areas for this submission include ${skillLine}.`
-        : `Experience is mapped to ${opts.jobTitle} responsibilities with honest emphasis on transferable delivery discipline.`,
-    ];
-    if (kept.length === 1) {
-      kept = dedupeBullets([...kept, fallback[1]].filter(Boolean)).slice(0, 4);
+  // Always fill to 10 lines with technical jargon (impersonal) — AI lines first
+  const pads = jargonSummaryPads({
+    jobTitle: opts.jobTitle,
+    yearsHint: opts.yearsHint,
+    skills: skillPick,
+    critical: opts.critical,
+  }).map((s) => toImpersonalSummaryLine(s, opts.candidateName));
+
+  kept = dedupeBullets([...kept, ...pads]).slice(0, SUMMARY_LINE_TARGET);
+
+  // If still short (edge case), repeat skill-dense pads
+  while (kept.length < SUMMARY_LINE_TARGET) {
+    const extra = pads[kept.length % pads.length];
+    if (!extra || kept.includes(extra)) {
+      kept.push(
+        `Additional technical coverage: ${skillPick
+          .slice(kept.length % Math.max(1, skillPick.length), (kept.length % Math.max(1, skillPick.length)) + 4)
+          .join(", ") || opts.jobTitle} applied in enterprise delivery contexts.`
+      );
     } else {
-      kept = dedupeBullets(fallback).slice(0, 4);
+      kept.push(extra);
     }
   }
+  kept = kept.slice(0, SUMMARY_LINE_TARGET);
 
-  // Honesty scrub: no industry cosplay; low-overlap → transferable framing only
+  // Soft honesty scrub only — never collapse to a single third-person disclaimer
   return scrubSummaryHonesty({
     lines: kept,
     master: opts.master,
@@ -356,6 +431,8 @@ function buildCoherentSummary(opts: {
     yearsHint: opts.yearsHint,
     candidateName: opts.candidateName,
     lowOverlap: opts.lowOverlap,
+    targetLines: SUMMARY_LINE_TARGET,
+    preserveDensity: true,
   });
 }
 
@@ -456,8 +533,8 @@ ${titleRule}
 - Domain hint "${domain}" is for coherence — NOT a license to invent a specialty career.
 - No duplicate bullets. No industry meta lines. No name/email in summary.
 - education: degrees from master only. certifications: only JD-relevant certs from master (drop SAP certs on clinical JDs).
-- SUMMARY: one voice, ONE years claim from master span. No keyword dumps. No cutover/hypercare on non-SAP domains.
-- HONESTY: Never claim years in Pharmaceutical/clinical/banking industry unless MASTER supports it. Mode=${modeResult.mode} overlap=${modeResult.overlap.toFixed(2)}.`;
+- SUMMARY (MANDATORY): EXACTLY 10 lines. Impersonal technical voice ONLY — NO first person (I/me/my), NO third-person bio ("Sri is…", "Name is positioned as…"). Lead with role, modules, stack, delivery, integration, controls. Beef every line with JD/master technical jargon. ONE years claim from master span total across the 10 lines. No honesty disclaimers.
+- HONESTY: Never invent employers/certs. Prefer transferable technical framing over unsupported industry tenure. Mode=${modeResult.mode} overlap=${modeResult.overlap.toFixed(2)}.`;
 
   // Prefer upload-time MasterProfile (richer than anchors alone)
   const storedProfile = parseStoredMasterProfile(input.masterProfileJson);
@@ -511,7 +588,7 @@ ${input.master.slice(0, 12000)}
 Return JSON:
 {
   "headline": "${jobTitle}",
-  "summary": ["3-5 dense sentences, one voice, ONE years claim from master span, grounded in master + JD — no keyword-dump lines"],
+  "summary": ["EXACTLY 10 dense technical lines, impersonal voice, heavy JD/master jargon, ONE years claim total, no I/me/my, no candidate name as subject, no 'positioned as'"],
   "skills": ["20-35 skills: grounded first, then JD keywords"],
   "impact": ["5-8 peak bullets grounded in master outcomes, JD language"],
   "methodology": ["3-5 delivery method lines"],

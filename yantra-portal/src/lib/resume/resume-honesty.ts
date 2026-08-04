@@ -68,7 +68,8 @@ export function masterSupportsIndustryClaim(
 
 /**
  * Scrub summary lines that invent industry careers not on the master.
- * Low-overlap: also force transferable positioning language.
+ * Never replaces the block with a third-person “positioned as…” disclaimer —
+ * AI / dense jargon lines are preserved (product rule: 10-line summary).
  */
 export function scrubSummaryHonesty(opts: {
   lines: string[];
@@ -77,83 +78,90 @@ export function scrubSummaryHonesty(opts: {
   yearsHint: number;
   candidateName: string;
   lowOverlap: boolean;
+  /** Keep this many lines (default 10). */
+  targetLines?: number;
+  /** When true, do not collapse density for low-overlap packs. */
+  preserveDensity?: boolean;
 }): string[] {
   const master = opts.master || "";
-  const first = (opts.candidateName || "Candidate").split(/\s+/)[0];
-  const yearsPart =
-    opts.yearsHint > 0
-      ? ` with approximately ${opts.yearsHint}+ years of progressive professional experience`
-      : " with progressive professional experience";
+  const target = Math.max(1, opts.targetLines ?? 10);
 
   let lines = opts.lines
     .map((l) => String(l).replace(/\s+/g, " ").trim())
-    .filter((l) => l.length > 20);
+    .filter((l) => l.length > 20)
+    // Ban third-person bio / first-person residual
+    .filter(
+      (l) =>
+        !/\bis positioned as\b/i.test(l) &&
+        !/without claiming a specialty career/i.test(l) &&
+        !/\bI am\b/i.test(l) &&
+        !/\bI'm\b/i.test(l)
+    );
 
   // Drop industry cosplay sentences
   lines = lines.filter((line) => {
     for (const p of INDUSTRY_CLAIM_PATTERNS) {
       if (p.re.test(line) && !p.masterNeed.test(master)) return false;
     }
-    // "years in the X industry" without master support
-    if (
-      /\byears?\b.+\bindustry\b|\bindustry\b.+\byears?\b/i.test(line) &&
-      !/\b(sap|erp|consulting|implementation|enterprise)\b/i.test(master.slice(0, 2000))
-    ) {
-      // If master is clearly SAP/consulting, only ban non-supported industries (handled above)
-    }
-    for (const p of INDUSTRY_CLAIM_PATTERNS) {
-      if (p.re.test(line) && !p.masterNeed.test(master)) return false;
-    }
     return true;
   });
 
-  // Soft-replace residual "in the Pharmaceutical industry" style spans
-  lines = lines.map((line) => {
-    let out = line;
-    for (const p of INDUSTRY_CLAIM_PATTERNS) {
-      if (p.re.test(out) && !p.masterNeed.test(master)) {
+  // Soft-replace residual unsupported industry spans (keep line, rewrite claim)
+  lines = lines
+    .map((line) => {
+      let out = line;
+      for (const p of INDUSTRY_CLAIM_PATTERNS) {
+        if (p.re.test(out) && !p.masterNeed.test(master)) {
+          out = out
+            .replace(p.re, "across enterprise delivery programs")
+            .replace(/\s{2,}/g, " ")
+            .trim();
+        }
+      }
+      if (
+        opts.lowOverlap &&
+        /\b(pharmaceutical|clinical data management|clinical studies|drug development)\b/i.test(
+          out
+        ) &&
+        !/\b(clinical|pharma|cdisc|edc)\b/i.test(master)
+      ) {
         out = out
-          .replace(p.re, "across enterprise delivery programs")
+          .replace(
+            /\bin the Pharmaceutical industry[^.]*\.?/gi,
+            "across data-intensive enterprise programs."
+          )
+          .replace(
+            /specializing in data management activities for clinical studies[^.]*\.?/gi,
+            "with emphasis on data quality, validation discipline, documentation, and controlled testing cycles."
+          )
           .replace(/\s{2,}/g, " ")
           .trim();
       }
-    }
-    // Strip absolute clinical career ownership if master lacks clinical
-    if (
-      opts.lowOverlap &&
-      /\b(pharmaceutical|clinical data management|clinical studies|drug development)\b/i.test(
-        out
-      ) &&
-      !/\b(clinical|pharma|cdisc|edc)\b/i.test(master)
-    ) {
-      out = out
-        .replace(
-          /\bin the Pharmaceutical industry[^.]*\.?/gi,
-          "across data-intensive enterprise programs."
-        )
-        .replace(
-          /specializing in data management activities for clinical studies[^.]*\.?/gi,
-          "with emphasis on data quality, validation discipline, documentation, and stakeholder coordination transferable to this search."
-        )
-        .replace(/\s{2,}/g, " ")
-        .trim();
-    }
-    return out;
-  }).filter((l) => l.length > 40);
+      return out;
+    })
+    .filter((l) => l.length > 36);
 
-  if (opts.lowOverlap) {
-    // Prefer a single honest positioning opener — no leftover DMP/CRF ownership claims
-    const honest = `${first} is positioned as a ${opts.jobTitle}${yearsPart}, drawing on transferable strengths in data quality, process ownership, documentation, testing discipline, and stakeholder coordination — without claiming a specialty career that is not supported by the master resume.`;
-    // Low-overlap: do not keep JD-specialty ownership lines (DMP/CRF/clinical studies)
-    return [honest];
+  // Low-overlap: drop only blatant specialty ownership claims, keep density
+  if (opts.lowOverlap && !opts.preserveDensity) {
+    lines = lines.filter(
+      (l) =>
+        !/\b(DMP|CRF design|clinical study ownership|years as a clinical)\b/i.test(
+          l
+        )
+    );
   }
 
   if (!lines.length) {
+    const y =
+      opts.yearsHint > 0
+        ? `approximately ${opts.yearsHint}+ years`
+        : "multi-year progressive";
     return [
-      `${first} is positioned as a ${opts.jobTitle}${yearsPart}, mapped honestly to this role using master-backed delivery history.`,
-    ];
+      `${opts.jobTitle} profile with ${y} of enterprise delivery, configuration, integration, and production support exposure.`,
+    ].slice(0, target);
   }
-  return lines.slice(0, 5);
+
+  return lines.slice(0, target);
 }
 
 /** Scrub SAP ritual language from bullets when JD domain is non-SAP (e.g. clinical-dm). */

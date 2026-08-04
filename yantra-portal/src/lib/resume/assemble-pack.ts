@@ -631,24 +631,37 @@ export async function assembleDeterministicPack(opts: {
   const contactLine =
     formatContactLine(contact) || opts.email || contact.email || "";
 
-  const first = opts.candidateName.split(/\s+/)[0] || opts.candidateName;
-  const skillLine = groundedPack.slice(0, 6).join(", ") || jobTitle;
-  const yearsPart =
+  const skillBank = groundedPack.length
+    ? groundedPack
+    : skills.slice(0, 16);
+  const y =
     yearsHint > 0
-      ? ` with approximately ${yearsHint}+ years of progressive professional experience`
-      : " with progressive professional experience";
-  // transfer (includes former strict band) still softens summary cosplay
+      ? `approximately ${yearsHint}+ years`
+      : "multi-year progressive";
+  const pick = (i: number, n = 4) =>
+    skillBank.slice(i, i + n).join(", ") || jobTitle;
+  // Deterministic path: still 10 impersonal jargon lines (no third-person bio)
   const lowOverlap = modeResult.mode === "transfer";
   const summary = scrubSummaryHonesty({
     lines: [
-      `${first} is positioned as a ${jobTitle}${yearsPart}, mapped to this role’s requirements with emphasis on ${skillLine}.`,
-      `Master-backed delivery history is reframed toward ${jobTitle} responsibilities where honestly supported by experience.`,
+      `${jobTitle} profile with ${y} of enterprise delivery spanning design, configuration, integration, and production support.`,
+      `Hands-on depth across ${pick(0, 5)} with production-grade implementation and validation rigor.`,
+      `End-to-end ownership of workshops, fit-gap, blueprint artifacts, build cycles, and defect triage in multi-system landscapes.`,
+      `Technical coverage includes ${pick(2, 5)} applied to interfaces, data movement, and reliability controls.`,
+      `Cross-functional coordination with business, QA, infra, and vendors through UAT and go-live readiness.`,
+      `Delivery discipline: documentation, traceability, cutover checklists, knowledge transfer, and stabilization patterns.`,
+      `Specialized focus on ${pick(4, 4)} with reusable configuration patterns and environment-aware sequencing.`,
+      `Integration and data integrity: master data alignment, interface monitoring, exception handling, controlled transports.`,
+      `Operational orientation: reconciliation controls, auditability, throughput awareness, and supportable designs.`,
+      `Client-submittable ${jobTitle} narrative with JD-aligned terminology across summary, skills, and recent engagements.`,
     ],
     master: opts.master,
     jobTitle,
     yearsHint,
     candidateName: opts.candidateName,
     lowOverlap,
+    targetLines: 10,
+    preserveDensity: true,
   });
 
   // Impact always JD-shaped (domain proof + recent bullets)
