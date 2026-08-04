@@ -15,6 +15,7 @@ import {
 import { Badge, Button } from "@/components/ui";
 import { formatDateTime } from "@/lib/utils";
 import { extractJobTitle } from "@/lib/resume/jd-parse";
+import { formatEmployeeFrom } from "@/lib/email/resend";
 
 export type ChainDetailShellProps = {
   chain: {
@@ -26,6 +27,11 @@ export type ChainDetailShellProps = {
     rawJobText: string;
     employeeNote?: string | null;
   };
+  /** Sending employee — used for From display (must match sendChain) */
+  employee?: {
+    name?: string | null;
+    email?: string | null;
+  } | null;
   /** Optional admin-only line under title */
   subtitleExtra?: string;
   backHref: string;
@@ -36,7 +42,8 @@ export type ChainDetailShellProps = {
   stuck: boolean;
   showRetry: boolean;
   emailMode?: "resend" | "simulated" | "dry_run" | string;
-  emailFrom?: string;
+  /** Env fallback From only (used if employee email missing) */
+  emailFromFallback?: string;
   sendAction: () => Promise<void>;
   recoverAction: () => Promise<void>;
   retryAction: () => Promise<void>;
@@ -46,6 +53,7 @@ export type ChainDetailShellProps = {
 
 export function ChainDetailShell({
   chain,
+  employee,
   subtitleExtra,
   backHref,
   sent,
@@ -55,7 +63,7 @@ export function ChainDetailShell({
   stuck,
   showRetry,
   emailMode,
-  emailFrom,
+  emailFromFallback,
   sendAction,
   recoverAction,
   retryAction,
@@ -65,6 +73,16 @@ export function ChainDetailShell({
   const jobTitle =
     extractJobTitle(chain.rawJobText) || "Open role";
   const jdPreview = chain.rawJobText.trim().slice(0, 160).replace(/\s+/g, " ");
+  const fromDisplay = formatEmployeeFrom({
+    name: employee?.name,
+    email: employee?.email,
+    fallback: emailFromFallback,
+  });
+  const fromIsEmployee = Boolean(
+    employee?.email &&
+      employee.email.includes("@") &&
+      fromDisplay.toLowerCase().includes(employee.email.toLowerCase())
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-5 pb-24 sm:space-y-6">
@@ -194,15 +212,29 @@ export function ChainDetailShell({
                   : "Simulated"}
             </p>
             <p className="text-[12.5px] leading-snug text-[#6e6e73]">
-              {emailMode === "resend" ? (
+              {emailMode === "resend" || emailMode === "dry_run" ? (
                 <>
                   From{" "}
-                  <span className="font-mono text-[11px] text-[#1d1d1f]">
-                    {emailFrom}
+                  <span
+                    className="font-mono text-[11px] text-[#1d1d1f]"
+                    title={
+                      fromIsEmployee
+                        ? "Sends as the chain employee"
+                        : "Fallback — employee email missing; set employee profile email"
+                    }
+                  >
+                    {fromDisplay}
                   </span>
+                  {fromIsEmployee ? (
+                    <span className="mt-0.5 block text-[11px] text-[#86868b]">
+                      Sender = employee · candidate is CC’d
+                    </span>
+                  ) : (
+                    <span className="mt-0.5 block text-[11px] text-amber-800">
+                      Using fallback From — set employee email on profile
+                    </span>
+                  )}
                 </>
-              ) : emailMode === "dry_run" ? (
-                "EMAIL_DRY_RUN is on — no real delivery."
               ) : (
                 "No RESEND_API_KEY — sends are logged only."
               )}

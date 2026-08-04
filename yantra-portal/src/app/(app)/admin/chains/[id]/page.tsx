@@ -163,6 +163,7 @@ export default async function AdminChainDetailPage({
     <div className="p-2 lg:p-4">
       <ChainDetailShell
         chain={chain}
+        employee={chain.employee}
         subtitleExtra={`${chain.employee.name}`}
         backHref="/admin/chains"
         sent={sent}
@@ -172,7 +173,7 @@ export default async function AdminChainDetailPage({
         stuck={stuck}
         showRetry={showRetry}
         emailMode={emailCfg.mode}
-        emailFrom={emailCfg.from}
+        emailFromFallback={emailCfg.from}
         sendAction={sendAction}
         recoverAction={recoverAction}
         retryAction={retryAction}

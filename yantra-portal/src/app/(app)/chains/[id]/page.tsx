@@ -241,6 +241,7 @@ export default async function ChainDetailPage({
   return (
     <ChainDetailShell
       chain={chain}
+      employee={chain.employee}
       backHref="/chains"
       sent={sent}
       total={total}
@@ -249,7 +250,7 @@ export default async function ChainDetailPage({
       stuck={stuck}
       showRetry={showRetry}
       emailMode={emailCfg.mode}
-      emailFrom={emailCfg.from}
+      emailFromFallback={emailCfg.from}
       sendAction={sendAction}
       recoverAction={recoverAction}
       retryAction={retryAction}
