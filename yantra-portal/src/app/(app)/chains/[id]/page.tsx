@@ -105,6 +105,13 @@ export default async function ChainDetailPage({
       chain.status === "PARTIAL" ||
       chain.status === "FAILED" ||
       chain.status === "SENT");
+  // Every ship-ready pack has been emailed (primary CTA → Sent / Resend)
+  const allEmailed =
+    goodPacks.length > 0 &&
+    goodPacks.every((r) => {
+      const row = chain.candidates.find((c) => c.id === r.id);
+      return row?.sendStatus === "SENT";
+    });
   const shipErrorMsg = decodeShipErrorMessage(searchParams?.ship);
   const showRetry =
     !stuck &&
@@ -247,6 +254,7 @@ export default async function ChainDetailPage({
       total={total}
       goodPacks={goodPacks.length}
       canSend={canSend}
+      allEmailed={allEmailed}
       stuck={stuck}
       showRetry={showRetry}
       emailMode={emailCfg.mode}

@@ -39,6 +39,11 @@ export type ChainDetailShellProps = {
   total: number;
   goodPacks: number;
   canSend: boolean;
+  /**
+   * All ship-ready packs have sendStatus SENT.
+   * Primary CTA becomes success + optional Resend.
+   */
+  allEmailed?: boolean;
   stuck: boolean;
   showRetry: boolean;
   emailMode?: "resend" | "simulated" | "dry_run" | string;
@@ -60,6 +65,7 @@ export function ChainDetailShell({
   total,
   goodPacks,
   canSend,
+  allEmailed = false,
   stuck,
   showRetry,
   emailMode,
@@ -83,6 +89,14 @@ export function ChainDetailShell({
       employee.email.includes("@") &&
       fromDisplay.toLowerCase().includes(employee.email.toLowerCase())
   );
+  const remaining = Math.max(0, goodPacks - sent);
+  const sendLabel = allEmailed
+    ? "Resend to vendor"
+    : remaining > 0 && sent > 0
+      ? `Send remaining · ${remaining}`
+      : goodPacks
+        ? `Send to vendor · ${goodPacks}`
+        : "Send to vendor";
 
   return (
     <div className="mx-auto max-w-5xl space-y-5 pb-24 sm:space-y-6">
@@ -123,16 +137,25 @@ export function ChainDetailShell({
               ) : null}
             </p>
             <p className="text-[13px] text-[#86868b]">
-              <span className="font-medium text-[#6e6e73]">{sent}</span> of{" "}
-              <span className="font-medium text-[#6e6e73]">{total}</span> emailed
-              {goodPacks > 0 ? (
+              {allEmailed ? (
+                <span className="font-medium text-emerald-700">
+                  All {sent} pack{sent === 1 ? "" : "s"} emailed
+                </span>
+              ) : (
                 <>
-                  <span className="mx-1.5 text-[#d2d2d7]">·</span>
-                  <span className="font-medium text-emerald-700">
-                    {goodPacks} ready to send
-                  </span>
+                  <span className="font-medium text-[#6e6e73]">{sent}</span> of{" "}
+                  <span className="font-medium text-[#6e6e73]">{total}</span>{" "}
+                  emailed
+                  {goodPacks > 0 && remaining > 0 ? (
+                    <>
+                      <span className="mx-1.5 text-[#d2d2d7]">·</span>
+                      <span className="font-medium text-emerald-700">
+                        {remaining} ready to send
+                      </span>
+                    </>
+                  ) : null}
                 </>
-              ) : null}
+              )}
             </p>
           </div>
 
@@ -152,12 +175,26 @@ export function ChainDetailShell({
                 </Button>
               </form>
             ) : null}
-            {canSend ? (
+            {allEmailed ? (
+              <>
+                <span className="inline-flex h-10 items-center gap-2 rounded-full bg-emerald-500/10 px-4 text-[13.5px] font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-500/20">
+                  <CheckCircle2 className="h-4 w-4" strokeWidth={2.25} />
+                  Sent to vendor
+                </span>
+                {canSend ? (
+                  <form action={sendAction}>
+                    <Button type="submit" variant="outline" className="min-w-[9rem]">
+                      <Mail className="h-4 w-4" />
+                      Resend
+                    </Button>
+                  </form>
+                ) : null}
+              </>
+            ) : canSend ? (
               <form action={sendAction}>
                 <Button type="submit" variant="soft" className="min-w-[10rem]">
                   <Mail className="h-4 w-4" />
-                  Send to vendor
-                  {goodPacks ? ` · ${goodPacks}` : ""}
+                  {sendLabel}
                 </Button>
               </form>
             ) : null}
@@ -272,9 +309,9 @@ export function ChainDetailShell({
       {children}
 
       {/* Mobile sticky CTA */}
-      {(canSend || stuck || showRetry) && (
+      {(canSend || stuck || showRetry || allEmailed) && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-black/[0.06] bg-white/90 px-4 py-3 backdrop-blur-xl lg:hidden">
-          <div className="mx-auto flex max-w-5xl gap-2">
+          <div className="mx-auto flex max-w-5xl items-center gap-2">
             {stuck ? (
               <form action={recoverAction} className="flex-1">
                 <Button type="submit" variant="destructive" className="w-full">
@@ -283,22 +320,39 @@ export function ChainDetailShell({
               </form>
             ) : null}
             {showRetry && !stuck ? (
-              <form action={retryAction} className={canSend ? "" : "flex-1"}>
+              <form
+                action={retryAction}
+                className={canSend || allEmailed ? "" : "flex-1"}
+              >
                 <Button
                   type="submit"
                   variant="outline"
-                  className={canSend ? "" : "w-full"}
+                  className={canSend || allEmailed ? "" : "w-full"}
                 >
                   Retry
                 </Button>
               </form>
             ) : null}
-            {canSend ? (
+            {allEmailed && !stuck ? (
+              <>
+                <span className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-full bg-emerald-500/10 px-3 text-[13px] font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-500/20">
+                  <CheckCircle2 className="h-4 w-4" strokeWidth={2.25} />
+                  Sent
+                </span>
+                {canSend ? (
+                  <form action={sendAction} className="flex-1">
+                    <Button type="submit" variant="outline" className="w-full">
+                      <Mail className="h-4 w-4" />
+                      Resend
+                    </Button>
+                  </form>
+                ) : null}
+              </>
+            ) : canSend ? (
               <form action={sendAction} className="flex-[2]">
                 <Button type="submit" variant="soft" className="w-full">
                   <Mail className="h-4 w-4" />
-                  Send to vendor
-                  {goodPacks ? ` · ${goodPacks}` : ""}
+                  {sendLabel}
                 </Button>
               </form>
             ) : null}

@@ -58,6 +58,12 @@ export default async function AdminChainDetailPage({
       chain.status === "PARTIAL" ||
       chain.status === "FAILED" ||
       chain.status === "SENT");
+  const allEmailed =
+    goodPacks.length > 0 &&
+    goodPacks.every((r) => {
+      const row = chain.candidates.find((c) => c.id === r.id);
+      return row?.sendStatus === "SENT";
+    });
 
   const shipErrorMsg = decodeShipErrorMessage(searchParams?.ship);
   const showRetry =
@@ -170,6 +176,7 @@ export default async function AdminChainDetailPage({
         total={chain.candidates.length}
         goodPacks={goodPacks.length}
         canSend={canSend}
+        allEmailed={allEmailed}
         stuck={stuck}
         showRetry={showRetry}
         emailMode={emailCfg.mode}
