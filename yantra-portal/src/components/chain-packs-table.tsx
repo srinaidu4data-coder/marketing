@@ -7,7 +7,6 @@ import Link from "next/link";
 import {
   CheckCircle2,
   Download,
-  Eye,
   FileText,
   FileType2,
   ShieldCheck,
@@ -23,6 +22,7 @@ import {
 import { extractJobTitle } from "@/lib/resume/jd-parse";
 import type { PackShipReport } from "@/lib/resume/pack-ship-ready";
 import { cn } from "@/lib/utils";
+import { ResumePreviewModal } from "@/components/resume-preview-modal";
 
 export type ChainPackRow = {
   id: string;
@@ -327,30 +327,13 @@ export function ChainPacksTable({
                       />
                     </div>
 
-                    <details className="group/preview relative">
-                      <summary className="inline-flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-full border border-black/[0.08] bg-white px-3.5 text-[12.5px] font-semibold text-[#0071e3] shadow-soft hover:bg-[#f5f5f7] [&::-webkit-details-marker]:hidden">
-                        <Eye className="h-3.5 w-3.5" strokeWidth={2.25} />
-                        Preview
-                      </summary>
-                      <div className="absolute bottom-full right-0 z-40 mb-2 flex max-h-[min(70vh,36rem)] w-[min(42rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-black/[0.1] bg-white shadow-float sm:left-auto sm:right-0">
-                        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-black/[0.06] bg-[#fafafa] px-4 py-2.5">
-                          <div className="min-w-0">
-                            <p className="truncate text-[13px] font-semibold text-[#1d1d1f]">
-                              {cc.candidate.name}
-                            </p>
-                            <p className="truncate text-[11px] text-[#86868b]">
-                              {role}
-                            </p>
-                          </div>
-                          <span className="shrink-0 text-[11px] tabular-nums text-[#86868b]">
-                            ATS {cc.atsScore} · Psych {psychScore}
-                          </span>
-                        </div>
-                        <pre className="min-h-0 flex-1 overflow-auto p-4 text-[12.5px] leading-relaxed text-[#1d1d1f] whitespace-pre-wrap">
-                          {cc.tailoredResumeText}
-                        </pre>
-                      </div>
-                    </details>
+                    <ResumePreviewModal
+                      candidateName={cc.candidate.name}
+                      role={role}
+                      text={cc.tailoredResumeText}
+                      atsScore={cc.atsScore}
+                      psychScore={psychScore}
+                    />
                   </>
                 ) : (
                   <div className="flex items-center gap-2 text-[13px] text-[#86868b]">
