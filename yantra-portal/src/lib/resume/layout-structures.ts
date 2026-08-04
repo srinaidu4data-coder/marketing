@@ -312,7 +312,6 @@ function buildAtsClassic(ctx: StructureCtx): ResumeSection[] {
  * Distinct from consultant: abstract recommendation opens; cases come third.
  */
 function buildExecutivePyramid(ctx: StructureCtx): ResumeSection[] {
-  const fn = firstName(ctx.candidateName);
   return [
     {
       heading: "Executive Brief",
