@@ -96,6 +96,7 @@ export async function loadChainAttachments(opts: {
   tailoredResumeText?: string | null;
   candidateName?: string;
   jobTitle?: string | null;
+  skillFingerprint?: string | null;
 }): Promise<EmailAttachment[]> {
   const out: EmailAttachment[] = [];
   const tryRead = async (
@@ -112,7 +113,16 @@ export async function loadChainAttachments(opts: {
     }
   };
 
-  const safe = opts.baseName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const { packFileBaseName } = await import("@/lib/resume/pack-filename");
+  const safe =
+    packFileBaseName({
+      candidateName: opts.candidateName || opts.baseName || "Candidate",
+      jobTitle: opts.jobTitle,
+      skillFingerprint: opts.skillFingerprint,
+    }) ||
+    opts.baseName.replace(/[^a-zA-Z0-9._-]/g, "_") ||
+    "Resume";
+
   await tryRead(
     opts.docxPath,
     `${safe}.docx`,
@@ -120,32 +130,52 @@ export async function loadChainAttachments(opts: {
   );
   await tryRead(opts.pdfPath, `${safe}.pdf`, "application/pdf");
 
-  // Vercel: generation files often gone after cold start — rebuild DOCX from DB text
+  // Vercel: generation files often gone after cold start — rebuild DOCX (+ PDF) from DB text
   const hasDocx = out.some((a) => a.filename.endsWith(".docx"));
-  if (!hasDocx && opts.tailoredResumeText && opts.tailoredResumeText.length > 80) {
-    try {
-      const { renderDocxFromPlainText } = await import("@/lib/resume/render-docx");
-      const buf = await renderDocxFromPlainText({
-        candidateName: opts.candidateName || safe,
-        jobTitle: opts.jobTitle || undefined,
-        text: opts.tailoredResumeText,
-      });
-      out.unshift({
-        filename: `${safe}.docx`,
-        content: buf,
-        contentType:
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      });
-    } catch (e) {
-      console.warn("[email] rebuild DOCX from text failed", e);
-      // Last resort: attach plain text from DB
-      out.push({
-        filename: `${safe}.txt`,
-        content: Buffer.from(opts.tailoredResumeText, "utf8"),
-        contentType: "text/plain; charset=utf-8",
-      });
+  const hasPdf = out.some((a) => a.filename.endsWith(".pdf"));
+  if (opts.tailoredResumeText && opts.tailoredResumeText.length > 80) {
+    if (!hasDocx) {
+      try {
+        const { renderDocxFromPlainText } = await import(
+          "@/lib/resume/render-docx"
+        );
+        const buf = await renderDocxFromPlainText({
+          candidateName: opts.candidateName || safe,
+          jobTitle: opts.jobTitle || undefined,
+          text: opts.tailoredResumeText,
+        });
+        out.unshift({
+          filename: `${safe}.docx`,
+          content: buf,
+          contentType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        });
+      } catch (e) {
+        console.warn("[email] rebuild DOCX from text failed", e);
+      }
     }
-  } else if (!out.length && opts.textPath) {
+    if (!hasPdf) {
+      try {
+        const { renderPdfFromPlainText } = await import(
+          "@/lib/resume/render-pdf"
+        );
+        const buf = await renderPdfFromPlainText({
+          candidateName: opts.candidateName || safe,
+          jobTitle: opts.jobTitle || undefined,
+          text: opts.tailoredResumeText,
+        });
+        out.push({
+          filename: `${safe}.pdf`,
+          content: buf,
+          contentType: "application/pdf",
+        });
+      } catch (e) {
+        console.warn("[email] rebuild PDF from text failed", e);
+      }
+    }
+  }
+
+  if (!out.length && opts.textPath) {
     await tryRead(opts.textPath, `${safe}.txt`, "text/plain");
   } else if (!out.length && opts.tailoredResumeText) {
     out.push({

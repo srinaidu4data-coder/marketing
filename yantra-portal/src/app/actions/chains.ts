@@ -334,6 +334,7 @@ export async function sendChain(chainId: string) {
           tailoredResumeText: cc.tailoredResumeText,
           candidateName: cc.candidate.name,
           jobTitle: cc.jobTitle,
+          skillFingerprint: cc.skillFingerprint,
         });
 
         if (!attachments.length) {

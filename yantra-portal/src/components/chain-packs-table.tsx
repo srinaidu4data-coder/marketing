@@ -24,7 +24,9 @@ export type ChainPackRow = {
   psychScore?: number | null;
   tailorMode?: string | null;
   sendStatus: string;
+  /** retained for callers; PDF is always offered via on-demand render */
   pdfPath?: string | null;
+  skillFingerprint?: string | null;
   candidate: {
     name: string;
     email: string;
@@ -218,7 +220,7 @@ export function ChainPacksTable({
                     <Badge status={cc.sendStatus}>{cc.sendStatus}</Badge>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2.5 text-xs">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
                       {hasText ? (
                         <details className="group relative">
                           <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-full border border-[#0071e3]/25 bg-[#0071e3]/[0.06] px-2.5 py-1 font-semibold text-[#0071e3] hover:bg-[#0071e3]/[0.12] [&::-webkit-details-marker]:hidden">
@@ -229,6 +231,7 @@ export function ChainPacksTable({
                             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-black/[0.06] bg-[#fafafa] px-3 py-2">
                               <span className="text-[12px] font-semibold text-[#1d1d1f]">
                                 Full resume — {cc.candidate.name}
+                                {cc.jobTitle ? ` · ${cc.jobTitle}` : ""}
                               </span>
                               <span className="text-[11px] text-[#86868b]">
                                 {cc.tailoredResumeText.length.toLocaleString()}{" "}
@@ -243,25 +246,37 @@ export function ChainPacksTable({
                       ) : (
                         <span className="text-zinc-400">No pack</span>
                       )}
-                      <Link
-                        href={`/api/chains/${chainId}/candidates/${cc.id}/download?fmt=txt`}
-                        className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:underline"
-                      >
-                        <Download className="h-3 w-3" /> TXT
-                      </Link>
-                      <Link
-                        href={`/api/chains/${chainId}/candidates/${cc.id}/download?fmt=docx`}
-                        className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:underline"
-                      >
-                        <Download className="h-3 w-3" /> DOCX
-                      </Link>
-                      {cc.pdfPath ? (
-                        <Link
-                          href={`/api/chains/${chainId}/candidates/${cc.id}/download?fmt=pdf`}
-                          className="inline-flex items-center gap-1 font-medium text-indigo-600 hover:underline"
-                        >
-                          <Download className="h-3 w-3" /> PDF
-                        </Link>
+                      {hasText ? (
+                        <>
+                          <Link
+                            href={`/api/chains/${chainId}/candidates/${cc.id}/download?fmt=docx`}
+                            className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50/80 px-2.5 py-1 font-semibold text-indigo-700 hover:bg-indigo-100"
+                            title={`MS Word — ${cc.candidate.name}${cc.jobTitle ? ` · ${cc.jobTitle}` : ""}`}
+                          >
+                            <Download className="h-3 w-3" /> Word
+                          </Link>
+                          <Link
+                            href={`/api/chains/${chainId}/candidates/${cc.id}/download?fmt=pdf`}
+                            className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50/80 px-2.5 py-1 font-semibold text-rose-700 hover:bg-rose-100"
+                            title={`PDF — ${cc.candidate.name}${cc.jobTitle ? ` · ${cc.jobTitle}` : ""}`}
+                          >
+                            <Download className="h-3 w-3" /> PDF
+                          </Link>
+                          <Link
+                            href={`/api/chains/${chainId}/candidates/${cc.id}/download?fmt=txt`}
+                            className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 font-medium text-zinc-700 hover:bg-zinc-100"
+                            title={`Plain text — ${cc.candidate.name}${cc.jobTitle ? ` · ${cc.jobTitle}` : ""}`}
+                          >
+                            <Download className="h-3 w-3" /> TXT
+                          </Link>
+                          <Link
+                            href={`/api/chains/${chainId}/candidates/${cc.id}/download?fmt=html`}
+                            className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50/80 px-2.5 py-1 font-medium text-amber-900 hover:bg-amber-100"
+                            title={`HTML — ${cc.candidate.name}${cc.jobTitle ? ` · ${cc.jobTitle}` : ""}`}
+                          >
+                            <Download className="h-3 w-3" /> HTML
+                          </Link>
+                        </>
                       ) : null}
                     </div>
                   </td>

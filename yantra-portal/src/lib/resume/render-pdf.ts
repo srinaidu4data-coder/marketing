@@ -376,3 +376,135 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
     doc.end();
   });
 }
+
+/**
+ * Fast PDF rebuild from stored tailored plain text (no AI / no structured pack).
+ * Used when /tmp PDF is gone on Vercel cold starts.
+ */
+export async function renderPdfFromPlainText(opts: {
+  candidateName: string;
+  jobTitle?: string;
+  text: string;
+}): Promise<Buffer> {
+  const lines = (opts.text || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .filter((l) => !/^— Role Forge/i.test(l.trim()));
+
+  return new Promise((resolve, reject) => {
+    const margin = 50;
+    const doc = new PDFDocument({
+      margin,
+      size: "LETTER",
+      bufferPages: true,
+      info: {
+        Title: `${opts.candidateName}${opts.jobTitle ? ` — ${opts.jobTitle}` : ""}`,
+        Author: "Role Forge Co-Pilot",
+      },
+    });
+    const chunks: Buffer[] = [];
+    doc.on("data", (c) => chunks.push(c as Buffer));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    const pageW = doc.page.width;
+    const pageH = doc.page.height;
+    const contentWidth = pageW - margin * 2;
+
+    const ensureSpace = (need: number) => {
+      if (doc.y + need > pageH - margin) {
+        doc.addPage();
+        doc.x = margin;
+        doc.y = margin;
+      }
+    };
+
+    doc
+      .fillColor("#0f172a")
+      .fontSize(18)
+      .font("Helvetica-Bold")
+      .text((opts.candidateName || "Candidate").toUpperCase(), margin, margin, {
+        width: contentWidth,
+      });
+    if (opts.jobTitle) {
+      doc
+        .fillColor("#334155")
+        .fontSize(11)
+        .font("Helvetica")
+        .text(opts.jobTitle, { width: contentWidth });
+    }
+    doc.moveDown(0.3);
+    const lineY = doc.y;
+    doc
+      .strokeColor("#0f172a")
+      .lineWidth(1.5)
+      .moveTo(margin, lineY)
+      .lineTo(margin + contentWidth, lineY)
+      .stroke();
+    doc.y = lineY + 12;
+
+    for (const raw of lines) {
+      const line = raw.trimEnd();
+      if (!line.trim()) {
+        doc.moveDown(0.2);
+        continue;
+      }
+      if (
+        opts.candidateName &&
+        line.toUpperCase() === opts.candidateName.toUpperCase()
+      ) {
+        continue;
+      }
+      if (opts.jobTitle && line === opts.jobTitle) continue;
+      if (/^-{3,}|^={3,}/.test(line.trim())) continue;
+
+      const isHeading =
+        line === line.toUpperCase() &&
+        line.length < 80 &&
+        !/^[•▸→–\-\*]/.test(line) &&
+        /[A-Z]/.test(line);
+
+      if (isHeading) {
+        ensureSpace(28);
+        doc.moveDown(0.35);
+        doc
+          .fillColor("#0f172a")
+          .fontSize(11)
+          .font("Helvetica-Bold")
+          .text(line, { width: contentWidth });
+        doc.moveDown(0.15);
+        continue;
+      }
+
+      const bullet = /^[•▸→–\-\*]\s*/.test(line.trim());
+      const body = line.replace(/^[•▸→–\-\*]\s*/, "");
+      ensureSpace(18);
+      if (bullet) {
+        const textX = margin + 14;
+        const textW = contentWidth - 14;
+        const h = doc.heightOfString(body, { width: textW });
+        ensureSpace(h + 4);
+        const by = doc.y;
+        doc.save();
+        doc.circle(margin + 4, by + 4, 2).fill("#0f172a");
+        doc.restore();
+        doc
+          .fillColor("#1e293b")
+          .fontSize(10)
+          .font("Helvetica")
+          .text(body, textX, by, { width: textW, lineGap: 1.5 });
+        doc.y = Math.max(doc.y, by + h) + 3;
+      } else {
+        doc
+          .fillColor("#1e293b")
+          .fontSize(10)
+          .font("Helvetica")
+          .text(body, margin, doc.y, { width: contentWidth, lineGap: 1.5 });
+        doc.moveDown(0.12);
+      }
+    }
+
+    doc.end();
+  });
+}
+
