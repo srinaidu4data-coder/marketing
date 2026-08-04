@@ -306,6 +306,7 @@ export function ChainPacksTable({
                   resumeText={cc.tailoredResumeText}
                   jd={rawJobText}
                   jobTitle={cc.jobTitle || role}
+                  layoutId={cc.layoutId}
                 />
               ) : null}
 

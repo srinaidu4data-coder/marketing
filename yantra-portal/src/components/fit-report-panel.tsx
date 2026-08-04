@@ -13,10 +13,12 @@ export function FitReportPanel({
   resumeText,
   jd,
   jobTitle,
+  layoutId,
 }: {
   resumeText: string;
   jd: string;
   jobTitle?: string | null;
+  layoutId?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const report = useMemo(
@@ -25,8 +27,9 @@ export function FitReportPanel({
         resumeText: resumeText || "",
         jd: jd || "",
         jobTitle,
+        layoutId,
       }),
-    [resumeText, jd, jobTitle]
+    [resumeText, jd, jobTitle, layoutId]
   );
 
   if (!resumeText || resumeText.length < 80) return null;
@@ -63,7 +66,7 @@ export function FitReportPanel({
 
       {open ? (
         <div className="space-y-3 border-t border-black/[0.04] px-5 py-4 sm:px-6">
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <Metric
               label="Coverage"
               value={`${report.presentCount}/${report.totalCount}`}
@@ -79,7 +82,60 @@ export function FitReportPanel({
               value={`${report.scanLoad.summaryLines} lines`}
               sub={report.scanLoad.note}
             />
+            <Metric
+              label="Layout"
+              value={
+                report.layoutApplied
+                  ? report.layoutApplied.applied
+                    ? "Applied"
+                    : "Mismatch"
+                  : "n/a"
+              }
+              sub={
+                report.layoutApplied
+                  ? `${report.layoutApplied.layoutName} · ${report.layoutApplied.matchedCount}/${report.layoutApplied.expectedCount} sections`
+                  : "No layoutId on pack"
+              }
+              tone={
+                report.layoutApplied
+                  ? report.layoutApplied.applied
+                    ? "good"
+                    : "bad"
+                  : "neutral"
+              }
+            />
           </div>
+
+          {report.layoutApplied ? (
+            <div
+              className={cn(
+                "rounded-xl border px-3 py-2.5 text-[12.5px]",
+                report.layoutApplied.applied
+                  ? "border-emerald-200 bg-emerald-50/80 text-emerald-950"
+                  : "border-amber-200 bg-amber-50/80 text-amber-950"
+              )}
+            >
+              <p className="font-semibold">
+                {report.layoutApplied.applied ? "✓ " : "○ "}
+                Layout structure: {report.layoutApplied.layoutName}
+              </p>
+              <p className="mt-0.5 leading-relaxed opacity-90">
+                {report.layoutApplied.note}
+              </p>
+              {!report.layoutApplied.applied &&
+              report.layoutApplied.missingHeadings.length ? (
+                <p className="mt-1 text-[11px] opacity-80">
+                  Missing headings:{" "}
+                  {report.layoutApplied.missingHeadings.slice(0, 5).join(", ")}
+                </p>
+              ) : null}
+              {report.layoutApplied.foundHeadings.length ? (
+                <p className="mt-1 text-[11px] opacity-75">
+                  Found: {report.layoutApplied.foundHeadings.slice(0, 6).join(" → ")}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           <div>
             <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#86868b]">
@@ -152,17 +208,37 @@ function Metric({
   label,
   value,
   sub,
+  tone = "neutral",
 }: {
   label: string;
   value: string;
   sub: string;
+  tone?: "neutral" | "good" | "bad";
 }) {
   return (
-    <div className="rounded-xl border border-black/[0.06] bg-white px-3 py-2">
+    <div
+      className={cn(
+        "rounded-xl border px-3 py-2",
+        tone === "good"
+          ? "border-emerald-200 bg-emerald-50/50"
+          : tone === "bad"
+            ? "border-amber-200 bg-amber-50/50"
+            : "border-black/[0.06] bg-white"
+      )}
+    >
       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#86868b]">
         {label}
       </p>
-      <p className="text-[15px] font-semibold tabular-nums text-[#1d1d1f]">
+      <p
+        className={cn(
+          "text-[15px] font-semibold tabular-nums",
+          tone === "good"
+            ? "text-emerald-800"
+            : tone === "bad"
+              ? "text-amber-900"
+              : "text-[#1d1d1f]"
+        )}
+      >
         {value}
       </p>
       <p className="text-[11px] text-[#86868b]">{sub}</p>
