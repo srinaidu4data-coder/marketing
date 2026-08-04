@@ -13,6 +13,7 @@ import {
   shouldSkipExportLine,
   stripBullet,
 } from "./line-class";
+import { stripEngineFooter } from "./strip-engine-footer";
 
 export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer> {
   const layout = getLayout(resume.layoutId);
@@ -29,8 +30,8 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
       bufferPages: true,
       info: {
         Title: `${resume.candidateName} — ${resume.headline}`,
-        Author: "Role Forge Co-Pilot",
-        Subject: `Resume layout: ${layout.name}`,
+        Author: resume.candidateName || "Resume",
+        Subject: resume.headline || "Professional resume",
       },
     });
     const chunks: Buffer[] = [];
@@ -364,15 +365,9 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
       .moveTo(contentLeft, doc.y)
       .lineTo(contentLeft + contentWidth, doc.y)
       .stroke();
-    doc
-      .fillColor("#94a3b8")
-      .fontSize(8)
-      .font("Helvetica")
-      .text(`${layout.name}  ·  Professional resume`, contentLeft, doc.y + 6, {
-        width: contentWidth,
-      });
-
+    // No product/engine footer — vendors should only see professional resume content
     void bulletGlyph;
+    void layout;
     doc.end();
   });
 }
@@ -386,10 +381,9 @@ export async function renderPdfFromPlainText(opts: {
   jobTitle?: string;
   text: string;
 }): Promise<Buffer> {
-  const lines = (opts.text || "")
+  const lines = stripEngineFooter(opts.text || "")
     .replace(/\r\n/g, "\n")
-    .split("\n")
-    .filter((l) => !/^— Role Forge/i.test(l.trim()));
+    .split("\n");
 
   return new Promise((resolve, reject) => {
     const margin = 50;
@@ -399,7 +393,7 @@ export async function renderPdfFromPlainText(opts: {
       bufferPages: true,
       info: {
         Title: `${opts.candidateName}${opts.jobTitle ? ` — ${opts.jobTitle}` : ""}`,
-        Author: "Role Forge Co-Pilot",
+        Author: opts.candidateName || "Resume",
       },
     });
     const chunks: Buffer[] = [];

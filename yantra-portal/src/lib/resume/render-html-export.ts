@@ -2,6 +2,8 @@
  * Simple single-file HTML export of a tailored resume (downloadable).
  */
 
+import { stripEngineFooter } from "./strip-engine-footer";
+
 function escapeHtml(s: string) {
   return s
     .replace(/&/g, "&amp;")
@@ -15,10 +17,9 @@ export function renderHtmlFromPlainText(opts: {
   jobTitle?: string;
   text: string;
 }): string {
-  const lines = (opts.text || "")
+  const lines = stripEngineFooter(opts.text || "")
     .replace(/\r\n/g, "\n")
-    .split("\n")
-    .filter((l) => !/^— Role Forge/i.test(l.trim()));
+    .split("\n");
 
   const body: string[] = [];
   for (const raw of lines) {

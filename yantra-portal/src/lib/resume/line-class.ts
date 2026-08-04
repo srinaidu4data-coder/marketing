@@ -73,9 +73,19 @@ export function isEnvToolsLine(line: string) {
   );
 }
 
-/** Hide internal progressive-era debug labels from client exports */
+/** Hide internal progressive-era debug labels + engine footers from client exports */
 export function shouldSkipExportLine(line: string) {
-  return /Era:\s*(RECENT|MID|EARLY)/i.test(line.trim());
+  const t = line.trim();
+  if (/Era:\s*(RECENT|MID|EARLY)/i.test(t)) return true;
+  // Role Forge AI / deterministic provenance footer — never ship to vendors
+  if (/^[—–\-−-]*\s*Role\s*Forge(\s+AI)?\b/i.test(t)) return true;
+  if (
+    /^Role\s*Forge(\s+AI)?\s*[·|•]/i.test(t) &&
+    /(ATS|Psych|Mode|gpt-|Projects)/i.test(t)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /** PDF-safe bullet glyph (Helvetica has no ▸) */

@@ -780,11 +780,10 @@ export async function assembleDeterministicPack(opts: {
     ...psych.warnings.slice(0, 3).map((w) => `Psych: ${w}`),
   ];
 
+  // No engine footer on vendor-facing text (scores stay in DB / admin UI).
   return {
     structured,
-    text:
-      text +
-      `\n\n— Role Forge · deterministic · Mode: ${modeResult.mode} · ATS: ${ats.score}/100 · Psych: ${psych.score}/100 · Dual: ${dualBest ? "BEST" : "REVIEW"} —\n`,
+    text,
     ats,
     psych,
     modeResult,

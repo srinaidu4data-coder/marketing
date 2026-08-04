@@ -12,6 +12,7 @@ import {
   convertInchesToTwip,
 } from "docx";
 import { getLayout, hexNoHash, type LayoutDef, type StructuredResume } from "./templates";
+import { stripEngineFooter } from "./strip-engine-footer";
 
 /**
  * Build a clean DOCX from stored tailored plain text (for email attach when /tmp is gone).
@@ -21,10 +22,9 @@ export async function renderDocxFromPlainText(opts: {
   jobTitle?: string;
   text: string;
 }): Promise<Buffer> {
-  const lines = (opts.text || "")
+  const lines = stripEngineFooter(opts.text || "")
     .replace(/\r\n/g, "\n")
-    .split("\n")
-    .filter((l) => !/^— Role Forge/i.test(l.trim()));
+    .split("\n");
 
   const children: Paragraph[] = [];
   // Header
@@ -562,22 +562,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
     }
   }
 
-  children.push(
-    new Paragraph({
-      spacing: { before: 360 },
-      border: {
-        top: { style: BorderStyle.SINGLE, size: 6, color: "e2e8f0", space: 8 },
-      },
-      children: [
-        new TextRun({
-          text: `${layout.name}  ·  Professional resume`,
-          size: 14,
-          color: "94a3b8",
-          font: bodyFont(layout),
-        }),
-      ],
-    })
-  );
+  // No product/engine footer — vendor-facing DOCX only
 
   const margin = layout.id === "modern_minimal" ? 0.85 : 0.7;
   const doc = new Document({

@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 import { Eye, X } from "lucide-react";
+import { stripEngineFooter } from "@/lib/resume/strip-engine-footer";
 
 export function ResumePreviewModal({
   candidateName,
@@ -23,6 +24,7 @@ export function ResumePreviewModal({
 }) {
   const [open, setOpen] = useState(false);
   const titleId = useId();
+  const cleanText = stripEngineFooter(text || "");
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -79,7 +81,7 @@ export function ResumePreviewModal({
                 <p className="truncate text-[12px] text-[#86868b]">{role}</p>
                 <p className="mt-0.5 text-[11px] tabular-nums text-[#86868b]">
                   ATS {atsScore} · Psych {psychScore} ·{" "}
-                  {text.length.toLocaleString()} chars
+                  {cleanText.length.toLocaleString()} chars
                 </p>
               </div>
               <button
@@ -95,7 +97,7 @@ export function ResumePreviewModal({
             {/* Scroll region starts at top of resume content */}
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
               <pre className="whitespace-pre-wrap p-4 text-[12.5px] leading-relaxed text-[#1d1d1f] sm:p-5">
-                {text}
+                {cleanText}
               </pre>
             </div>
 

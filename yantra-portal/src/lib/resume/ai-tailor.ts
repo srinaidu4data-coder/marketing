@@ -918,7 +918,8 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
     ...qa.issues.slice(0, 3).map((i) => `${i.code}: ${i.message}`),
   ];
 
-  text += `\n\n— Role Forge AI · ${modelUsed} · Mode: ${modeResult.mode} · ATS: ${ats.score}/100 · Psych: ${psych.score}/100 · Dual: ${dualBest ? "BEST" : "REVIEW"} · Projects: ${projects.length} —\n`;
+  // Never append engine footer to vendor-facing pack text (preview / DOCX / PDF / email).
+  // Scores live in DB + admin UI only.
 
   return {
     structured,

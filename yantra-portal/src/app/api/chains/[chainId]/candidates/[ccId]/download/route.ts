@@ -25,6 +25,7 @@ import {
   mustRegeneratePack,
 } from "@/lib/resume/pack-ship-ready";
 import { packDownloadFilename } from "@/lib/resume/pack-filename";
+import { stripEngineFooter } from "@/lib/resume/strip-engine-footer";
 
 async function tryRead(stored: string | null | undefined): Promise<Buffer | null> {
   if (!stored) return null;
@@ -361,7 +362,7 @@ export async function GET(
     const html = renderHtmlFromPlainText({
       candidateName: row.candidate.name,
       jobTitle: nameOpts.jobTitle || undefined,
-      text,
+      text: stripEngineFooter(text),
     });
     return new NextResponse(html, {
       headers: fileHeaders(fname("html"), "text/html; charset=utf-8"),
@@ -373,7 +374,7 @@ export async function GET(
     try {
       const tailored = await runAi();
       await persistPack(tailored);
-      return new NextResponse(tailored.text, {
+      return new NextResponse(stripEngineFooter(tailored.text), {
         headers: fileHeaders(fname("txt"), "text/plain; charset=utf-8"),
       });
     } catch (e) {
@@ -404,7 +405,7 @@ export async function GET(
     );
   }
 
-  return new NextResponse(storedText, {
+  return new NextResponse(stripEngineFooter(storedText), {
     headers: fileHeaders(fname("txt"), "text/plain; charset=utf-8"),
   });
 }
