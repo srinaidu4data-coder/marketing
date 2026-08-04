@@ -84,6 +84,58 @@ function cleanLine(line: string): string {
 }
 
 /**
+ * Near-duplicate key for education/cert lines.
+ * Collapses punctuation/spacing so these become one:
+ *   "Bachelor's … Engineering- 1999" ≈ "Bachelor's … Engineering - 1999"
+ *   "SAP S4 HANA Certified." ≈ "SAP S4 HANA Certified"
+ */
+export function normalizeEduKey(line: string): string {
+  return cleanLine(line)
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/s\/4/gi, "s4")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 72);
+}
+
+/**
+ * Drop near-duplicate education/cert lines (keep first / richer wording).
+ */
+export function dedupeEducationLines(lines: string[]): string[] {
+  const out: string[] = [];
+  const keys: string[] = [];
+  for (const raw of lines) {
+    const t = cleanLine(raw);
+    if (t.length < 4) continue;
+    const k = normalizeEduKey(t);
+    if (!k) continue;
+    let subsumed = false;
+    for (let i = 0; i < keys.length; i++) {
+      const prev = keys[i];
+      // Same key, or one is a prefix of the other (period / "Associate level" variants)
+      if (
+        k === prev ||
+        (k.length >= 18 && prev.length >= 18 && (k.startsWith(prev.slice(0, 28)) || prev.startsWith(k.slice(0, 28))))
+      ) {
+        subsumed = true;
+        // Prefer the longer / more informative existing line; if new is longer, replace
+        if (t.length > out[i].length + 4) {
+          out[i] = t;
+          keys[i] = k;
+        }
+        break;
+      }
+    }
+    if (subsumed) continue;
+    keys.push(k);
+    out.push(t);
+  }
+  return out;
+}
+
+/**
  * Pull education + certification lines from master (separate sections when present).
  */
 export function extractEducationAndCertsFromMaster(master: string): {
@@ -103,8 +155,21 @@ export function extractEducationAndCertsFromMaster(master: string): {
     const t = cleanLine(raw);
     if (t.length < 4 || t.length > 200) return;
     if (/^https?:\/\//i.test(t) || /@/.test(t)) return;
-    const k = t.toLowerCase().slice(0, 80);
-    if (seen.has(k)) return;
+    // Near-dedupe: punctuation/spacing must not create twin rows
+    const k = normalizeEduKey(t);
+    if (!k || seen.has(k)) return;
+    // Also reject if a longer/shorter near-match already stored
+    const seenList = Array.from(seen);
+    for (let si = 0; si < seenList.length; si++) {
+      const s = seenList[si];
+      if (
+        k.length >= 18 &&
+        s.length >= 18 &&
+        (k.startsWith(s.slice(0, 28)) || s.startsWith(k.slice(0, 28)))
+      ) {
+        return;
+      }
+    }
     seen.add(k);
     if (bucket === "degree") degrees.push(t);
     else certs.push(t);
@@ -438,14 +503,18 @@ export async function educationLinesForJd(opts: {
   let degrees = [...extracted.degrees];
   let certs = [...extracted.certs];
 
-  // Merge master-grounded AI lines into the right bucket
+  // Merge master-grounded AI lines into the right bucket (near-dedupe)
   for (const line of groundedAi) {
     const kind = classifyEducationLine(line);
-    const k = line.toLowerCase().slice(0, 80);
+    const k = normalizeEduKey(line);
     if (kind === "cert") {
-      if (!certs.some((c) => c.toLowerCase().slice(0, 80) === k)) certs.push(line);
+      if (!certs.some((c) => normalizeEduKey(c) === k || normalizeEduKey(c).startsWith(k.slice(0, 28)) || k.startsWith(normalizeEduKey(c).slice(0, 28)))) {
+        certs.push(line);
+      }
     } else {
-      if (!degrees.some((d) => d.toLowerCase().slice(0, 80) === k)) degrees.push(line);
+      if (!degrees.some((d) => normalizeEduKey(d) === k || normalizeEduKey(d).startsWith(k.slice(0, 28)) || k.startsWith(normalizeEduKey(d).slice(0, 28)))) {
+        degrees.push(line);
+      }
     }
   }
 
@@ -457,12 +526,12 @@ export async function educationLinesForJd(opts: {
     }
   }
 
-  degrees = degrees.slice(0, 8);
-  certs = certs.slice(0, 10);
+  degrees = dedupeEducationLines(degrees).slice(0, 8);
+  certs = dedupeEducationLines(certs).slice(0, 10);
 
   if (!certs.length) {
     return {
-      lines: degrees,
+      lines: dedupeEducationLines(degrees),
       degrees,
       certsKept: [],
       certsDropped: [],
@@ -478,10 +547,11 @@ export async function educationLinesForJd(opts: {
       jobTitle: opts.jobTitle,
       domain: opts.domain,
     });
+    const certsKept = dedupeEducationLines(ai.keep);
     return {
-      lines: [...degrees, ...ai.keep].slice(0, 12),
+      lines: dedupeEducationLines([...degrees, ...certsKept]).slice(0, 12),
       degrees,
-      certsKept: ai.keep,
+      certsKept,
       certsDropped: ai.dropped,
       certFilter: ai.usedAi ? "ai" : "heuristic",
     };
@@ -499,10 +569,11 @@ export async function educationLinesForJd(opts: {
     if (h.ok) keep.push(c);
     else dropped.push({ line: c, reason: h.reason });
   }
+  const certsKept = dedupeEducationLines(keep);
   return {
-    lines: [...degrees, ...keep].slice(0, 12),
+    lines: dedupeEducationLines([...degrees, ...certsKept]).slice(0, 12),
     degrees,
-    certsKept: keep,
+    certsKept,
     certsDropped: dropped,
     certFilter: "heuristic",
   };

@@ -5,6 +5,7 @@
  */
 
 import type { ResumeSection, StructuredResume } from "./templates";
+import { dedupeEducationLines } from "./education-filter";
 
 export type QaIssue = {
   severity: "error" | "warn";
@@ -221,7 +222,23 @@ export function qaAndRepairResume(
     });
   }
 
-  // 5) Drop internal QA notes from export
+  // 5) Near-dedupe education / credential section lines
+  // (master + AI often emit "Certified." vs "Certified", hyphen spacing twins)
+  sections = sections.map((sec) => {
+    if (normalizeHeadingKey(sec.heading) !== "education") return sec;
+    const body = sec.lines.filter((l) => l.trim());
+    const deduped = dedupeEducationLines(body);
+    if (deduped.length < body.length) {
+      issues.push({
+        severity: "warn",
+        code: "EDU_NEAR_DUPES",
+        message: `Removed ${body.length - deduped.length} near-duplicate education/cert line(s)`,
+      });
+    }
+    return { ...sec, lines: deduped };
+  });
+
+  // 6) Drop internal QA notes from export
   sections = sections.filter(
     (s) => !/progressive experience notes|internal qa/i.test(s.heading)
   );
