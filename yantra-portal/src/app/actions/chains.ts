@@ -302,9 +302,15 @@ export async function sendChain(chainId: string) {
         data: { status: "SENDING" },
       });
 
+      const { extractJobTitle } = await import("@/lib/resume/jd-parse");
+      const roleTitle =
+        (cc.jobTitle || "").trim() ||
+        extractJobTitle(chain.rawJobText) ||
+        "SAP Consultant";
       const ctx = {
         candidate_name: cc.candidate.name,
-        job_title_or_vendor_line: chain.rawJobText.slice(0, 80).replace(/\n/g, " "),
+        // Clean role for subject lines — never dump raw JD into the subject
+        job_title_or_vendor_line: roleTitle,
         vendor_name: chain.vendorName,
         employee_name: chain.employee.name,
         employee_email: chain.employee.email,

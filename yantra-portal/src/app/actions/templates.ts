@@ -164,6 +164,30 @@ export async function saveEmailTemplate(type: "SUBJECT" | "BODY", formData: Form
   revalidatePath("/admin/email-template");
 }
 
+/** Save a subject/body and immediately make it ACTIVE (for preset picker). */
+export async function saveAndActivateEmailTemplate(
+  type: "SUBJECT" | "BODY",
+  formData: FormData
+) {
+  const admin = await requireAdmin();
+  const content = String(formData.get("content") || "").trim();
+  if (!content) return;
+  await prisma.emailTemplateVersion.updateMany({
+    where: { type, status: "ACTIVE" },
+    data: { status: "ARCHIVED" },
+  });
+  const v = await prisma.emailTemplateVersion.create({
+    data: { type, content, status: "ACTIVE" },
+  });
+  await audit("EMAIL_TEMPLATE_SAVE", admin.id, {
+    versionId: v.id,
+    type,
+    activated: true,
+  });
+  await audit("EMAIL_TEMPLATE_PROMOTE", admin.id, { versionId: v.id, type });
+  revalidatePath("/admin/email-template");
+}
+
 export async function promoteEmailTemplate(versionId: string) {
   const admin = await requireAdmin();
   const v = await prisma.emailTemplateVersion.findUnique({ where: { id: versionId } });

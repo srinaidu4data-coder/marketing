@@ -3,10 +3,15 @@ import { prisma } from "@/lib/db";
 import {
   promoteEmailTemplate,
   rollbackEmailTemplate,
+  saveAndActivateEmailTemplate,
   saveEmailTemplate,
 } from "@/app/actions/templates";
 import { Badge, Button, PageHeader, Textarea } from "@/components/ui";
-import { EMAIL_PLACEHOLDERS } from "@/lib/constants";
+import {
+  DEFAULT_EMAIL_SUBJECT,
+  EMAIL_PLACEHOLDERS,
+  EMAIL_SUBJECT_PRESETS,
+} from "@/lib/constants";
 import { formatDateTime } from "@/lib/utils";
 import { renderEmailTemplate } from "@/lib/resume-tailor";
 
@@ -100,7 +105,7 @@ export default async function EmailTemplatePage() {
       "6-month SAP FICO contract, hybrid Chicago. Must have strong GL, AP, AR, and asset accounting experience. S/4HANA migration experience a plus.",
   };
   const previewSubject = renderEmailTemplate(
-    activeSubject?.content || "{{candidate_name}} — {{job_title_or_vendor_line}}  — {{vendor_name}}",
+    activeSubject?.content || DEFAULT_EMAIL_SUBJECT,
     sampleCtx
   );
   const previewBody = renderEmailTemplate(activeBody?.content || "", sampleCtx);
@@ -109,7 +114,7 @@ export default async function EmailTemplatePage() {
     <div className="space-y-10 p-2 lg:p-4">
       <PageHeader
         title="Email Template"
-        description="Subject and body templates sent to vendors for each included candidate. Admins manage versions here; employees never see this surface."
+        description="Subject and body templates sent to vendors for each included candidate. Use third-person language (never “my profile”). Admins manage versions; employees never see this surface."
       />
 
       <section className="space-y-4">
@@ -120,10 +125,77 @@ export default async function EmailTemplatePage() {
         <div className="rounded-lg border p-4">
           <h3 className="text-sm font-medium">Rendered Preview</h3>
           <p className="mt-1 text-xs text-slate-500">
-            Rendered against a hardcoded sample context for visual review.
+            Sample: Jane Smith · SAP FICO Consultant · Acme Staffing
           </p>
-          <p className="mt-2 rounded bg-slate-50 p-3 text-sm">{previewSubject}</p>
+          <p className="mt-2 rounded bg-slate-50 p-3 text-sm font-medium">
+            {previewSubject}
+          </p>
         </div>
+
+        <div className="rounded-lg border p-4">
+          <h3 className="font-medium">Subject presets (pick one)</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Third-person, staffing-style lines. Avoid first person (“my / I / please
+            find my profile”). Clicking activates immediately for the next send.
+          </p>
+          <ul className="mt-4 space-y-2">
+            {EMAIL_SUBJECT_PRESETS.map((p) => {
+              const rendered = renderEmailTemplate(p.template, sampleCtx);
+              const isActive = activeSubject?.content?.trim() === p.template.trim();
+              return (
+                <li
+                  key={p.id}
+                  className={`flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between ${
+                    isActive
+                      ? "border-emerald-300 bg-emerald-50/50"
+                      : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-slate-900">
+                        {p.label}
+                      </span>
+                      <span className="text-[11px] text-slate-500">{p.tone}</span>
+                      {p.recommended ? (
+                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
+                          Recommended
+                        </span>
+                      ) : null}
+                      {isActive ? (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                          Active
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 font-mono text-[12px] text-slate-600">
+                      {p.template}
+                    </p>
+                    <p className="mt-0.5 text-[13px] text-slate-800">→ {rendered}</p>
+                  </div>
+                  <form
+                    action={async () => {
+                      "use server";
+                      const fd = new FormData();
+                      fd.set("content", p.template);
+                      await saveAndActivateEmailTemplate("SUBJECT", fd);
+                    }}
+                  >
+                    <Button
+                      type="submit"
+                      variant={isActive ? "outline" : "soft"}
+                      size="sm"
+                      disabled={isActive}
+                    >
+                      {isActive ? "In use" : "Use this"}
+                    </Button>
+                  </form>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
         <form
           action={async (fd) => {
             "use server";
@@ -131,7 +203,7 @@ export default async function EmailTemplatePage() {
           }}
           className="space-y-3 rounded-lg border p-4"
         >
-          <h3 className="font-medium">Editable Subject Template</h3>
+          <h3 className="font-medium">Custom subject template</h3>
           <p className="text-sm text-slate-500">
             Allowed placeholders:{" "}
             {EMAIL_PLACEHOLDERS.map((p) => (
@@ -139,9 +211,14 @@ export default async function EmailTemplatePage() {
                 {p}
               </code>
             ))}
-            . Saving creates a new immutable version row.
+            . Saving creates a draft version — Promote it from history to go live.
           </p>
-          <Textarea name="content" rows={3} defaultValue={activeSubject?.content || ""} required />
+          <Textarea
+            name="content"
+            rows={3}
+            defaultValue={activeSubject?.content || DEFAULT_EMAIL_SUBJECT}
+            required
+          />
           <Button type="submit">Save as New Version</Button>
         </form>
         <div>
