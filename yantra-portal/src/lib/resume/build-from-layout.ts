@@ -1,11 +1,17 @@
 /**
- * Map AI content + master anchors into layout-config section order.
- * 4–5 page density: recent 12–18 bullets, all projects, JD jargon first.
+ * Map AI content + master anchors into layout-specific STRUCTURE + style.
+ *
+ * Critical: the 6 core layouts use `buildSectionsForLayout` so section order,
+ * headings, and rhetoric actually differ (not color-only reskins).
  */
 
 import type { DomainHint } from "./jd-parse";
 import { getLayoutConfig, type LayoutConfig, type SectionKey } from "./layout-config";
-import type { StructureProject } from "./layout-structures";
+import {
+  buildSectionsForLayout,
+  STRUCTURE_CATALOG,
+  type StructureProject,
+} from "./layout-structures";
 import type { ResumeSection, StructuredResume } from "./templates";
 
 export type ContentBundle = {
@@ -25,6 +31,23 @@ export type ContentBundle = {
   vendorName: string;
 };
 
+/** Layouts with a dedicated non-isomorphic structure builder */
+const STRUCTURE_LAYOUT_IDS = new Set(STRUCTURE_CATALOG.map((s) => s.id));
+
+function cleanSkillTokens(skills: string[]): string[] {
+  return Array.from(new Set(skills.filter(Boolean)))
+    .map((s) =>
+      String(s)
+        .replace(
+          /^(core|platforms?\s*&\s*integration|methods?|primary|secondary|extended|jd keywords|jd focus phrases)\s*:\s*/i,
+          ""
+        )
+        .trim()
+    )
+    .filter((s) => s.length > 1 && s.length < 60)
+    .slice(0, 40);
+}
+
 function expBlock(
   projects: StructureProject[],
   skills: string[],
@@ -38,13 +61,11 @@ function expBlock(
     out.push(p.title);
     out.push(`Employer / Client: ${p.client}`);
     const loc = (p.location || "").trim();
-    // Omit invented/unknown years (0) and empty locations — never stamp defaults
     const hasYears = p.startYear >= 1980;
     const datePart = hasYears ? `${p.startYear} – ${end}` : "";
     if (loc && datePart) out.push(`${loc}  |  ${datePart}`);
     else if (loc) out.push(loc);
     else if (datePart) out.push(datePart);
-    // Modules = this project's skills only — never stamp global JD pack on every role
     const stack = Array.from(new Set(p.skills.filter(Boolean))).slice(0, 10);
     if (stack.length) out.push(`${stackLabel}: ${stack.join(sep)}`);
     out.push("");
@@ -65,42 +86,30 @@ function sectionLines(
 ): string[] {
   const bullet = cfg.style.bullet;
   const sep = cfg.style.skillSeparator;
-  // Use only content-derived skills — never inject canned domain packs
-  const skills = Array.from(new Set(c.skills.filter(Boolean))).slice(0, 40);
+  const skills = cleanSkillTokens(c.skills);
 
   switch (key) {
     case "summary":
       return c.summaryLines.slice(0, 12);
     case "skills": {
-      // Strip accidental section prefixes from skill tokens (avoid "Core: Core: …")
-      const clean = skills
-        .map((s) =>
-          String(s)
-            .replace(
-              /^(core|platforms?\s*&\s*integration|methods?|primary|secondary|extended|jd keywords)\s*:\s*/i,
-              ""
-            )
-            .trim()
-        )
-        .filter(Boolean);
       if (cfg.id === "technical_dense" || cfg.id === "skills_first") {
-        const third = Math.ceil(clean.length / 3) || 1;
+        const third = Math.ceil(skills.length / 3) || 1;
         return [
           c.yearsHint > 0
             ? `${c.headline}  ·  ~${c.yearsHint}+ years progressive delivery`
             : c.headline,
-          `PRIMARY  ::  ${clean.slice(0, third).join(sep)}`,
-          `SECONDARY  ::  ${clean.slice(third, third * 2).join(sep)}`,
-          `EXTENDED  ::  ${clean.slice(third * 2).join(sep)}`,
+          `PRIMARY  ::  ${skills.slice(0, third).join(sep)}`,
+          `SECONDARY  ::  ${skills.slice(third, third * 2).join(sep)}`,
+          `EXTENDED  ::  ${skills.slice(third * 2).join(sep)}`,
         ].filter((l) => !l.endsWith("::  "));
       }
       return [
-        `Core: ${clean.slice(0, 14).join(sep)}`,
-        clean.slice(14, 28).length
-          ? `Platforms & Integration: ${clean.slice(14, 28).join(sep)}`
+        `Core: ${skills.slice(0, 14).join(sep)}`,
+        skills.slice(14, 28).length
+          ? `Platforms & Integration: ${skills.slice(14, 28).join(sep)}`
           : "",
-        clean.slice(28).length
-          ? `Methods: ${clean.slice(28).join(sep)}`
+        skills.slice(28).length
+          ? `Methods: ${skills.slice(28).join(sep)}`
           : "",
       ].filter(Boolean);
     }
@@ -119,7 +128,6 @@ function sectionLines(
       return expBlock(c.projects, skills, bullet, sep, label);
     }
     case "education":
-      // Master-grounded only (upstream). Empty → section omitted by buildStructuredFromLayout.
       return c.educationLines.slice(0, 10);
     case "methodology":
       return c.methodologyLines.length
@@ -136,21 +144,65 @@ function sectionLines(
   }
 }
 
-/** Build structured resume from content + layout config section order */
+/**
+ * Build structured resume.
+ * Prefer `buildSectionsForLayout` for the 6 non-isomorphic spines so Preview / DOCX / PDF
+ * actually open with different first sections and rhetoric.
+ */
 export function buildStructuredFromLayout(c: ContentBundle): StructuredResume {
   const cfg = getLayoutConfig(c.layoutId);
-  const ordered = [...cfg.sections]
-    .filter((s) => s.enabled)
-    .sort((a, b) => a.order - b.order);
+  const cleanSkills = cleanSkillTokens(c.skills);
+  let sections: ResumeSection[] = [];
+  let structureNote = `Layout: ${cfg.name} · ${cfg.researchSpine}`;
 
-  const sections: ResumeSection[] = [];
-  for (const s of ordered) {
-    const lines = sectionLines(s.key, cfg, c).filter(
-      (l) => l !== undefined && l !== null
-    );
-    if (!lines.some((l) => String(l).trim())) continue;
-    sections.push({ heading: s.heading, lines });
+  if (STRUCTURE_LAYOUT_IDS.has(cfg.id)) {
+    sections = buildSectionsForLayout({
+      layoutId: cfg.id,
+      candidateName: c.candidateName,
+      headline: c.headline,
+      vendorName: c.vendorName || "",
+      domain: c.domain,
+      yearsHint: c.yearsHint,
+      cleanSkills,
+      summaryLines: c.summaryLines.slice(0, 12),
+      skillLines: c.methodologyLines.slice(0, 4),
+      impactLines: c.impactLines.slice(0, 10),
+      projects: c.projects,
+      bullet: cfg.style.bullet,
+      skillSeparator: cfg.style.skillSeparator,
+    });
+    // Prefer real education from master over hardcoded placeholders
+    if (c.educationLines?.length) {
+      sections = sections.map((sec) => {
+        if (
+          /education|credential|foundation|footnotes|background/i.test(
+            sec.heading
+          )
+        ) {
+          return { ...sec, lines: c.educationLines.slice(0, 10) };
+        }
+        return sec;
+      });
+    }
+    structureNote = `Layout: ${cfg.name} · structure=${cfg.id} · ${cfg.researchSpine}`;
+  } else {
+    // Extra layouts: config-driven section order (still distinct headings/styles)
+    const ordered = [...cfg.sections]
+      .filter((s) => s.enabled)
+      .sort((a, b) => a.order - b.order);
+    for (const s of ordered) {
+      const lines = sectionLines(s.key, cfg, c).filter(
+        (l) => l !== undefined && l !== null
+      );
+      if (!lines.some((l) => String(l).trim())) continue;
+      sections.push({ heading: s.heading, lines });
+    }
   }
+
+  // Drop empty sections
+  sections = sections.filter((s) =>
+    s.lines.some((l) => String(l || "").trim())
+  );
 
   return {
     candidateName: c.candidateName,
@@ -163,8 +215,9 @@ export function buildStructuredFromLayout(c: ContentBundle): StructuredResume {
       skillFingerprint: "",
       jobTitle: c.jobTitle,
       progressiveNotes: [
-        `Layout: ${cfg.name} · ${cfg.researchSpine}`,
+        structureNote,
         `Projects: ${c.projects.length}`,
+        `First section: ${sections[0]?.heading || "(none)"}`,
       ],
     },
   };

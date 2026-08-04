@@ -15,56 +15,103 @@ import { getLayout, hexNoHash, type LayoutDef, type StructuredResume } from "./t
 import { stripEngineFooter } from "./strip-engine-footer";
 
 /**
- * Build a clean DOCX from stored tailored plain text (for email attach when /tmp is gone).
+ * Build DOCX from stored tailored plain text (when /tmp pack file is gone).
+ * Honors layoutId for accent / fonts / header band so layouts don't all look identical.
  */
 export async function renderDocxFromPlainText(opts: {
   candidateName: string;
   jobTitle?: string;
   text: string;
+  layoutId?: string | null;
 }): Promise<Buffer> {
+  const layout = getLayout(opts.layoutId);
+  const accent = hexNoHash(layout.style.accent);
+  const nameF = nameFont(layout);
+  const bodyF = bodyFont(layout);
   const lines = stripEngineFooter(opts.text || "")
     .replace(/\r\n/g, "\n")
     .split("\n");
 
   const children: Paragraph[] = [];
-  // Header
-  children.push(
-    new Paragraph({
-      spacing: { after: 80 },
-      children: [
-        new TextRun({
-          text: (opts.candidateName || "Candidate").toUpperCase(),
-          bold: true,
-          size: 36,
-          font: "Calibri",
-        }),
-      ],
-    })
-  );
-  if (opts.jobTitle) {
+  // Header — layout-aware
+  if (layout.style.headerBand) {
     children.push(
       new Paragraph({
-        spacing: { after: 120 },
+        shading: { type: ShadingType.CLEAR, fill: accent },
+        spacing: { after: 0 },
         children: [
           new TextRun({
-            text: opts.jobTitle,
-            size: 22,
-            font: "Calibri",
-            color: "334155",
+            text: (opts.candidateName || "Candidate").toUpperCase(),
+            bold: true,
+            size: layout.style.nameSize * 2,
+            color: "FFFFFF",
+            font: nameF,
+            characterSpacing: 60,
           }),
         ],
       })
     );
+    if (opts.jobTitle) {
+      children.push(
+        new Paragraph({
+          shading: { type: ShadingType.CLEAR, fill: accent },
+          spacing: { after: 200 },
+          children: [
+            new TextRun({
+              text: opts.jobTitle,
+              size: layout.style.headlineSize * 2,
+              color: "E7E5E4",
+              font: bodyF,
+            }),
+          ],
+        })
+      );
+    }
+  } else {
+    children.push(
+      new Paragraph({
+        spacing: { after: 80 },
+        children: [
+          new TextRun({
+            text: (opts.candidateName || "Candidate").toUpperCase(),
+            bold: true,
+            size: layout.style.nameSize * 2,
+            font: nameF,
+            color: accent,
+          }),
+        ],
+      })
+    );
+    if (opts.jobTitle) {
+      children.push(
+        new Paragraph({
+          spacing: { after: 120 },
+          children: [
+            new TextRun({
+              text: opts.jobTitle,
+              size: layout.style.headlineSize * 2,
+              font: bodyF,
+              color: hexNoHash(layout.style.muted),
+            }),
+          ],
+        })
+      );
+    }
+    children.push(
+      new Paragraph({
+        border: {
+          bottom: {
+            style: BorderStyle.SINGLE,
+            size: 12,
+            color: accent,
+            space: 1,
+          },
+        },
+        spacing: { after: 200 },
+        children: [],
+      })
+    );
   }
-  children.push(
-    new Paragraph({
-      border: {
-        bottom: { style: BorderStyle.SINGLE, size: 12, color: "0f172a", space: 1 },
-      },
-      spacing: { after: 200 },
-      children: [],
-    })
-  );
 
   for (const raw of lines) {
     const line = raw.trimEnd();
@@ -89,34 +136,53 @@ export async function renderDocxFromPlainText(opts: {
       /[A-Z]/.test(line);
 
     if (isHeading) {
+      const headingText =
+        layout.style.headingCase === "upper" ? line.toUpperCase() : line;
       children.push(
         new Paragraph({
           spacing: { before: 240, after: 80 },
           children: [
             new TextRun({
-              text: line,
+              text: headingText,
               bold: true,
-              size: 20,
-              font: "Calibri",
-              color: "0f172a",
+              size: layout.style.headingSize * 2,
+              font: nameF,
+              color: accent,
             }),
           ],
         })
       );
+      if (layout.style.sectionBar) {
+        children.push(
+          new Paragraph({
+            border: {
+              bottom: {
+                style: BorderStyle.SINGLE,
+                size: 12,
+                color: accent,
+                space: 1,
+              },
+            },
+            spacing: { after: 100 },
+            children: [],
+          })
+        );
+      }
       continue;
     }
 
     const bullet = /^[•▸→–\-\*]\s*/.test(line.trim());
     const body = line.replace(/^[•▸→–\-\*]\s*/, "");
+    const bulletGlyph = layout.style.bullet || "•";
     children.push(
       new Paragraph({
         spacing: { after: 60 },
         indent: bullet ? { left: convertInchesToTwip(0.2) } : undefined,
         children: [
           new TextRun({
-            text: bullet ? `• ${body}` : body,
-            size: 20,
-            font: "Calibri",
+            text: bullet ? `${bulletGlyph} ${body}` : body,
+            size: layout.style.bodySize * 2,
+            font: bodyF,
           }),
         ],
       })

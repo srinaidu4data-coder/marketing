@@ -199,6 +199,7 @@ export async function loadChainAttachments(opts: {
   candidateName?: string;
   jobTitle?: string | null;
   skillFingerprint?: string | null;
+  layoutId?: string | null;
 }): Promise<EmailAttachment[]> {
   const out: EmailAttachment[] = [];
   const tryRead = async (
@@ -245,6 +246,7 @@ export async function loadChainAttachments(opts: {
           candidateName: opts.candidateName || safe,
           jobTitle: opts.jobTitle || undefined,
           text: opts.tailoredResumeText,
+          layoutId: opts.layoutId,
         });
         out.unshift({
           filename: `${safe}.docx`,

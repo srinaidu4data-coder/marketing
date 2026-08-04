@@ -209,6 +209,7 @@ export async function GET(
       candidateName: row.candidate.name,
       jobTitle: nameOpts.jobTitle || undefined,
       text,
+      layoutId: row.layoutId || row.candidate.layoutId,
     });
   }
 

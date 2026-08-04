@@ -365,6 +365,7 @@ export async function sendChain(chainId: string) {
           candidateName: cc.candidate.name,
           jobTitle: cc.jobTitle,
           skillFingerprint: cc.skillFingerprint,
+          layoutId: cc.layoutId || cc.candidate.layoutId,
         });
 
         if (!attachments.length) {
