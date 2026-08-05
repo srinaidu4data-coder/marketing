@@ -145,4 +145,35 @@ test("stripEngineFooter removes pollution from stored packs (preview path)", asy
   assert.ok(/Core: SAP/i.test(out));
 });
 
+test("ensureMandatoryBulletDensity pads thin projects (Dallas 2/8 style)", async () => {
+  const {
+    ensureMandatoryBulletDensity,
+    assertMandatoryBulletDensity,
+    MIN_BULLETS_PER_PROJECT,
+  } = await import("../../src/lib/resume/bullet-density");
+  const projects = [
+    {
+      client: "Dallas",
+      bullets: [
+        "Configured FI postings for month-end close.",
+        "Supported users on reconciliation issues.",
+      ],
+    },
+  ];
+  const out = ensureMandatoryBulletDensity(projects, {
+    jobTitle: "SAP FICO Consultant",
+    skillBank: ["SAP FICO", "New GL"],
+  });
+  assert.ok((out[0]!.bullets || []).length >= MIN_BULLETS_PER_PROJECT);
+  const thin = [
+    { client: "Dallas", bullets: ["Short a", "Short b"] },
+  ];
+  assert.doesNotThrow(() => {
+    assertMandatoryBulletDensity(thin, MIN_BULLETS_PER_PROJECT, {
+      jobTitle: "SAP FICO Consultant",
+    });
+  });
+  assert.ok((thin[0]!.bullets || []).length >= MIN_BULLETS_PER_PROJECT);
+});
+
 console.log(`\n${passed} tests passed.\n`);

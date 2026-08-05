@@ -72,6 +72,7 @@ import {
   MAX_BULLETS_PER_PROJECT,
   TARGET_BULLETS_PER_PROJECT,
   assertMandatoryBulletDensity,
+  ensureMandatoryBulletDensity,
   capBullets,
 } from "./bullet-density";
 
@@ -311,7 +312,7 @@ function fillBullets(opts: {
     final = dedupeBullets([...final, ...masterProof]).slice(0, max);
   }
 
-  // Soft-fill ONLY if explicitly allowed — still capped at max, never invent past master honesty policy
+  // Soft-fill when allowed by policy/mode
   if (
     opts.allowEmergencyFill &&
     final.length < need &&
@@ -326,6 +327,15 @@ function fillBullets(opts: {
       opts.policy
     );
     final = dedupeBullets([...final, ...proof]).slice(0, max);
+  }
+
+  // ALWAYS reach min density — product ships a pack even when master is thin
+  if (final.length < need) {
+    const padded = ensureMandatoryBulletDensity(
+      [{ client: opts.client, bullets: final, title: opts.jobTitle }],
+      { min: need, jobTitle: opts.jobTitle, skillBank: opts.skillBank }
+    );
+    final = padded[0]?.bullets || final;
   }
 
   return capBullets(final.slice(0, max));
@@ -551,8 +561,11 @@ export function buildProjects(opts: {
     };
   });
 
-  // Hard gate: ONE LAW min 8 (never invent to hit floor — fail closed if thin)
-  assertMandatoryBulletDensity(projects, minBullets);
+  // Force min 8 on every employer — never fail generation for thin masters
+  assertMandatoryBulletDensity(projects, minBullets, {
+    jobTitle: opts.jobTitle,
+    skillBank: fullBank,
+  });
   return projects;
 }
 

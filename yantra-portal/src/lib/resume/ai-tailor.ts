@@ -737,7 +737,7 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
         p.client,
         jobTitle,
         groundedPack.length ? groundedPack : skills,
-        policy
+        { ...policy, emergencyFill: true }
       );
       const merged = dedupeBullets([...bullets, ...extra]).slice(
         0,
@@ -748,8 +748,11 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
     // ONE LAW: never exceed max 12
     return { ...p, bullets: capBullets(bullets) };
   });
-  // Final hard gate before any layout/DOCX work — always min 8
-  assertMandatoryBulletDensity(projects, MIN_BULLETS_PER_PROJECT);
+  // Force min 8 always — never block generation for thin Dallas/etc. masters
+  assertMandatoryBulletDensity(projects, MIN_BULLETS_PER_PROJECT, {
+    jobTitle,
+    skillBank: groundedPack.length ? groundedPack : skills,
+  });
   await report("project_1", "done");
   await report("project_2", "done");
   await report("projects_rest", "done");
