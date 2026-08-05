@@ -9,7 +9,8 @@
  * Never invent education or certs — only filter master (or master-grounded AI) lines.
  */
 
-import { getOpenAiConfig } from "./openai-config";
+import { getActiveLlmConfig } from "@/lib/system-settings";
+import { llmChatJson } from "./llm-chat";
 import type { DomainHint } from "./jd-parse";
 
 export type EducationLineKind = "degree" | "cert" | "other";
@@ -476,7 +477,7 @@ export async function filterCertsWithAi(opts: {
     return { keep: [], dropped: [], usedAi: false };
   }
 
-  const cfg = getOpenAiConfig();
+  const cfg = await getActiveLlmConfig();
   if (!cfg.configured) {
     const dropped: { line: string; reason: string }[] = [];
     const keep: string[] = [];
@@ -513,34 +514,13 @@ ${numbered}
 Return JSON for every index 0..${certs.length - 1}.`;
 
   try {
-    const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${cfg.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: cfg.model,
-        temperature: 0.1,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-      }),
-      signal: AbortSignal.timeout(
-        Number(process.env.OPENAI_EDU_TIMEOUT_MS || 45_000)
-      ),
+    const chat = await llmChatJson({
+      system,
+      user,
+      temperature: 0.1,
+      config: cfg,
     });
-    if (!res.ok) {
-      throw new Error(`OpenAI HTTP ${res.status}`);
-    }
-    const data = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    let raw = (data.choices?.[0]?.message?.content || "").trim();
-    raw = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-    const parsed = JSON.parse(raw) as {
+    const parsed = chat.json as {
       decisions?: { i?: number; keep?: boolean; reason?: string }[];
       keep?: number[];
       drop?: number[];

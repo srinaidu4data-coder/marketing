@@ -146,14 +146,54 @@ export function SystemSettingsForm({
         </label>
       </fieldset>
 
+      <fieldset className="space-y-4 rounded-lg border border-violet-200 bg-violet-50/40 p-4">
+        <legend className="px-1 text-sm font-semibold text-slate-800">
+          LLM provider (AI Tailor)
+        </legend>
+        <p className="text-xs text-slate-600">
+          Choose which model provider generates AI resumes. API keys stay in server
+          env (<code className="rounded bg-white px-1">OPENAI_API_KEY</code> /{" "}
+          <code className="rounded bg-white px-1">ANTHROPIC_API_KEY</code>) — never
+          stored in the database. Ops can override with env{" "}
+          <code className="rounded bg-white px-1">LLM_PROVIDER</code>.
+        </p>
+        <div className="space-y-1">
+          <Label htmlFor="llmProvider">Active provider</Label>
+          <select
+            id="llmProvider"
+            name="llmProvider"
+            defaultValue={config.llmProvider || "openai"}
+            className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+          >
+            <option value="openai">OpenAI (Chat Completions)</option>
+            <option value="anthropic">Claude / Anthropic (Messages API)</option>
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="llmModelOverride">Model override (optional)</Label>
+          <Input
+            id="llmModelOverride"
+            name="llmModelOverride"
+            defaultValue={config.llmModelOverride || ""}
+            placeholder="Leave blank for env default (gpt-4o-mini / claude-sonnet-…)"
+          />
+          <p className="text-xs text-slate-500">
+            Examples: <code className="rounded bg-white px-1">gpt-4o-mini</code>,{" "}
+            <code className="rounded bg-white px-1">gpt-4o</code>,{" "}
+            <code className="rounded bg-white px-1">claude-sonnet-4-20250514</code>,{" "}
+            <code className="rounded bg-white px-1">claude-3-5-haiku-latest</code>
+          </p>
+        </div>
+      </fieldset>
+
       <fieldset className="space-y-3 rounded-lg border border-sky-200 bg-sky-50/40 p-4">
         <legend className="px-1 text-sm font-semibold text-slate-800">
           Resume engine sequence
         </legend>
         <p className="text-xs text-slate-600">
-          Order engines try top-to-bottom. If the first fails (e.g. no OpenAI key or API
+          Order engines try top-to-bottom. If the first fails (e.g. no API key or API
           error), the next runs.{" "}
-          <strong>AI Tailor</strong> = OpenAI pack.{" "}
+          <strong>AI Tailor</strong> = selected LLM pack (OpenAI or Claude).{" "}
           <strong>Progressive Rules</strong> = rules backup (same assembly, no model).
         </p>
         <div className="space-y-1">

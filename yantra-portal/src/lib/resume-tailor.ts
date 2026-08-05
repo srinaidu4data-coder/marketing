@@ -8,7 +8,8 @@
 import { prisma } from "./db";
 import { DEFAULT_PROMPT } from "./constants";
 import { generateResumeWithOpenAi } from "./resume/ai-tailor";
-import { getOpenAiConfig } from "./resume/openai-config";
+import { estimateLlmCostUsd } from "./resume/llm-config";
+import { getActiveLlmConfig } from "./system-settings";
 import { assembleDeterministicPack } from "./resume/assemble-pack";
 import {
   getResumeEngineSequence,
@@ -27,7 +28,8 @@ import { inspectPackShipReady } from "./resume/pack-ship-ready";
 import type { TailorModeResult } from "./resume/tailor-mode";
 
 export { renderEmailTemplate } from "./resume/email-render";
-export { getOpenAiConfig } from "./resume/openai-config";
+export { getOpenAiConfig, getAnthropicConfig } from "./resume/openai-config";
+export { getActiveLlmConfig } from "./system-settings";
 export { LAYOUT_CONFIGS, getLayoutConfig } from "./resume/layout-config";
 export { RESUME_LAYOUTS, getLayout, layoutForIndex } from "./resume/templates";
 
@@ -273,12 +275,12 @@ export async function tailorResume(opts: {
   for (const engine of sequence) {
     try {
       if (engine === "ai-tailor") {
-        const openai = getOpenAiConfig();
-        if (!openai.configured) {
+        const llm = await getActiveLlmConfig();
+        if (!llm.configured) {
           enginesTried.push({
             engine,
             ok: false,
-            error: openai.reason || "OPENAI_API_KEY not configured",
+            error: llm.reason || "LLM API key not configured for selected provider",
           });
           continue;
         }
@@ -294,21 +296,26 @@ export async function tailorResume(opts: {
           onStep: opts.onStep,
         });
 
+        const opBase =
+          llm.provider === "anthropic" ? "resume_tailor_claude" : "resume_tailor_openai";
         try {
           await prisma.apiUsageLog.create({
             data: {
               employeeId: opts.employeeId || null,
               operation: opts.isTestMode
-                ? "prompt_test_openai"
+                ? llm.provider === "anthropic"
+                  ? "prompt_test_claude"
+                  : "prompt_test_openai"
                 : result.rulesGate.pass
-                  ? "resume_tailor_openai"
-                  : "resume_tailor_openai_review",
+                  ? opBase
+                  : `${opBase}_review`,
               tokensIn: result.tokensIn,
               tokensOut: result.tokensOut,
-              costUsd: estimateCost(
+              costUsd: estimateLlmCostUsd(
                 result.tokensIn,
                 result.tokensOut,
-                result.model
+                result.model,
+                llm.provider
               ),
               isTestMode: !!opts.isTestMode,
             },
@@ -319,7 +326,7 @@ export async function tailorResume(opts: {
 
         result.structured.meta.progressiveNotes = [
           ...result.structured.meta.progressiveNotes,
-          `Engine: ai-tailor (primary path)`,
+          `Engine: ai-tailor (${llm.label})`,
           `Sequence: ${sequence.join(" → ")}`,
           `Prompt: ${promptId.slice(0, 12)}`,
         ];
@@ -478,7 +485,7 @@ export async function tailorResume(opts: {
     const { recoverFromGenerationError } = await import(
       "./resume/regenerate-until-100"
     );
-    const openai = getOpenAiConfig();
+    const llm = await getActiveLlmConfig();
     const regen = await recoverFromGenerationError({
       error: lastError || new Error(detail),
       jd: opts.jd,
@@ -487,7 +494,7 @@ export async function tailorResume(opts: {
       candidateName: opts.candidateName,
       masterProfileJson: opts.masterProfileJson,
       mode: "transfer",
-      regenerate: openai.configured
+      regenerate: llm.configured
         ? async () => {
             const again = await generateResumeWithOpenAi({
               promptTemplate,
@@ -537,9 +544,9 @@ export async function tailorResume(opts: {
           text: regen.text,
           ats: regen.ats,
           psych: regen.psych,
-          usedLlm: openai.configured,
-          model: openai.configured ? openai.model : "rules-engine",
-          engine: openai.configured ? "ai-tailor" : "progressive-rules",
+          usedLlm: llm.configured,
+          model: llm.configured ? llm.model : "rules-engine",
+          engine: llm.configured ? "ai-tailor" : "progressive-rules",
           enginesTried: [
             ...enginesTried,
             {
@@ -569,17 +576,6 @@ export async function tailorResume(opts: {
       ? `All resume engines failed. ${detail}. Last: ${lastError.message}`
       : `All resume engines failed. ${detail}`
   );
-}
-
-function estimateCost(tin: number, tout: number, model: string) {
-  const m = (model || "").toLowerCase();
-  let a = 0.15,
-    b = 0.6;
-  if (m.includes("gpt-4o") && !m.includes("mini")) {
-    a = 2.5;
-    b = 10;
-  }
-  return Number(((tin / 1e6) * a + (tout / 1e6) * b).toFixed(6));
 }
 
 export async function tailorResumeText(opts: {

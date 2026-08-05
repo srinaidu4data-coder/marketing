@@ -2,7 +2,7 @@
  * Role Forge AI Resume Engine.
  *
  * Contract:
- * - OpenAI + prompt + rules (no silent non-AI packs)
+ * - Active LLM (OpenAI or Claude via Admin settings) + prompt + rules
  * - Header from master; headline/title from JD
  * - All master projects kept; recent 2 titles = JD title
  * - Skills/bullets honesty: grounded (JD∩master) > rephrase master > soft fill
@@ -31,7 +31,8 @@ import {
   domainProofBullets,
 } from "./jd-weave";
 import { getLayoutConfig } from "./layout-config";
-import { getOpenAiConfig } from "./openai-config";
+import { type LlmProviderConfig } from "./llm-config";
+import { llmChatJson } from "./llm-chat";
 import {
   anchorsFromMaster,
   assertMandatoryBulletDensity,
@@ -71,7 +72,10 @@ import {
   scrubSapRitualFromBullets,
   scrubSummaryHonesty,
 } from "./resume-honesty";
-import { getResumeEnginePolicy } from "@/lib/system-settings";
+import {
+  getActiveLlmConfig,
+  getResumeEnginePolicy,
+} from "@/lib/system-settings";
 import { runRulesGate, type RulesGateResult } from "./rules-gate";
 import { qaAndRepairResume } from "./resume-qa";
 import type { StructuredResume } from "./templates";
@@ -164,9 +168,7 @@ function isNoisyBullet(b: string): boolean {
 async function chatJson(opts: {
   system: string;
   user: string;
-  model: string;
-  apiKey: string;
-  baseUrl: string;
+  config: LlmProviderConfig;
   temperature?: number;
 }): Promise<{
   json: AiResumeJson;
@@ -174,45 +176,21 @@ async function chatJson(opts: {
   tokensIn: number;
   tokensOut: number;
   model: string;
+  provider: string;
 }> {
-  const res = await fetch(`${opts.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${opts.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: opts.model,
-      temperature: opts.temperature ?? 0.35,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: opts.system },
-        { role: "user", content: opts.user },
-      ],
-    }),
-    signal: AbortSignal.timeout(
-      Number(process.env.OPENAI_TIMEOUT_MS || 90_000)
-    ),
+  const result = await llmChatJson({
+    system: opts.system,
+    user: opts.user,
+    temperature: opts.temperature,
+    config: opts.config,
   });
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`OpenAI HTTP ${res.status}: ${t.slice(0, 400)}`);
-  }
-  const data = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
-    model?: string;
-  };
-  let raw = (data.choices?.[0]?.message?.content || "").trim();
-  raw = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-  if (!raw) throw new Error("OpenAI empty response");
-  const json = JSON.parse(raw) as AiResumeJson;
   return {
-    json,
-    raw,
-    tokensIn: data.usage?.prompt_tokens || Math.ceil(opts.user.length / 4),
-    tokensOut: data.usage?.completion_tokens || Math.ceil(raw.length / 4),
-    model: data.model || opts.model,
+    json: result.json as AiResumeJson,
+    raw: result.raw,
+    tokensIn: result.tokensIn,
+    tokensOut: result.tokensOut,
+    model: result.model,
+    provider: result.provider,
   };
 }
 
@@ -465,10 +443,20 @@ function scrubContradictionsInStructured(
 export async function generateResumeWithOpenAi(
   input: AiTailorInput
 ): Promise<AiTailorResult> {
-  const cfg = getOpenAiConfig();
+  const active = await getActiveLlmConfig();
+  const cfg: LlmProviderConfig = {
+    provider: active.provider,
+    configured: active.configured,
+    apiKey: active.apiKey,
+    baseUrl: active.baseUrl,
+    model: active.model,
+    label: active.label,
+    reason: active.reason,
+  };
   if (!cfg.configured) {
     throw new Error(
-      cfg.reason || "OPENAI_API_KEY required for Role Forge AI resumes."
+      cfg.reason ||
+        `${cfg.label} API key required for Role Forge AI resumes (Admin → Settings → LLM provider).`
     );
   }
 
@@ -630,9 +618,7 @@ Honesty > keyword stuffing — but density floor is not relaxed.`;
   const gen = await chatJson({
     system,
     user,
-    model: cfg.model,
-    apiKey: cfg.apiKey,
-    baseUrl: cfg.baseUrl,
+    config: cfg,
     temperature: 0.32,
   });
   parsed = gen.json;
@@ -664,9 +650,7 @@ Honesty > keyword stuffing — but density floor is not relaxed.`;
 - Expand by rephrasing distinct master achievements toward JD language — do not invent employers.
 Prior JSON:
 ${gen.raw.slice(0, 12000)}`,
-      model: cfg.model,
-      apiKey: cfg.apiKey,
-      baseUrl: cfg.baseUrl,
+      config: cfg,
       temperature: 0.2,
     });
     parsed = fix.json;
@@ -718,9 +702,7 @@ Clients: ${anchors.map((a) => a.client).join(" | ")}.
 Prior output was rejected for thin bullets. Expand by rephrasing master achievements — do NOT invent employers, metrics, or industry careers.
 Prior JSON:
 ${JSON.stringify(parsed).slice(0, 14000)}`,
-        model: cfg.model,
-        apiKey: cfg.apiKey,
-        baseUrl: cfg.baseUrl,
+        config: cfg,
         temperature: 0.25,
       });
       parsed = fixBullets.json;
@@ -1014,7 +996,7 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
 
   const dualBest = ats.score === 100 && psych.score === 100;
   structured.meta.progressiveNotes = [
-    `AI ENGINE: OpenAI ${modelUsed}`,
+    `AI ENGINE: ${cfg.label} ${modelUsed}`,
     `Mode: ${modeResult.label} (${modeResult.mode}) · overlap ${(modeResult.overlap * 100).toFixed(0)}%`,
     `Domain: ${domain} · Layout: ${layout.name}`,
     `Projects: ${projects.length}/${anchors.length || projects.length}`,

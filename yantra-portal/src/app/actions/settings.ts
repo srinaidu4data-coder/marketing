@@ -32,6 +32,12 @@ export async function saveSystemSettings(formData: FormData): Promise<SettingsAc
   const allowSelf = formData.get("allowEmployeeSelfChains") === "on" || formData.get("allowEmployeeSelfChains") === "true";
   const policyJson = String(formData.get("resumeEnginePolicyJson") || "").trim();
   const engineSeqRaw = String(formData.get("resumeEngineSequence") || "").trim();
+  const llmProviderRaw = String(formData.get("llmProvider") || "openai")
+    .trim()
+    .toLowerCase();
+  const llmModelOverride = String(formData.get("llmModelOverride") || "")
+    .trim()
+    .slice(0, 120);
 
   if (!companyName) return { ok: false, error: "Company name is required." };
   if (!supportEmail || !supportEmail.includes("@")) {
@@ -45,6 +51,18 @@ export async function saveSystemSettings(formData: FormData): Promise<SettingsAc
   }
   if (defaultExportFormat !== "DOCX" && defaultExportFormat !== "DOCX_PDF") {
     return { ok: false, error: "Invalid export format." };
+  }
+  const llmProvider =
+    llmProviderRaw === "anthropic" || llmProviderRaw === "claude"
+      ? "anthropic"
+      : llmProviderRaw === "openai"
+        ? "openai"
+        : null;
+  if (!llmProvider) {
+    return {
+      ok: false,
+      error: "LLM provider must be openai or anthropic (Claude).",
+    };
   }
 
   let resumePolicySerialized = "";
@@ -94,6 +112,8 @@ export async function saveSystemSettings(formData: FormData): Promise<SettingsAc
     [SETTING_KEYS.DEFAULT_EXPORT_FORMAT]: defaultExportFormat,
     [SETTING_KEYS.ALLOW_EMPLOYEE_SELF_CHAINS]: allowSelf ? "true" : "false",
     [SETTING_KEYS.RESUME_ENGINE_SEQUENCE]: serializeEngineSequence(engineSeq),
+    [SETTING_KEYS.LLM_PROVIDER]: llmProvider,
+    [SETTING_KEYS.LLM_MODEL_OVERRIDE]: llmModelOverride,
   };
   if (resumePolicySerialized) {
     pairs[SETTING_KEYS.RESUME_ENGINE_POLICY] = resumePolicySerialized;

@@ -7,6 +7,13 @@ import {
   serializeResumeEnginePolicy,
   type ResumeEnginePolicy,
 } from "@/lib/resume/resume-engine-policy";
+import {
+  buildActiveLlmConfig,
+  parseLlmProvider,
+  resolveProviderSelection,
+  type ActiveLlmConfig,
+  type LlmProvider,
+} from "@/lib/resume/llm-config";
 
 export const SETTING_KEYS = {
   COMPANY_NAME: "company_name",
@@ -18,6 +25,10 @@ export const SETTING_KEYS = {
   RESUME_ENGINE_POLICY: RESUME_POLICY_SETTING_KEY,
   /** Comma-separated engine order, e.g. ai-tailor,progressive-rules */
   RESUME_ENGINE_SEQUENCE: "resume_engine_sequence",
+  /** openai | anthropic (Claude) — API keys stay in env */
+  LLM_PROVIDER: "llm_provider",
+  /** Optional model override for active provider (empty = env default) */
+  LLM_MODEL_OVERRIDE: "llm_model_override",
 } as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];
@@ -32,13 +43,13 @@ export const RESUME_ENGINE_OPTIONS: {
 }[] = [
   {
     id: "ai-tailor",
-    label: "AI Tailor (OpenAI)",
-    description: "Primary: full OpenAI JSON pack + rules gate",
+    label: "AI Tailor (LLM)",
+    description: "Primary: full AI JSON pack via OpenAI or Claude (Admin → LLM provider)",
   },
   {
     id: "progressive-rules",
     label: "Progressive Rules (backup)",
-    description: "Rules engine: same assembly, no OpenAI — master + policy soft-fill",
+    description: "Rules engine: same assembly, no LLM — master + policy soft-fill",
   },
 ];
 
@@ -80,6 +91,10 @@ export type SystemConfig = {
   /** Ordered engines: try first, then backup on failure */
   resumeEngineSequence: ResumeEngineId[];
   resumeEngineSequenceRaw: string;
+  /** Admin-selected LLM: openai | anthropic */
+  llmProvider: LlmProvider;
+  /** Optional model id override for active provider */
+  llmModelOverride: string;
 };
 
 export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
@@ -93,6 +108,8 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   resumeEnginePolicyJson: serializeResumeEnginePolicy(DEFAULT_RESUME_ENGINE_POLICY),
   resumeEngineSequence: [...DEFAULT_ENGINE_SEQUENCE],
   resumeEngineSequenceRaw: serializeEngineSequence(DEFAULT_ENGINE_SEQUENCE),
+  llmProvider: "openai",
+  llmModelOverride: "",
 };
 
 const LAYOUT_IDS = new Set(RESUME_LAYOUTS.map((l) => l.id));
@@ -112,6 +129,12 @@ export async function getSystemConfig(): Promise<SystemConfig> {
     map.get(SETTING_KEYS.RESUME_ENGINE_SEQUENCE) ||
     DEFAULT_SYSTEM_CONFIG.resumeEngineSequenceRaw;
   const resumeEngineSequence = parseEngineSequence(seqRaw);
+  const llmProvider = parseLlmProvider(
+    map.get(SETTING_KEYS.LLM_PROVIDER) || DEFAULT_SYSTEM_CONFIG.llmProvider
+  );
+  const llmModelOverride = (
+    map.get(SETTING_KEYS.LLM_MODEL_OVERRIDE) || ""
+  ).trim();
 
   return {
     companyName: map.get(SETTING_KEYS.COMPANY_NAME) || DEFAULT_SYSTEM_CONFIG.companyName,
@@ -127,7 +150,29 @@ export async function getSystemConfig(): Promise<SystemConfig> {
       : serializeResumeEnginePolicy(DEFAULT_RESUME_ENGINE_POLICY),
     resumeEngineSequence,
     resumeEngineSequenceRaw: serializeEngineSequence(resumeEngineSequence),
+    llmProvider,
+    llmModelOverride,
   };
+}
+
+/**
+ * Resolve active LLM (OpenAI or Claude) from admin selection + env keys.
+ * Env LLM_PROVIDER overrides admin when set.
+ */
+export async function getActiveLlmConfig(): Promise<ActiveLlmConfig> {
+  try {
+    const cfg = await getSystemConfig();
+    const selected = resolveProviderSelection(cfg.llmProvider);
+    return buildActiveLlmConfig({
+      selectedProvider: selected,
+      modelOverride: cfg.llmModelOverride,
+    });
+  } catch {
+    return buildActiveLlmConfig({
+      selectedProvider: resolveProviderSelection("openai"),
+      modelOverride: "",
+    });
+  }
 }
 
 /** Ordered engines for tailorResume failover (defaults if DB down) */

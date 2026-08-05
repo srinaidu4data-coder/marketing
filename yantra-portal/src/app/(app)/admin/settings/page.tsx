@@ -5,7 +5,10 @@ import { SystemSettingsForm } from "@/components/settings-form";
 import { getSystemConfig } from "@/lib/system-settings";
 import { RESUME_LAYOUTS } from "@/lib/resume/templates";
 import { getResendConfig } from "@/lib/email/resend";
-import { getOpenAiConfig } from "@/lib/resume/openai-config";
+import {
+  buildActiveLlmConfig,
+  resolveProviderSelection,
+} from "@/lib/resume/llm-config";
 
 const shortcuts = [
   {
@@ -49,55 +52,92 @@ export default async function AdminSettingsPage() {
   await requireAdmin();
   const config = await getSystemConfig();
   const email = getResendConfig();
-  const openai = getOpenAiConfig();
+  const selected = resolveProviderSelection(config.llmProvider);
+  const llm = buildActiveLlmConfig({
+    selectedProvider: selected,
+    modelOverride: config.llmModelOverride,
+  });
 
   return (
     <div className="space-y-8 p-2 lg:p-4">
       <PageHeader
         title="System settings"
-        description="Organization, resume defaults, resume engine policy (domain rules & templates), OpenAI, Resend email, and cost policy."
+        description="Organization, LLM provider (OpenAI or Claude), resume defaults, engine policy, Resend email, and cost policy."
       />
 
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-medium">OpenAI resume engine (required)</h2>
-          <Badge status={openai.configured ? "SENT" : "FAILED"}>
-            {openai.configured ? "configured" : "missing key"}
-          </Badge>
+          <h2 className="font-medium">LLM resume engine</h2>
+          <div className="flex flex-wrap gap-2">
+            <Badge status={llm.configured ? "SENT" : "FAILED"}>
+              Active: {llm.label}
+              {llm.configured ? " · ready" : " · missing key"}
+            </Badge>
+            <Badge status={llm.openai.configured ? "SENT" : "PENDING"}>
+              OpenAI {llm.openai.configured ? "key ✓" : "no key"}
+            </Badge>
+            <Badge status={llm.anthropic.configured ? "SENT" : "PENDING"}>
+              Claude {llm.anthropic.configured ? "key ✓" : "no key"}
+            </Badge>
+          </div>
         </div>
         <p className="text-sm text-slate-500">
-          Every tailored resume is generated with the{" "}
-          <strong>ACTIVE admin prompt</strong> +{" "}
-          <strong>OpenAI Chat Completions</strong>. Without a real{" "}
-          <code className="rounded bg-slate-100 px-1 text-xs">OPENAI_API_KEY</code>, chain
-          generation will fail on purpose (no silent non-AI output).
+          Tailored resumes use the <strong>ACTIVE admin prompt</strong> + the{" "}
+          <strong>selected LLM</strong> (OpenAI Chat Completions or Anthropic Messages).
+          Choose the provider under <strong>Configuration → LLM provider</strong> below.
+          Without a key for the selected provider, AI generation fails (no silent fake packs).
         </p>
-        <dl className="grid gap-2 text-sm sm:grid-cols-2">
+        <dl className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <div className="rounded border bg-slate-50 p-3">
-            <dt className="text-xs uppercase text-slate-500">OPENAI_API_KEY</dt>
+            <dt className="text-xs uppercase text-slate-500">Selected provider</dt>
             <dd className="mt-1 font-medium">
-              {openai.configured
-                ? "Configured (hidden)"
-                : openai.reason || "Not set"}
+              {llm.selectedProvider === "anthropic" ? "Claude (Anthropic)" : "OpenAI"}
             </dd>
           </div>
           <div className="rounded border bg-slate-50 p-3">
-            <dt className="text-xs uppercase text-slate-500">Model / base URL</dt>
-            <dd className="mt-1 font-mono text-xs">
-              {openai.model}
-              <br />
-              {openai.baseUrl}
+            <dt className="text-xs uppercase text-slate-500">Active model</dt>
+            <dd className="mt-1 font-mono text-xs break-all">{llm.model}</dd>
+          </div>
+          <div className="rounded border bg-slate-50 p-3">
+            <dt className="text-xs uppercase text-slate-500">Active key</dt>
+            <dd className="mt-1 font-medium text-xs">
+              {llm.configured
+                ? "Configured (hidden)"
+                : llm.reason || "Not set for selected provider"}
             </dd>
+          </div>
+          <div className="rounded border bg-slate-50 p-3">
+            <dt className="text-xs uppercase text-slate-500">OPENAI_API_KEY</dt>
+            <dd className="mt-1 text-xs">
+              {llm.openai.configured ? "Set · " + llm.openai.model : "Not set"}
+            </dd>
+          </div>
+          <div className="rounded border bg-slate-50 p-3">
+            <dt className="text-xs uppercase text-slate-500">ANTHROPIC_API_KEY</dt>
+            <dd className="mt-1 text-xs">
+              {llm.anthropic.configured
+                ? "Set · " + llm.anthropic.model
+                : "Not set"}
+            </dd>
+          </div>
+          <div className="rounded border bg-slate-50 p-3">
+            <dt className="text-xs uppercase text-slate-500">Base URL</dt>
+            <dd className="mt-1 font-mono text-[11px] break-all">{llm.baseUrl}</dd>
           </div>
         </dl>
         <pre className="overflow-x-auto rounded-md bg-slate-900 p-3 text-[11px] text-slate-100">
-{`# Vercel → Project → Settings → Environment Variables → Production
-OPENAI_API_KEY=sk-proj-...your real key...
+{`# Vercel → roleforge → Settings → Environment Variables → Production
+# OpenAI
+OPENAI_API_KEY=sk-proj-...
 OPENAI_MODEL=gpt-4o-mini
-# Optional Azure/proxy:
-# OPENAI_BASE_URL=https://api.openai.com/v1
-# Emergency only (not recommended):
-# ALLOW_DETERMINISTIC_FALLBACK=true`}
+
+# Claude (Anthropic) — https://console.anthropic.com/settings/keys
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
+
+# Optional: force provider (overrides Admin UI)
+# LLM_PROVIDER=anthropic
+# Then redeploy.`}
         </pre>
         <Link
           href="/admin/prompt"
@@ -236,8 +276,10 @@ RESEND_API_KEY=re_xxxxxxxx
       <Card className="space-y-2">
         <h2 className="font-medium">Configuration</h2>
         <p className="text-sm text-slate-500">
-          These values are stored in <code className="rounded bg-slate-100 px-1 text-xs">SystemSetting</code>{" "}
-          and used by the admin console and candidate defaults.
+          These values are stored in{" "}
+          <code className="rounded bg-slate-100 px-1 text-xs">SystemSetting</code>{" "}
+          and used by the admin console and candidate defaults. LLM{" "}
+          <strong>keys</strong> remain in environment variables only.
         </p>
         <div className="pt-2">
           <SystemSettingsForm
