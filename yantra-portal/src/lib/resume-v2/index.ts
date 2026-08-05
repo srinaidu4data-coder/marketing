@@ -17,6 +17,7 @@ export {
   generateResumeV2PickBetter,
   type GenerateV2Result,
 } from "./generate";
+export { forceGenerateUnrestricted } from "./force-generate";
 export {
   PROMPT_LAB_SECTIONS,
   getSection,

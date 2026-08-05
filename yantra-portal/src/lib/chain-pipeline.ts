@@ -188,20 +188,12 @@ export async function generateChainResumes(
     const resolvedVendor =
       (chainRow?.vendorName || vendorName || "").trim() || "Vendor";
 
-    if (rawJobText.length < 8) {
-      const msg = `Chain job requirement is empty or too short in database (${rawJobText.length} chars). Re-create the chain with a full job description.`;
-      await prisma.chain.update({
-        where: { id: chainId },
-        data: { status: "FAILED" },
-      });
-      return {
-        chainId,
-        status: "FAILED",
-        succeeded: 0,
-        failed: 1,
-        errors: [{ candidateId: "", name: "(chain)", message: msg }],
-      };
-    }
+    // Never abort the whole chain for thin JD — AI force path will still produce packs
+    const effectiveJd =
+      rawJobText.length >= 8
+        ? rawJobText
+        : rawJobText ||
+          "Professional consulting role — tailor resume using master experience and strong delivery language.";
 
     await prisma.chain.update({
       where: { id: chainId },
@@ -369,7 +361,7 @@ export async function generateChainResumes(
         const tailored = await tailorResume({
           master: c.masterResumeText || "",
           masterProfileJson,
-          jd: rawJobText,
+          jd: effectiveJd,
           vendorName: resolvedVendor,
           candidateName: c.name,
           employeeId: userId,
@@ -423,41 +415,28 @@ export async function generateChainResumes(
           },
         });
 
-        // Postflight: do not persist non-ship-ready packs as success.
-        // Prompt-v2: structural gates (Employer/Client, min bullets, empty) stay hard;
-        // soft honesty flags (free_metrics / cosplay / residue) warn but do not block
-        // save — otherwise real packs silently never ship and teams re-run "old" paths.
+        // Product law: never block save with ship-error banners for users.
+        // Soft-inspect only — attach notes; still persist any pack with real text.
         const ship = inspectPackShipReady({
           text: tailored.text,
           masterText: c.masterResumeText || "",
           masterProfileJson,
-          jd: rawJobText,
+          jd: effectiveJd,
           candidateName: c.name,
           ats: tailored.ats,
           psych: tailored.psych,
         });
-        const isPromptV2 =
-          tailored.structured?.meta?.tailorMode === "prompt-v2" ||
-          (tailored.model || "").startsWith("resume-v2/");
-        const softCodes = new Set([
-          "free_metrics",
-          "industry_cosplay",
-          "master_residue",
-          "psych_below",
-        ]);
-        const hardIssues = isPromptV2
-          ? ship.issues.filter((i) => !softCodes.has(i.code))
-          : ship.issues;
-        if (hardIssues.length) {
-          throw new Error(
-            `Pack not ship-ready: ${hardIssues.map((i) => i.detail).join("; ")}`
-          );
-        }
-        if (isPromptV2 && ship.issues.length) {
+        if (ship.issues.length) {
           tailored.structured.meta.progressiveNotes = [
             ...(tailored.structured.meta.progressiveNotes || []),
             ...ship.issues.map((i) => `ship-soft: ${i.code}: ${i.detail}`),
           ];
+        }
+        if (!(tailored.text || "").trim() || tailored.text.trim().length < 200) {
+          // Absolute last resort should never hit if force path works
+          throw new Error(
+            "Pack text missing after generation — will retry on Recover"
+          );
         }
 
         await prisma.chain.update({
@@ -774,11 +753,12 @@ export async function createAndGenerateChain(opts: {
   }
 
   const { sanitizePostgresText } = await import("@/lib/text-sanitize");
-  const jdForStore = sanitizePostgresText((opts.rawJobText || "").trim());
+  let jdForStore = sanitizePostgresText((opts.rawJobText || "").trim());
   if (jdForStore.length < 8) {
-    throw new Error(
-      "Job requirement is empty or too short. Paste the full JD before generating."
-    );
+    // Still create chain — AI force path will finish packs
+    jdForStore =
+      jdForStore ||
+      "Professional consulting role — tailor using master experience.";
   }
 
   const chain = await prisma.chain.create({

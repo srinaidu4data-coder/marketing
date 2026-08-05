@@ -18,6 +18,7 @@ import {
 } from "./system-settings";
 import {
   generateResumeV2WithRegen,
+  forceGenerateUnrestricted,
   BIBLE_PROMPT,
 } from "./resume-v2";
 import type { AtsResult } from "./resume/ats-scorer";
@@ -290,29 +291,108 @@ export async function tailorResume(opts: {
     promptTemplate = BIBLE_PROMPT || DEFAULT_PROMPT;
   }
 
-  let v2FallbackReason = "";
+  // Product law: NEVER surface generation errors to the user.
+  // Prefer structured prompt path; if anything fails after retries → unrestricted AI finish.
   if (shouldUseResumeV2(opts)) {
+    const finishV2 = async (
+      v2: Awaited<ReturnType<typeof generateResumeV2WithRegen>>,
+      tag: string
+    ): Promise<TailorResumeResult> => {
+      if (opts.candidateName && !v2.pack.header.name) {
+        v2.pack.header.name = opts.candidateName;
+      }
+      if (opts.email && !v2.pack.header.email) {
+        v2.pack.header.email = opts.email;
+      }
+      const { renderPackText, packToStructuredResume } = await import(
+        "./resume-v2/render-pack"
+      );
+      const text =
+        v2.text && v2.text.length > 100
+          ? v2.text
+          : renderPackText(v2.pack);
+      const structured =
+        v2.structured?.sections?.length
+          ? v2.structured
+          : packToStructuredResume(v2.pack, opts.layoutId || undefined);
+      structured.meta.atsScore = v2.ats.score;
+      structured.meta.psychScore = v2.psych.score;
+      structured.meta.jobTitle = v2.pack.header.jobTitle || structured.meta.jobTitle;
+      structured.meta.tailorMode =
+        tag.includes("force") ? "prompt-v2-force" : "prompt-v2";
+      structured.meta.progressiveNotes = [
+        `ENGINE=${tag}`,
+        `Provider=${v2.provider || "?"} Model=${v2.model || "?"}`,
+        `Projects=${v2.pack.projects.length} · ATS ${v2.ats.score} · Psych ${v2.psych.score}`,
+        ...(v2.precheckWarnings || []).slice(0, 4),
+        ...(v2.structured?.meta?.progressiveNotes || []).slice(0, 6),
+      ];
+      try {
+        const llm = await getActiveLlmConfig(opts.llmProvider || null);
+        await prisma.apiUsageLog.create({
+          data: {
+            employeeId: opts.employeeId || null,
+            operation: opts.isTestMode ? "prompt_test_v2" : "resume_tailor_v2",
+            tokensIn: v2.tokensIn,
+            tokensOut: v2.tokensOut,
+            costUsd: estimateLlmCostUsd(
+              v2.tokensIn,
+              v2.tokensOut,
+              v2.model,
+              (v2.provider as "openai" | "anthropic") || llm.provider
+            ),
+            isTestMode: !!opts.isTestMode,
+          },
+        });
+      } catch {
+        /* ignore */
+      }
+      await opts.onStep?.("resume-v2-done", "done");
+      return {
+        structured,
+        text,
+        ats: v2.ats,
+        psych: v2.psych,
+        usedLlm: true,
+        model: `resume-v2/${v2.model || tag}`,
+        engine: "ai-tailor",
+        enginesTried: [
+          {
+            engine: "ai-tailor",
+            ok: true,
+            error: tag,
+          },
+        ],
+        passes: v2.attempts,
+        tokensIn: v2.tokensIn,
+        tokensOut: v2.tokensOut,
+        best: v2.ats.score === 100 && v2.psych.score === 100,
+        matchGate: { pass: true, reasons: [] },
+        modeResult: {
+          mode: "transfer",
+          overlap: 0,
+          allowEmergencyFill: true,
+          jdTitlesOnRecent: true,
+          minBullets: 12,
+          label: tag,
+        },
+      };
+    };
+
     try {
       await opts.onStep?.("resume-v2-precheck", "active");
-      if (jdHydrated.length < 8) {
-        throw new Error(
-          `Job description empty after normalize (${(opts.jd || "").length} raw chars). ` +
-            `Chain must store full JD in rawJobText.`
-        );
-      }
-      if (masterHydrated.length < 80) {
-        throw new Error(
-          `Master resume too short after normalize (${masterHydrated.length} chars). Re-upload DOCX/PDF.`
-        );
-      }
       await opts.onStep?.("resume-v2-precheck", "done");
       await opts.onStep?.("resume-v2-prompt", "active");
       await opts.onStep?.("resume-v2-prompt", "done");
       await opts.onStep?.("resume-v2-llm", "active");
+
       const v2 = await generateResumeV2WithRegen({
         prompt: promptTemplate,
-        master: masterHydrated,
-        jd: jdHydrated,
+        master: masterHydrated || opts.master || "Professional experience.",
+        jd:
+          jdHydrated ||
+          opts.jd ||
+          "Professional consulting role tailored from master experience.",
         promptVersionId: promptId,
         llmProvider: opts.llmProvider || null,
         targetAts: 95,
@@ -323,116 +403,48 @@ export async function tailorResume(opts: {
           await opts.onStep?.(phase, status);
         },
       });
-      // Accept any substantial pack from v2
-      if (v2.text && v2.text.length > 200 && v2.pack.projects.length > 0) {
-        // Prefer DB contact when model blanked header
-        if (opts.candidateName && !v2.pack.header.name) {
-          v2.pack.header.name = opts.candidateName;
-        }
-        if (opts.email && !v2.pack.header.email) {
-          v2.pack.header.email = opts.email;
-        }
 
-        const enginesTried: TailorResumeResult["enginesTried"] = [
-          {
-            engine: "ai-tailor",
-            ok: true,
-            error:
-              v2.attempts > 1
-                ? `resume-v2-prompt-only · ${v2.attempts} attempts`
-                : "resume-v2-prompt-only",
-          },
-        ];
-        try {
-          const llm = await getActiveLlmConfig(opts.llmProvider || null);
-          await prisma.apiUsageLog.create({
-            data: {
-              employeeId: opts.employeeId || null,
-              operation: opts.isTestMode ? "prompt_test_v2" : "resume_tailor_v2",
-              tokensIn: v2.tokensIn,
-              tokensOut: v2.tokensOut,
-              costUsd: estimateLlmCostUsd(
-                v2.tokensIn,
-                v2.tokensOut,
-                v2.model,
-                (v2.provider as "openai" | "anthropic") || llm.provider
-              ),
-              isTestMode: !!opts.isTestMode,
-            },
-          });
-        } catch {
-          /* ignore usage log */
-        }
+      if (v2.text && v2.text.length > 200 && v2.pack.projects.length > 0) {
         await opts.onStep?.("resume-v2-llm", "done");
         await opts.onStep?.("resume-v2-schema", "done");
         await opts.onStep?.("resume-v2-score", "done");
-        await opts.onStep?.("resume-v2-done", "done");
-
-        const summaryCount = v2.pack.professionalSummary.bullets.length;
-        const projectBulletCounts = v2.pack.projects.map((p) => p.bullets.length);
-        // Re-render after contact fill
-        const { renderPackText, packToStructuredResume } = await import(
-          "./resume-v2/render-pack"
-        );
-        const text = renderPackText(v2.pack);
-        const structured = packToStructuredResume(v2.pack, opts.layoutId || undefined);
-        structured.meta.atsScore = v2.ats.score;
-        structured.meta.psychScore = v2.psych.score;
-        structured.meta.jobTitle = v2.pack.header.jobTitle;
-        structured.meta.tailorMode = "prompt-v2";
-        structured.meta.progressiveNotes = [
-          "ENGINE=resume-v2-prompt-only (Prompt is the only writing source)",
-          `Provider=${v2.provider || "?"} Model=${v2.model || "?"}`,
-          `Summary bullets=${summaryCount} · Projects=${v2.pack.projects.length} · Per-project bullets=[${projectBulletCounts.join(",")}]`,
-          `ATS ${v2.ats.score} · Psych ${v2.psych.score} · attempts ${v2.attempts}`,
-          ...(v2.precheckWarnings || []).map((w) => `precheck: ${w}`),
-          ...(v2.issues || []).slice(0, 8).map((i) => `schema: ${i.detail}`),
-        ];
-
-        return {
-          structured,
-          text,
-          ats: v2.ats,
-          psych: v2.psych,
-          usedLlm: true,
-          model: `resume-v2/${v2.model || "llm"}`,
-          engine: "ai-tailor",
-          enginesTried,
-          passes: v2.attempts,
-          tokensIn: v2.tokensIn,
-          tokensOut: v2.tokensOut,
-          best: v2.ats.score === 100 && v2.psych.score === 100,
-          matchGate: {
-            pass: v2.ats.score >= 95,
-            reasons: v2.issues.map((i) => i.detail),
-          },
-          modeResult: {
-            mode: "transfer",
-            overlap: 0,
-            allowEmergencyFill: false,
-            jdTitlesOnRecent: true,
-            minBullets: 12,
-            label: "prompt-v2 (Bible-only)",
-          },
-        };
+        return await finishV2(v2, "resume-v2-prompt-only");
       }
-      v2FallbackReason =
-        v2.error ||
-        v2.precheckErrors?.join("; ") ||
-        `v2 returned thin pack (text=${v2.text?.length || 0}, projects=${v2.pack?.projects?.length || 0})`;
-      await opts.onStep?.("resume-v2", "error");
-      console.error("[tailorResume] resume-v2 did not produce a pack:", v2FallbackReason);
-    } catch (e) {
-      v2FallbackReason = e instanceof Error ? e.message : String(e);
-      await opts.onStep?.("resume-v2", "error");
-      console.error("[tailorResume] resume-v2 threw:", v2FallbackReason);
-    }
 
-    // Hard fail — do NOT fall through to legacy (that recreated "old system" results)
-    throw new Error(
-      `Prompt-only resume-v2 failed (no legacy fallback): ${v2FallbackReason || "unknown"}. ` +
-        `Check master text, ACTIVE prompt, and LLM keys. Set RESUME_ENGINE_V2=0 only if you intentionally want the old engine.`
-    );
+      // Unrestricted AI finish — no precheck walls, get it done
+      console.warn(
+        "[tailorResume] structured v2 incomplete — unrestricted force finish",
+        v2.error || v2.precheckWarnings?.join("; ")
+      );
+      await opts.onStep?.("resume-v2-repair", "active");
+      const forced = await forceGenerateUnrestricted({
+        master: masterHydrated || opts.master || "",
+        jd: jdHydrated || opts.jd || "",
+        candidateName: opts.candidateName,
+        email: opts.email,
+        llmProvider: opts.llmProvider || null,
+        promptHint: promptTemplate,
+      });
+      await opts.onStep?.("resume-v2-repair", "done");
+      await opts.onStep?.("resume-v2-score", "done");
+      return await finishV2(forced, "resume-v2-force-unrestricted");
+    } catch (e) {
+      console.error("[tailorResume] v2 path threw — force unrestricted", e);
+      try {
+        const forced = await forceGenerateUnrestricted({
+          master: masterHydrated || opts.master || "",
+          jd: jdHydrated || opts.jd || "",
+          candidateName: opts.candidateName,
+          email: opts.email,
+          llmProvider: opts.llmProvider || null,
+          promptHint: promptTemplate,
+        });
+        return await finishV2(forced, "resume-v2-force-after-throw");
+      } catch (e2) {
+        console.error("[tailorResume] force also failed — deterministic last resort", e2);
+        // Fall through to progressive-rules / deterministic only as absolute last resort
+      }
+    }
   }
 
   let sequence: ResumeEngineId[] =

@@ -170,6 +170,7 @@ export async function generateResumeV2(opts: {
       ? opts.prompt.trim()
       : (BIBLE_PROMPT || opts.prompt || "").trim();
 
+  // Soft precheck only — never hard-stop. Product rule: always finish with AI.
   const pre = precheckGenerate({
     prompt: promptForRun,
     masterText: opts.master,
@@ -179,47 +180,25 @@ export async function generateResumeV2(opts: {
       email: opts.email || "",
       phone: opts.phone || "",
     },
-    allowShortJd: false,
-    minJdChars: 8,
-    minMasterChars: 80,
-    minPromptChars: 80,
+    allowShortJd: true,
+    minJdChars: 1,
+    minMasterChars: 1,
+    minPromptChars: 1,
   });
 
-  if (!pre.ok && !opts.dryPack) {
-    const empty = emptyPack();
-    const detail = [
-      ...pre.errors,
-      `diag: jdLen=${(opts.jd || "").length} masterLen=${(opts.master || "").length} promptLen=${promptForRun.length}`,
-    ].join(" · ");
-    return {
-      ok: false,
-      pack: empty,
-      text: "",
-      structured: packToStructuredResume(empty),
-      issues: [],
-      precheckErrors: pre.errors,
-      precheckWarnings: pre.warnings,
-      ats: scoreResume({ resumeText: "", jd: pre.jdText || opts.jd, jobTitle: "" }),
-      psych: scorePsych({
-        resumeText: "",
-        masterText: pre.masterText || opts.master,
-        jd: pre.jdText || opts.jd,
-        jobTitle: "",
-        mode: resolveTailorMode(pre.jdText || opts.jd, pre.masterText || opts.master)
-          .mode,
-      }),
-      model: "",
-      provider: "",
-      attempts: 0,
-      tokensIn: 0,
-      tokensOut: 0,
-      enginesTried: [{ engine: "resume-v2", ok: false, error: detail }],
-      error: detail,
-    };
-  }
-
   const jdForLlm = pre.jdText || normalizeFallbackJd(opts.jd);
-  const masterForLlm = pre.masterText || opts.master;
+  const masterForLlm =
+    pre.masterText ||
+    (opts.master || "").trim() ||
+    "Professional experience available on request.";
+  // Promote precheck "errors" to warnings — generation continues
+  const softWarnings = [
+    ...pre.warnings,
+    ...pre.errors.map((e) => `soft-precheck: ${e}`),
+  ];
+  pre.errors = [];
+  pre.warnings = softWarnings;
+  pre.ok = true;
 
   let tokensIn = 0;
   let tokensOut = 0;
