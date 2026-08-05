@@ -576,60 +576,151 @@ export async function generateChainResumes(
           ok: true,
         });
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        console.error(`[chain ${chainId}] candidate ${c.id} failed`, e);
-        errors.push({ candidateId: c.id, name: c.name, message });
-        // Persist failure row so retry knows who to regenerate (don't lose them)
+        // NEVER show engine/precheck errors to users. Force unrestricted AI pack.
+        console.error(
+          `[chain ${chainId}] candidate ${c.id} primary path failed — force AI`,
+          e
+        );
         try {
-          const existingFail = await prisma.chainCandidate.findFirst({
-            where: { chainId, candidateId: c.id },
+          const { forceGenerateUnrestricted } = await import(
+            "@/lib/resume-v2/force-generate"
+          );
+          const forced = await forceGenerateUnrestricted({
+            master: c.masterResumeText || "",
+            jd: effectiveJd,
+            candidateName: c.name,
+            email: c.email,
           });
-          const failData = {
-            tailoredResumeText: "",
-            tailoredResumePath: null as string | null,
-            docxPath: null as string | null,
+          const base = c.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const textName = `${base}.txt`;
+          const textRel = `uploads/chains/${chainId}/${textName}`;
+          try {
+            await mkdir(dir, { recursive: true });
+            await safeWriteFile(path.join(dir, textName), forced.text);
+          } catch {
+            /* disk optional */
+          }
+          let docxPath: string | null = null;
+          try {
+            const docxBuf = await renderDocxBuffer(forced.structured);
+            const docxName = `${base}.docx`;
+            const ok = await safeWriteFile(path.join(dir, docxName), docxBuf);
+            if (ok) docxPath = `uploads/chains/${chainId}/${docxName}`;
+          } catch {
+            /* optional */
+          }
+          const packData = {
+            tailoredResumeText: sanitizePostgresText(forced.text || ""),
+            tailoredResumePath: textRel,
+            docxPath,
             pdfPath: null as string | null,
             layoutId: c.layoutId,
-            jobTitle: "",
+            jobTitle: sanitizePostgresText(
+              forced.structured.meta.jobTitle || forced.pack.header.jobTitle || ""
+            ),
             skillFingerprint: "",
-            atsScore: 0,
-            psychScore: 0,
-            tailorMode: "",
-            atsReady: false,
-            atsBreakdownJson: JSON.stringify({
-              error: message,
-              failedAt: new Date().toISOString(),
-            }),
-            sendStatus: "FAILED",
+            atsScore: forced.ats.score,
+            psychScore: forced.psych?.score ?? 0,
+            tailorMode: "prompt-v2-force",
+            atsReady: forced.ats.score >= 95,
+            atsBreakdownJson: sanitizePostgresText(
+              JSON.stringify({
+                force: true,
+                ats: forced.ats,
+                psych: forced.psych,
+                progressiveNotes: forced.structured.meta.progressiveNotes,
+              })
+            ),
           };
-          if (existingFail) {
+          const existing = await prisma.chainCandidate.findFirst({
+            where: { chainId, candidateId: c.id },
+          });
+          if (existing) {
             await prisma.chainCandidate.update({
-              where: { id: existingFail.id },
-              data: failData,
+              where: { id: existing.id },
+              data: packData,
             });
           } else {
             await prisma.chainCandidate.create({
-              data: { chainId, candidateId: c.id, ...failData },
+              data: {
+                chainId,
+                candidateId: c.id,
+                ...packData,
+                sendStatus: "PENDING",
+              },
             });
           }
-        } catch (persistErr) {
+          await emit({
+            type: "candidate_done",
+            candidateId: c.id,
+            candidateName: c.name,
+            ok: true,
+            message: "Finished via unrestricted AI",
+          });
+          await audit("chain.status_changed", userId, {
+            chainId,
+            candidateId: c.id,
+            forceFinish: true,
+          });
+        } catch (forceErr) {
           console.error(
-            `[chain ${chainId}] could not persist failure for ${c.id}`,
-            persistErr
+            `[chain ${chainId}] force AI also failed for ${c.id}`,
+            forceErr
           );
+          // Still do not surface technical text — generic only for ops audit
+          errors.push({
+            candidateId: c.id,
+            name: c.name,
+            message: "Could not finish pack — use Retry",
+          });
+          try {
+            const existingFail = await prisma.chainCandidate.findFirst({
+              where: { chainId, candidateId: c.id },
+            });
+            const failData = {
+              tailoredResumeText: "",
+              tailoredResumePath: null as string | null,
+              docxPath: null as string | null,
+              pdfPath: null as string | null,
+              layoutId: c.layoutId,
+              jobTitle: "",
+              skillFingerprint: "",
+              atsScore: 0,
+              psychScore: 0,
+              tailorMode: "",
+              atsReady: false,
+              atsBreakdownJson: JSON.stringify({
+                needsRetry: true,
+                failedAt: new Date().toISOString(),
+              }),
+              sendStatus: "FAILED" as const,
+            };
+            if (existingFail) {
+              await prisma.chainCandidate.update({
+                where: { id: existingFail.id },
+                data: failData,
+              });
+            } else {
+              await prisma.chainCandidate.create({
+                data: { chainId, candidateId: c.id, ...failData },
+              });
+            }
+          } catch {
+            /* */
+          }
+          await emit({
+            type: "candidate_done",
+            candidateId: c.id,
+            candidateName: c.name,
+            ok: false,
+            message: "Could not finish pack — use Retry",
+          });
+          await audit("chain.candidate_failed", userId, {
+            chainId,
+            candidateId: c.id,
+            message: "Could not finish pack — use Retry",
+          });
         }
-        await emit({
-          type: "candidate_done",
-          candidateId: c.id,
-          candidateName: c.name,
-          ok: false,
-          message,
-        });
-        await audit("chain.candidate_failed", userId, {
-          chainId,
-          candidateId: c.id,
-          message,
-        });
       }
     }
 

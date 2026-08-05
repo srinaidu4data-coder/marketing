@@ -23,6 +23,7 @@ export const AUDIT_ACTIONS = [
   "settings.update",
   "chain.create",
   "chain.candidate_failed",
+  "chain.candidate_force_ok",
   "chain.email_bounced",
   "chain.email_delivered",
   "chain.email_enqueued",

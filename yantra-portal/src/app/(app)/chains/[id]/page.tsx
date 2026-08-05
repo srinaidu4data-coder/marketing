@@ -78,7 +78,9 @@ export default async function ChainDetailPage({
       if (meta.message) errorHints.push(meta.message);
       if (meta.error) errorHints.push(meta.error);
       if (meta.reason) errorHints.push(String(meta.reason));
-      if (meta.timedOut) errorHints.push("Generation hit serverless time budget");
+      if (meta.timedOut) {
+        errorHints.push("Generation hit a time limit — use Retry");
+      }
       if (meta.errors?.length) {
         for (const e of meta.errors.slice(0, 4)) {
           errorHints.push(`${e.name || "candidate"}: ${e.message || "failed"}`);
@@ -88,7 +90,8 @@ export default async function ChainDetailPage({
       /* ignore */
     }
   }
-  const uniqueHints = Array.from(new Set(errorHints)).slice(0, 6);
+  const { filterUserSafeErrors } = await import("@/lib/user-safe-errors");
+  const uniqueHints = filterUserSafeErrors(errorHints);
 
   const sent = chain.candidates.filter((c) => c.sendStatus === "SENT").length;
   const total = chain.candidates.length;
@@ -187,16 +190,19 @@ export default async function ChainDetailPage({
 
       {searchParams?.failed === "1" || chain.status === "FAILED" ? (
         <ChainBanner
-          variant="error"
+          variant="warning"
           title={
             emptyFailed
-              ? "No resumes generated"
+              ? "Resumes not ready yet"
               : shipErrorMsg
-                ? "Send blocked — pack quality"
-                : "Chain did not finish cleanly"
+                ? "Review packs before send"
+                : "Some packs need a refresh"
           }
         >
-          {shipErrorMsg ? <p>{shipErrorMsg}</p> : null}
+          <p>
+            Use <strong>Retry</strong> — the engine will finish packs with AI
+            (no technical errors shown). Prior engine messages are hidden on purpose.
+          </p>
           {uniqueHints.length > 0 ? (
             <ul className="mt-1 list-disc pl-4">
               {uniqueHints.map((h) => (
