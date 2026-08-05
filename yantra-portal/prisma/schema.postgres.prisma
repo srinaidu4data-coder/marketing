@@ -64,6 +64,8 @@ model Chain {
   rawJobText   String           @db.Text
   status       String           @default("READY")
   employeeNote String?          @db.Text
+  /// Live generation status for UI (JSON: phase, tips, steps, candidate…)
+  progressJson String?          @db.Text
   /// Hidden from employee UI; still visible to admins
   employeeHiddenAt DateTime?
   employeeHiddenBy String?

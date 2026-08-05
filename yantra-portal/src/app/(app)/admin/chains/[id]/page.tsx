@@ -19,6 +19,7 @@ import {
   ChainBanner,
   ChainDetailShell,
 } from "@/components/chain-detail-shell";
+import { ChainGeneratingLive } from "@/components/chain-generating-live";
 import { Button } from "@/components/ui";
 
 export default async function AdminChainDetailPage({
@@ -146,10 +147,16 @@ export default async function AdminChainDetailPage({
         </ChainBanner>
       ) : null}
       {stuck ? (
-        <ChainBanner variant="warning" title={`In-flight: ${chain.status}`}>
-          If abandoned, recover to free the queue. Live jobs heartbeated recently
-          will not auto-fail for a few minutes.
-        </ChainBanner>
+        <div className="space-y-3">
+          <ChainGeneratingLive
+            chainId={chain.id}
+            initialStatus={chain.status}
+          />
+          <ChainBanner variant="warning" title={`In-flight: ${chain.status}`}>
+            Live panel shows what the engine is waiting on. Recover only if
+            abandoned for several minutes.
+          </ChainBanner>
+        </div>
       ) : null}
       {notShipReady.length > 0 ? (
         <ChainBanner

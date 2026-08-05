@@ -17,6 +17,7 @@ import {
   ChainBanner,
   ChainDetailShell,
 } from "@/components/chain-detail-shell";
+import { ChainGeneratingLive } from "@/components/chain-generating-live";
 
 export default async function ChainDetailPage({
   params,
@@ -207,9 +208,17 @@ export default async function ChainDetailPage({
       ) : null}
 
       {stuck ? (
-        <ChainBanner variant="warning" title={`Still ${chain.status}`}>
-          If this has been stuck for several minutes, use Recover.
-        </ChainBanner>
+        <div className="space-y-3">
+          <ChainGeneratingLive
+            chainId={chain.id}
+            initialStatus={chain.status}
+          />
+          <ChainBanner variant="warning" title="Still working">
+            Live steps above show what the engine is waiting on (12 bullets,
+            wording, ATS, DOCX…). Use Recover only if nothing moves for several
+            minutes.
+          </ChainBanner>
+        </div>
       ) : null}
 
       {total > 0 && lowAts.length > 0 ? (

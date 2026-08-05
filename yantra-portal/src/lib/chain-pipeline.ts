@@ -166,6 +166,14 @@ export async function generateChainResumes(
     } catch {
       /* ignore UI progress errors */
     }
+    try {
+      const { persistChainProgressEvent } = await import(
+        "@/lib/resume/persist-chain-progress"
+      );
+      await persistChainProgressEvent(chainId, ev);
+    } catch {
+      /* never block generation on progress persist */
+    }
   };
 
   try {
@@ -303,6 +311,32 @@ export async function generateChainResumes(
           candidateName: c.name,
           stepId: "parse_master",
           label: stepLabel("parse_master"),
+          status: "active",
+          detail: "Extracting contact and employers from the master…",
+        });
+        await emit({
+          type: "step",
+          candidateId: c.id,
+          candidateName: c.name,
+          stepId: "parse_master",
+          label: stepLabel("parse_master"),
+          status: "done",
+        });
+        await emit({
+          type: "step",
+          candidateId: c.id,
+          candidateName: c.name,
+          stepId: "parse_jd",
+          label: stepLabel("parse_jd"),
+          status: "active",
+          detail: "Scanning JD for role, stack, and must-have keywords…",
+        });
+        await emit({
+          type: "step",
+          candidateId: c.id,
+          candidateName: c.name,
+          stepId: "parse_jd",
+          label: stepLabel("parse_jd"),
           status: "done",
         });
 
@@ -316,6 +350,9 @@ export async function generateChainResumes(
           layoutId: c.layoutId,
           email: c.email,
           onStep: async (stepId, status) => {
+            const { stepWaitingOn, engagementTip } = await import(
+              "@/lib/resume/generation-progress"
+            );
             await emit({
               type: "step",
               candidateId: c.id,
@@ -323,7 +360,40 @@ export async function generateChainResumes(
               stepId,
               label: stepLabel(stepId),
               status,
+              detail:
+                status === "active"
+                  ? stepWaitingOn(stepId)
+                  : status === "done"
+                    ? `Done: ${stepLabel(stepId)}`
+                    : undefined,
             });
+            if (status === "active" && /llm|regen|repair/i.test(stepId)) {
+              // Engagement pulse while the model thinks
+              await emit({
+                type: "heartbeat",
+                candidateId: c.id,
+                candidateName: c.name,
+                message: stepWaitingOn(stepId),
+                tipIndex: Date.now() % 12,
+              });
+              // Fire-and-forget tips every few seconds (best-effort)
+              void (async () => {
+                for (let t = 0; t < 8; t++) {
+                  await new Promise((r) => setTimeout(r, 3500));
+                  try {
+                    await emit({
+                      type: "heartbeat",
+                      candidateId: c.id,
+                      candidateName: c.name,
+                      message: engagementTip(t + 1),
+                      tipIndex: t + 1,
+                    });
+                  } catch {
+                    /* */
+                  }
+                }
+              })();
+            }
           },
         });
 

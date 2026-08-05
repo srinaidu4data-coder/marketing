@@ -62,6 +62,8 @@ model Chain {
   rawJobText   String
   status       String           @default("READY") // DRAFT | GENERATING | READY | SENDING | SENT | FAILED
   employeeNote String?
+  /// Live generation status for UI (JSON: phase, tips, steps, candidate…)
+  progressJson String?
   /// When set, chain is hidden from the employee UI but still visible to admins (audit).
   employeeHiddenAt DateTime?
   /// Admin user id who hid this chain from the employee

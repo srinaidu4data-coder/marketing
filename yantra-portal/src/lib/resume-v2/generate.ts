@@ -146,6 +146,15 @@ export async function generateResumeV2(opts: {
   candidateName?: string;
   email?: string;
   phone?: string;
+  onPhase?: (
+    phase:
+      | "resume-v2-llm"
+      | "resume-v2-schema"
+      | "resume-v2-repair"
+      | "resume-v2-score"
+      | "resume-v2-regen",
+    status: "active" | "done" | "error"
+  ) => void | Promise<void>;
   /** Skip LLM — for dry tests */
   dryPack?: ResumePackV2;
 }): Promise<GenerateV2Result> {
@@ -210,6 +219,7 @@ export async function generateResumeV2(opts: {
 
     try {
       attempts = 1;
+      await opts.onPhase?.("resume-v2-llm", "active");
       const first = await callOnce({
         prompt: opts.prompt,
         user,
@@ -219,6 +229,8 @@ export async function generateResumeV2(opts: {
       tokensOut += first.tokensOut;
       model = first.model;
       provider = first.provider;
+      await opts.onPhase?.("resume-v2-llm", "done");
+      await opts.onPhase?.("resume-v2-schema", "active");
 
       let parsed = parseAndValidatePack(first.json);
       // One schema repair — same Bible + shape reminder only
@@ -226,6 +238,8 @@ export async function generateResumeV2(opts: {
         parsed.issues.some((i) => i.code === "bullet_count") ||
         !parsed.ok
       ) {
+        await opts.onPhase?.("resume-v2-schema", "done");
+        await opts.onPhase?.("resume-v2-repair", "active");
         attempts = 2;
         const repairUser =
           user +
@@ -246,6 +260,9 @@ export async function generateResumeV2(opts: {
         model = second.model;
         provider = second.provider;
         parsed = parseAndValidatePack(second.json);
+        await opts.onPhase?.("resume-v2-repair", "done");
+      } else {
+        await opts.onPhase?.("resume-v2-schema", "done");
       }
 
       pack = parsed.pack;
@@ -379,6 +396,15 @@ export async function generateResumeV2WithRegen(opts: {
   candidateName?: string;
   email?: string;
   phone?: string;
+  onPhase?: (
+    phase:
+      | "resume-v2-llm"
+      | "resume-v2-schema"
+      | "resume-v2-repair"
+      | "resume-v2-score"
+      | "resume-v2-regen",
+    status: "active" | "done" | "error"
+  ) => void | Promise<void>;
 }): Promise<GenerateV2Result> {
   const target = opts.targetAts ?? 95;
   const max = opts.maxAttempts ?? 3;
@@ -387,6 +413,7 @@ export async function generateResumeV2WithRegen(opts: {
   let feedback: string | undefined;
 
   for (let i = 0; i < max; i++) {
+    if (i > 0) await opts.onPhase?.("resume-v2-regen", "active");
     const r = await generateResumeV2({
       prompt: opts.prompt,
       master: opts.master,
@@ -398,7 +425,11 @@ export async function generateResumeV2WithRegen(opts: {
       candidateName: opts.candidateName,
       email: opts.email,
       phone: opts.phone,
+      onPhase: opts.onPhase,
     });
+    if (i > 0) await opts.onPhase?.("resume-v2-regen", "done");
+    await opts.onPhase?.("resume-v2-score", "active");
+    await opts.onPhase?.("resume-v2-score", "done");
     if (!best || r.ats.score > best.ats.score) best = r;
     if (r.ok && r.ats.score >= target) {
       r.attempts = i + 1;

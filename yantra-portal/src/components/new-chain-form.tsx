@@ -122,8 +122,13 @@ export function NewChainForm({
         return next;
       });
       if (e.status === "active") {
-        setStatusMsg(e.label);
+        setStatusMsg(e.detail || e.label);
       }
+      return;
+    }
+    if (type === "heartbeat") {
+      const e = ev as Extract<ProgressEvent, { type: "heartbeat" }>;
+      setStatusMsg(e.message);
       return;
     }
     if (type === "candidate_done") {

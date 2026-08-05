@@ -285,7 +285,11 @@ export async function tailorResume(opts: {
   let v2FallbackReason = "";
   if (shouldUseResumeV2(opts)) {
     try {
-      await opts.onStep?.("resume-v2", "active");
+      await opts.onStep?.("resume-v2-precheck", "active");
+      await opts.onStep?.("resume-v2-precheck", "done");
+      await opts.onStep?.("resume-v2-prompt", "active");
+      await opts.onStep?.("resume-v2-prompt", "done");
+      await opts.onStep?.("resume-v2-llm", "active");
       const v2 = await generateResumeV2WithRegen({
         prompt: promptTemplate,
         master: opts.master,
@@ -296,6 +300,9 @@ export async function tailorResume(opts: {
         maxAttempts: 3,
         candidateName: opts.candidateName,
         email: opts.email,
+        onPhase: async (phase, status) => {
+          await opts.onStep?.(phase, status);
+        },
       });
       // Accept any substantial pack from v2
       if (v2.text && v2.text.length > 200 && v2.pack.projects.length > 0) {
@@ -337,7 +344,8 @@ export async function tailorResume(opts: {
         } catch {
           /* ignore usage log */
         }
-        await opts.onStep?.("resume-v2", "done");
+        await opts.onStep?.("resume-v2-llm", "done");
+        await opts.onStep?.("resume-v2-schema", "done");
         await opts.onStep?.("resume-v2-score", "done");
         await opts.onStep?.("resume-v2-done", "done");
 
