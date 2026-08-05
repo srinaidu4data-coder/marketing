@@ -50,8 +50,12 @@ export default async function PromptPage() {
         <section className="space-y-3 rounded-lg border p-4">
           <h2 className="font-medium">Test Mode</h2>
           <p className="text-sm text-slate-500">
-            Run the active progressive tailor against sample JD + master. Results appear below
-            (ATS score + full resume text). This marks the version as tested.
+            Run Test generates four packs for comparison:{" "}
+            <code className="text-xs">ai-tailor → progressive-rules</code>,{" "}
+            <code className="text-xs">progressive-rules → ai-tailor</code>,{" "}
+            <code className="text-xs">progressive-rules</code> only, and{" "}
+            <code className="text-xs">ai-tailor</code> only. Results fill tabs below
+            (ATS + Psych + full resume). Marks the version as tested.
           </p>
           <PromptTestForm versionId={active.id} />
         </section>
