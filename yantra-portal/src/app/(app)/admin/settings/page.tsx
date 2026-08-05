@@ -133,7 +133,7 @@ OPENAI_MODEL=gpt-4o-mini
 
 # Claude (Anthropic) — https://console.anthropic.com/settings/keys
 ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-sonnet-4-20250514
+ANTHROPIC_MODEL=claude-sonnet-4-6
 
 # Optional: force provider (overrides Admin UI)
 # LLM_PROVIDER=anthropic

@@ -15,6 +15,50 @@ export type LlmProviderConfig = {
   reason?: string;
 };
 
+/** Default Claude model — keep on an Active Anthropic ID (not retired). */
+export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6";
+
+/**
+ * Retired / invalid Claude model IDs → recommended Active replacements.
+ * Anthropic returns HTTP 404 not_found for retired models (e.g. Sonnet 4, June 2026).
+ * @see https://platform.claude.com/docs/en/about-claude/model-deprecations
+ */
+export const ANTHROPIC_MODEL_REPLACEMENTS: Record<string, string> = {
+  "claude-sonnet-4-20250514": "claude-sonnet-4-6",
+  "claude-opus-4-20250514": "claude-opus-4-8",
+  "claude-3-7-sonnet-20250219": "claude-sonnet-4-6",
+  "claude-3-5-sonnet-20241022": "claude-sonnet-4-6",
+  "claude-3-5-sonnet-20240620": "claude-sonnet-4-6",
+  "claude-3-sonnet-20240229": "claude-sonnet-4-6",
+  "claude-3-5-haiku-20241022": "claude-haiku-4-5-20251001",
+  "claude-3-haiku-20240307": "claude-haiku-4-5-20251001",
+  "claude-2.0": "claude-sonnet-4-6",
+  "claude-2.1": "claude-sonnet-4-6",
+  "claude-instant-1.2": "claude-haiku-4-5-20251001",
+};
+
+/** Fallback chain when primary model returns 404 / not_found */
+export const ANTHROPIC_MODEL_FALLBACKS = [
+  "claude-sonnet-4-6",
+  "claude-sonnet-5",
+  "claude-sonnet-4-5-20250929",
+  "claude-haiku-4-5-20251001",
+] as const;
+
+/** Map retired model IDs (and common aliases) to Active IDs. */
+export function normalizeAnthropicModel(model: string | null | undefined): string {
+  const raw = (model || "").trim();
+  if (!raw) return DEFAULT_ANTHROPIC_MODEL;
+  const key = raw.toLowerCase();
+  if (ANTHROPIC_MODEL_REPLACEMENTS[key]) {
+    return ANTHROPIC_MODEL_REPLACEMENTS[key]!;
+  }
+  // Loose aliases
+  if (key === "claude-sonnet-4" || key === "sonnet-4") return "claude-sonnet-4-6";
+  if (key === "claude-opus-4" || key === "opus-4") return "claude-opus-4-8";
+  return raw;
+}
+
 export type ActiveLlmConfig = LlmProviderConfig & {
   /** Admin-selected provider (may differ from env-only fallback) */
   selectedProvider: LlmProvider;
@@ -103,11 +147,11 @@ export function getAnthropicConfig(): LlmProviderConfig {
   )
     .trim()
     .replace(/\/$/, "");
-  const model = (
+  const model = normalizeAnthropicModel(
     process.env.ANTHROPIC_MODEL ||
-    process.env.CLAUDE_MODEL ||
-    "claude-sonnet-4-20250514"
-  ).trim();
+      process.env.CLAUDE_MODEL ||
+      DEFAULT_ANTHROPIC_MODEL
+  );
 
   if (!apiKey) {
     return {
@@ -175,7 +219,16 @@ export function buildActiveLlmConfig(opts: {
 
   const override = (opts.modelOverride || "").trim();
   if (override) {
-    active = { ...active, model: override };
+    active = {
+      ...active,
+      model:
+        selected === "anthropic"
+          ? normalizeAnthropicModel(override)
+          : override,
+    };
+  } else if (selected === "anthropic") {
+    // Ensure env/default path also remaps retired IDs (already done in getAnthropicConfig)
+    active = { ...active, model: normalizeAnthropicModel(active.model) };
   }
 
   // If selected provider has no key, surface clear reason

@@ -6,7 +6,9 @@
 import {
   type LlmProvider,
   type LlmProviderConfig,
+  ANTHROPIC_MODEL_FALLBACKS,
   getLlmConfigForProvider,
+  normalizeAnthropicModel,
 } from "./llm-config";
 
 export type LlmChatJsonResult = {
@@ -81,9 +83,34 @@ async function chatOpenAiJson(
   };
 }
 
-async function chatAnthropicJson(
+function anthropicErrorSummary(status: number, body: string): string {
+  try {
+    const j = JSON.parse(body) as {
+      error?: { type?: string; message?: string };
+      type?: string;
+    };
+    const msg = j?.error?.message || j?.error?.type;
+    if (msg) return `Anthropic HTTP ${status}: ${msg}`;
+  } catch {
+    /* keep truncated body */
+  }
+  return `Anthropic HTTP ${status}: ${body.slice(0, 200)}`;
+}
+
+function isAnthropicModelNotFound(status: number, body: string): boolean {
+  if (status === 404) return true;
+  const lower = (body || "").toLowerCase();
+  return (
+    lower.includes("not_found") ||
+    lower.includes("model:") ||
+    /model .* (not found|does not exist|retired)/i.test(body || "")
+  );
+}
+
+async function chatAnthropicJsonOnce(
   cfg: LlmProviderConfig,
-  opts: { system: string; user: string; temperature?: number }
+  opts: { system: string; user: string; temperature?: number },
+  model: string
 ): Promise<LlmChatJsonResult> {
   const base = cfg.baseUrl.replace(/\/$/, "");
   const url = base.endsWith("/v1")
@@ -103,7 +130,7 @@ async function chatAnthropicJson(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: cfg.model,
+      model,
       max_tokens: Number(process.env.ANTHROPIC_MAX_TOKENS || 8192),
       temperature: opts.temperature ?? 0.35,
       system,
@@ -119,7 +146,15 @@ async function chatAnthropicJson(
   });
   if (!res.ok) {
     const t = await res.text().catch(() => "");
-    throw new Error(`Anthropic HTTP ${res.status}: ${t.slice(0, 400)}`);
+    const err = new Error(anthropicErrorSummary(res.status, t)) as Error & {
+      status?: number;
+      body?: string;
+      modelNotFound?: boolean;
+    };
+    err.status = res.status;
+    err.body = t;
+    err.modelNotFound = isAnthropicModelNotFound(res.status, t);
+    throw err;
   }
   const data = (await res.json()) as {
     content?: { type?: string; text?: string }[];
@@ -137,9 +172,35 @@ async function chatAnthropicJson(
     raw: stripCodeFence(raw),
     tokensIn: data.usage?.input_tokens || Math.ceil(opts.user.length / 4),
     tokensOut: data.usage?.output_tokens || Math.ceil(raw.length / 4),
-    model: data.model || cfg.model,
+    model: data.model || model,
     provider: "anthropic",
   };
+}
+
+async function chatAnthropicJson(
+  cfg: LlmProviderConfig,
+  opts: { system: string; user: string; temperature?: number }
+): Promise<LlmChatJsonResult> {
+  const primary = normalizeAnthropicModel(cfg.model);
+  const candidates = [
+    primary,
+    ...ANTHROPIC_MODEL_FALLBACKS.filter((m) => m !== primary),
+  ];
+
+  let lastErr: Error | null = null;
+  for (let i = 0; i < candidates.length; i++) {
+    const model = candidates[i]!;
+    try {
+      return await chatAnthropicJsonOnce(cfg, opts, model);
+    } catch (e) {
+      const err = e as Error & { modelNotFound?: boolean; status?: number };
+      lastErr = err instanceof Error ? err : new Error(String(e));
+      // Only walk the fallback chain on model-not-found (retired / wrong ID)
+      if (!err.modelNotFound) throw lastErr;
+      // continue to next candidate
+    }
+  }
+  throw lastErr || new Error("Anthropic: no working model in fallback chain");
 }
 
 /**
@@ -172,7 +233,11 @@ export async function llmChatJsonForProvider(
 ): Promise<LlmChatJsonResult> {
   let cfg = getLlmConfigForProvider(provider);
   if (opts.modelOverride?.trim()) {
-    cfg = { ...cfg, model: opts.modelOverride.trim() };
+    const m =
+      provider === "anthropic"
+        ? normalizeAnthropicModel(opts.modelOverride)
+        : opts.modelOverride.trim();
+    cfg = { ...cfg, model: m };
   }
   return llmChatJson({ ...opts, config: cfg });
 }

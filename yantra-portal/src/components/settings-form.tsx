@@ -180,8 +180,9 @@ export function SystemSettingsForm({
           <p className="text-xs text-slate-500">
             Examples: <code className="rounded bg-white px-1">gpt-4o-mini</code>,{" "}
             <code className="rounded bg-white px-1">gpt-4o</code>,{" "}
-            <code className="rounded bg-white px-1">claude-sonnet-4-20250514</code>,{" "}
-            <code className="rounded bg-white px-1">claude-3-5-haiku-latest</code>
+            <code className="rounded bg-white px-1">claude-sonnet-4-6</code>,{" "}
+            <code className="rounded bg-white px-1">claude-sonnet-5</code>,{" "}
+            <code className="rounded bg-white px-1">claude-haiku-4-5-20251001</code>
           </p>
         </div>
       </fieldset>

@@ -482,13 +482,29 @@ export function PromptTestForm({ versionId }: { versionId: string }) {
                 </span>
               </div>
               {active.result.enginesTried?.length ? (
-                <p className="text-[11px] text-[#86868b]">
-                  Tried:{" "}
-                  {active.result.enginesTried
+                <p className="text-[11px] text-[#86868b]" title={
+                  active.result.enginesTried
                     .map(
                       (e) =>
-                        `${e.engine}${e.ok ? "✓" : "✗"}${e.error ? ` (${e.error.slice(0, 40)})` : ""}`
+                        `${e.engine}: ${e.ok ? "ok" : e.error || "fail"}`
                     )
+                    .join(" | ")
+                }>
+                  Tried:{" "}
+                  {active.result.enginesTried
+                    .map((e) => {
+                      const mark = e.ok ? "✓" : "✗";
+                      if (!e.error) return `${e.engine}${mark}`;
+                      // Keep path short — full detail on hover
+                      let err = e.error.replace(/\s+/g, " ").trim();
+                      // Prefer "Anthropic HTTP 404: model not found" over raw JSON
+                      err = err.replace(
+                        /Anthropic HTTP (\d+):\s*\{[^}]*"message"\s*:\s*"([^"]+)"[^}]*\}.*/i,
+                        "Anthropic HTTP $1: $2"
+                      );
+                      if (err.length > 48) err = `${err.slice(0, 45)}…`;
+                      return `${e.engine}${mark} (${err})`;
+                    })
                     .join(" → ")}
                 </p>
               ) : null}
