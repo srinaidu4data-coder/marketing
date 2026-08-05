@@ -158,7 +158,7 @@ function scrubEnvironmentLine(line: string, jd: string, master: string): string 
     return line;
   }
   // Tools-only first pass (kills "facilitating workshops", truncated titles)
-  let cleaned = scrubEnvironmentLineText(line, { max: 10 });
+  const cleaned = scrubEnvironmentLineText(line, { max: 10 });
   if (!cleaned) {
     return isAttpJd(jd)
       ? "Environment: SAP ATTP · EPCIS · GS1"
