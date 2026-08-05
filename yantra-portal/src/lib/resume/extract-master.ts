@@ -6,6 +6,10 @@
  */
 
 import mammoth from "mammoth";
+import { sanitizePostgresText } from "@/lib/text-sanitize";
+
+/** Re-export for callers that import sanitization from extract-master. */
+export { sanitizePostgresText } from "@/lib/text-sanitize";
 
 export type ExtractMasterResult = {
   text: string;
@@ -13,16 +17,6 @@ export type ExtractMasterResult = {
   format: "txt" | "docx" | "pdf" | "doc" | "unknown";
   warning?: string;
 };
-
-/**
- * Postgres text/json cannot store U+0000. PDF/DOCX extractors and binary
- * mis-reads sometimes leave NULs in strings; strip them before any DB write.
- */
-export function sanitizePostgresText(input: string): string {
-  if (!input) return input;
-  // Remove NUL and other C0 controls except tab/LF/CR
-  return input.replace(/\u0000/g, "").replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F]/g, "");
-}
 
 function detectFormat(fileName: string, buf: Buffer): ExtractMasterResult["format"] {
   const lower = fileName.toLowerCase();

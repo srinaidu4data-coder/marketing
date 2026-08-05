@@ -10,6 +10,7 @@ import type { ProjectBlock } from "./progressive-tailor";
 import type { StructuredResume } from "./templates";
 import { getActiveLlmConfig } from "@/lib/system-settings";
 import { llmChatJson } from "./llm-chat";
+// getActiveLlmConfig used by refineProjectsWithLlm only
 
 export type LlmRefineInput = {
   jobTitle: string;
@@ -114,8 +115,10 @@ export type StructuredLlmInput = {
 };
 
 /**
- * Fallback: rewrite experience lines in an already-built StructuredResume
- * when project blocks are not available to the caller.
+ * @deprecated Prefer `refineProjectsWithLlm` with structured project blocks.
+ * This entry point is intentionally a no-op pass-through for API stability:
+ * experience rewriting is owned by the project-block path, not free-form section lines.
+ * Do not reintroduce a second LLM rewrite here without characterization tests.
  */
 export async function refineStructuredExperienceWithLlm(
   input: StructuredLlmInput
@@ -125,24 +128,22 @@ export async function refineStructuredExperienceWithLlm(
   text?: string;
   error?: string;
 }> {
-  const cfg = await getActiveLlmConfig();
-  if (!cfg.configured) {
-    return { usedLlm: false, structured: input.structured };
-  }
-
-  const expIdx = input.structured.sections.findIndex((s) =>
+  // Preserve signature + structured identity; never mutate without a tested path.
+  const hasExp = input.structured.sections.some((s) =>
     /experience|engagement|deep-dive|leadership|case|chapter|portfolio/i.test(
       s.heading
     )
   );
-  if (expIdx < 0) {
+  if (!hasExp) {
     return {
       usedLlm: false,
       structured: input.structured,
       error: "no experience section",
     };
   }
-
-  // Keep legacy path simple: no heavy re-parse; rely on project refine when available
-  return { usedLlm: false, structured: input.structured, error: "structured refine uses project path" };
+  return {
+    usedLlm: false,
+    structured: input.structured,
+    error: "structured refine uses project path",
+  };
 }

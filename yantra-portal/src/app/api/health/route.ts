@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import {
   getAnthropicConfig,
   getOpenAiConfig,
-} from "@/lib/resume/openai-config";
+} from "@/lib/resume/llm-config";
 import { getActiveLlmConfig } from "@/lib/system-settings";
 
 export async function GET() {

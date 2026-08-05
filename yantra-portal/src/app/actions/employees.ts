@@ -5,20 +5,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 import { audit } from "@/lib/audit";
-
-function normalizeEmail(email: string) {
-  return email.toLowerCase().trim();
-}
-
-/** Keep digits, +, spaces, dashes, parens — strip junk. Max 32 chars. */
-function normalizePhone(raw: string): string {
-  const s = String(raw || "")
-    .trim()
-    .replace(/[^\d+()\-.\s]/g, "")
-    .replace(/\s+/g, " ")
-    .slice(0, 32);
-  return s;
-}
+import { normalizeEmail, normalizePhone } from "@/lib/text-sanitize";
 
 export type EmployeeActionResult = { ok: true } | { ok: false; error: string };
 
