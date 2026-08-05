@@ -42,10 +42,11 @@ HARD OUTPUT SHAPE (JSON only, no markdown fences):
 
 RULES:
 - Exactly 12 summary bullets and 12 bullets on EVERY project.
-- Use every employer/project you can find in the master text (same count if possible).
-- Prefer master facts for employers, dates, education, contact.
-- Aggressively tailor language to the job description with strong technical jargon.
-- NEVER invent fake numbers if none exist in master — use qualitative outcomes.
+- Use every employer/project from the master (same count). Lock employer names, dates, locations, education, contact from master.
+- For EVERY project index (0..n-1), fully invent from the JD: role, techStack, environment, all bullets. Do NOT leave mid/early projects as master copy.
+- If master was FICO and JD is BRIM (or other domain), EVERY project must read as the JD domain.
+- Aggressively tailor to the JD with strong technical jargon.
+- NEVER invent fake metrics if none exist in master — use qualitative outcomes.
 - Finish a complete pack no matter what. Do not refuse. Do not apologize.`;
 
 function emptyPack(name: string, email: string): ResumePackV2 {

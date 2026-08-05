@@ -66,10 +66,16 @@ function buildUserMessage(opts: {
     opts.jd.trim(),
     "",
     "=== HARD LOCKS ONLY ===",
-    "- header.name: exact (contact/master)",
-    "- projects[]: one per MASTER employer/engagement — never drop or invent employers",
-    "- employerOrClient + duration: exact from MASTER for each engagement",
-    "- Everything else is FREE craft (bullet counts, roles, skills shape, stack/env, wording)",
+    "- header.name / phone / email / linkedin: from master/contact",
+    "- projects[]: one per MASTER employer — never drop or invent employers",
+    "- employerOrClient + duration + location: exact from MASTER for each engagement",
+    "- education: from MASTER only",
+    "",
+    "=== JD REWRITE — EVERY PROJECT (MANDATORY) ===",
+    "- For projects[0], projects[1], projects[2], … ALL indices: fully regenerate role, techStack, environment, and ALL bullets from the JD",
+    "- FORBIDDEN: only rewriting the first/recent project and leaving mid/early projects as master copy",
+    "- FORBIDDEN: keeping master FICO/RTR/tools face on any project when JD is a different domain (e.g. BRIM)",
+    "- Summary + techSkills: fully JD-driven invent",
     "- Return JSON only per Bible contract",
   ];
   if (opts.contactHint?.name || opts.contactHint?.email) {
@@ -446,7 +452,7 @@ export async function generateResumeV2WithRegen(opts: {
     }
     if (!r.ok && r.precheckErrors.length) return r;
     priorJson = JSON.stringify(r.pack);
-    feedback = `Attempt ${i + 1} scored ATS ${r.ats.score}/100 (target ≥${target}). Missing keywords: ${(r.ats.missingKeywords || []).slice(0, 15).join(", ")}. Warnings: ${(r.ats.warnings || []).slice(0, 5).join("; ")}. Strengthen JD language in summary, skills, and recent project stack/environment/bullets. Free bullet counts and titles. LOCKS: same name, same employers, same dates — never invent or drop employers.`;
+    feedback = `Attempt ${i + 1} scored ATS ${r.ats.score}/100 (target ≥${target}). Missing keywords: ${(r.ats.missingKeywords || []).slice(0, 15).join(", ")}. Strengthen JD language in summary, skills, AND every project index (not only projects[0]): rewrite role, techStack, environment, and all bullets for projects[0..n-1] to the JD domain. FORBIDDEN: leaving mid/early projects as master FICO/copy while only recent is JD. LOCKS: name, employers, dates, location, education only.`;
   }
 
   if (best) {
