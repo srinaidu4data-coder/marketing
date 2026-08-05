@@ -1,8 +1,9 @@
 /**
- * Resume tailor — production entrypoint with admin-sequenced engines.
+ * Resume tailor — production entrypoint.
  *
- * Default sequence: ai-tailor → progressive-rules (backup).
- * Admin Console → Settings → Resume engine sequence.
+ * Default (v2): prompt-only path (ACTIVE prompt → LLM → pack → ATS/Psych).
+ * Legacy multi-engine (ai-tailor / progressive-rules) when RESUME_ENGINE_V2=0
+ * or opts.engineSequence is explicitly provided for tests.
  */
 
 import { prisma } from "./db";
@@ -15,6 +16,10 @@ import {
   getResumeEngineSequence,
   type ResumeEngineId,
 } from "./system-settings";
+import {
+  generateResumeV2WithRegen,
+  BIBLE_PROMPT,
+} from "./resume-v2";
 import type { AtsResult } from "./resume/ats-scorer";
 import type { PsychResult } from "./resume/psych-scorer";
 import type { StructuredResume } from "./resume/templates";
@@ -221,6 +226,29 @@ function finalizePack(
   };
 }
 
+function useResumeV2(opts: {
+  engineSequence?: ResumeEngineId[];
+}): boolean {
+  if (process.env.RESUME_ENGINE_V2 === "0") return false;
+  // Explicit legacy sequence for prompt-matrix engine tabs
+  if (opts.engineSequence?.length) {
+    const onlyLegacy = opts.engineSequence.every(
+      (e) => e === "ai-tailor" || e === "progressive-rules"
+    );
+    // Matrix tests that pass sequence intentionally exercise legacy path
+    if (onlyLegacy && process.env.RESUME_ENGINE_V2 !== "1") {
+      // Prefer v2 unless forced off — still allow legacy when sequence is rules-only only
+      if (
+        opts.engineSequence.length === 1 &&
+        opts.engineSequence[0] === "progressive-rules"
+      ) {
+        return false;
+      }
+    }
+  }
+  return process.env.RESUME_ENGINE_V2 !== "0";
+}
+
 export async function tailorResume(opts: {
   master: string;
   jd: string;
@@ -251,9 +279,80 @@ export async function tailorResume(opts: {
     if (active && (active.content || "").trim().length > 400) {
       promptTemplate = active.content;
       promptId = active.id;
+    } else if ((BIBLE_PROMPT || "").trim().length > 400) {
+      // Seed-quality Bible when DB has no usable ACTIVE prompt
+      promptTemplate = BIBLE_PROMPT;
     }
   } catch {
-    // Offline / misconfigured DB — still allow generation with DEFAULT_PROMPT
+    promptTemplate = BIBLE_PROMPT || DEFAULT_PROMPT;
+  }
+
+  // ── Prompt-only v2 path (default) ─────────────────────────────────
+  if (useResumeV2(opts) && !(opts.engineSequence?.length === 1 && opts.engineSequence[0] === "progressive-rules")) {
+    try {
+      await opts.onStep?.("resume-v2", "active");
+      const v2 = await generateResumeV2WithRegen({
+        prompt: promptTemplate,
+        master: opts.master,
+        jd: opts.jd,
+        promptVersionId: promptId,
+        llmProvider: opts.llmProvider || null,
+        targetAts: 95,
+        maxAttempts: 3,
+      });
+      if (v2.ok && v2.text.length > 200) {
+        const enginesTried: TailorResumeResult["enginesTried"] = [
+          {
+            engine: "ai-tailor",
+            ok: true,
+            error: v2.attempts > 1 ? `resume-v2 · ${v2.attempts} attempts` : "resume-v2",
+          },
+        ];
+        try {
+          const llm = await getActiveLlmConfig(opts.llmProvider || null);
+          await prisma.apiUsageLog.create({
+            data: {
+              employeeId: opts.employeeId || null,
+              operation: opts.isTestMode ? "prompt_test_v2" : "resume_tailor_v2",
+              tokensIn: v2.tokensIn,
+              tokensOut: v2.tokensOut,
+              costUsd: estimateLlmCostUsd(
+                v2.tokensIn,
+                v2.tokensOut,
+                v2.model,
+                (v2.provider as "openai" | "anthropic") || llm.provider
+              ),
+              isTestMode: !!opts.isTestMode,
+            },
+          });
+        } catch {
+          /* ignore usage log */
+        }
+        await opts.onStep?.("resume-v2", "done");
+        return {
+          structured: v2.structured,
+          text: v2.text,
+          ats: v2.ats,
+          psych: v2.psych,
+          usedLlm: true,
+          model: v2.model || "resume-v2",
+          engine: "ai-tailor",
+          enginesTried,
+          passes: v2.attempts,
+          tokensIn: v2.tokensIn,
+          tokensOut: v2.tokensOut,
+          best: v2.ats.score === 100 && v2.psych.score === 100,
+          matchGate: {
+            pass: v2.ats.score >= 95,
+            reasons: v2.issues.map((i) => i.detail),
+          },
+        };
+      }
+      await opts.onStep?.("resume-v2", "error");
+      // fall through to legacy if v2 failed
+    } catch {
+      await opts.onStep?.("resume-v2", "error");
+    }
   }
 
   let sequence: ResumeEngineId[] =

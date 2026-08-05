@@ -54,6 +54,7 @@ const adminGroups: NavGroup[] = [
     label: "Content",
     items: [
       { href: "/admin/prompt", label: "Prompt", icon: MessageSquareText },
+      { href: "/admin/prompt-lab", label: "Prompt Lab", icon: MessageSquareText },
       { href: "/admin/email-template", label: "Email", icon: Mail },
       { href: "/admin/email-activity", label: "Email log", icon: ListOrdered },
     ],

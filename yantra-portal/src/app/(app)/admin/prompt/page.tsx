@@ -19,8 +19,18 @@ export default async function PromptPage() {
     <div className="space-y-8 p-2 lg:p-4">
       <PageHeader
         title="Prompt Template"
-        description="This ACTIVE prompt is sent to the selected LLM (OpenAI or Claude) with each master resume + JD. Configure provider under Admin → Settings. Without the matching API key, generation fails."
-        actions={active ? <Badge status="ACTIVE">Active</Badge> : null}
+        description="Prompt is the Bible — sole writing source for resume-v2. ACTIVE text is the system message; master + JD are the user message. Test chambers under Admin → Prompt Lab."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {active ? <Badge status="ACTIVE">Active</Badge> : null}
+            <a
+              href="/admin/prompt-lab"
+              className="text-sm font-medium text-sky-700 underline underline-offset-2"
+            >
+              Open Prompt Lab →
+            </a>
+          </div>
+        }
       />
 
       <section className="space-y-2 rounded-lg border p-4">
