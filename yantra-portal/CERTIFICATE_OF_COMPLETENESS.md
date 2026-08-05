@@ -2,7 +2,7 @@
 
 **Document ID:** YANTRA-CLONE-CERT-2026-07-29  
 **Issued:** 2026-07-29  
-**Subject system (source of truth):** https://yantra-mvp-gray.vercel.app/  
+**Subject system (source of truth):** https://roleforge-tau.vercel.app/  
 **Deliverable (clone):** `yantra-portal/` local Next.js application  
 **Issuer:** Automated reverse-engineering & reconstruction pipeline (Grok Build / xAI)  
 **Workspace:** `C:\Users\King2\Desktop\projects\marketing\yantra-portal`

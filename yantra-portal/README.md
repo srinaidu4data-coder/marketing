@@ -1,7 +1,7 @@
-# YANTRA — Marketing Co-Pilot (Full Functional Clone)
+# Role Forge — Marketing Co-Pilot
 
-Pixel-faithful **functional clone** of the live portal  
-https://yantra-mvp-gray.vercel.app/
+Production (Vercel project **roleforge**):  
+https://roleforge-tau.vercel.app
 
 AI-powered recruitment operations for SAP CTC / C2C staffing (SR SOFT LLC).
 

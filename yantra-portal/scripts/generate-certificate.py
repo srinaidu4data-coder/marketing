@@ -79,7 +79,7 @@ story.append(Spacer(1, 10))
 story.append(
     Paragraph(
         "This certifies that a <b>full functional clone</b> of the live YANTRA Marketing Co-Pilot portal "
-        "(https://yantra-mvp-gray.vercel.app/) has been reverse-engineered and reconstructed without omitting "
+        "(https://roleforge-tau.vercel.app/) has been reverse-engineered and reconstructed without omitting "
         "any discovered product functionality, as verified by live session capture, route enumeration, API "
         "contract observation, and automated parity smoke tests.",
         body,
@@ -87,7 +87,7 @@ story.append(
 )
 story.append(Paragraph("1. Provenance", h))
 rows = [
-    [Paragraph("<b>Source of truth</b>", body), Paragraph("https://yantra-mvp-gray.vercel.app/", body)],
+    [Paragraph("<b>Source of truth</b>", body), Paragraph("https://roleforge-tau.vercel.app/", body)],
     [Paragraph("<b>Deliverable</b>", body), Paragraph("yantra-portal/ (Next.js 14 App Router)", body)],
     [Paragraph("<b>Issued</b>", body), Paragraph("2026-07-29", body)],
     [

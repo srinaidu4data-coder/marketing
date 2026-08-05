@@ -1,7 +1,7 @@
 # Granular Live vs Clone Parity Report
 
 **Date:** 2026-07-29  
-**Source:** https://yantra-mvp-gray.vercel.app/  
+**Source:** https://roleforge-tau.vercel.app/  
 **Clone:** http://localhost:3000  
 **Automated proof:** `node scripts/granular-parity.mjs` → **30/30 PASS**
 
