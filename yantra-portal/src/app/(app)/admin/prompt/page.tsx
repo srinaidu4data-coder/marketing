@@ -50,12 +50,16 @@ export default async function PromptPage() {
         <section className="space-y-3 rounded-lg border p-4">
           <h2 className="font-medium">Test Mode</h2>
           <p className="text-sm text-slate-500">
-            Run Test generates four packs for comparison:{" "}
-            <code className="text-xs">ai-tailor → progressive-rules</code>,{" "}
-            <code className="text-xs">progressive-rules → ai-tailor</code>,{" "}
-            <code className="text-xs">progressive-rules</code> only, and{" "}
-            <code className="text-xs">ai-tailor</code> only. Results fill tabs below
-            (ATS + Psych + full resume). Marks the version as tested.
+            Run Test generates six packs: four engine orders (
+            <code className="text-xs">AI→Rules</code>,{" "}
+            <code className="text-xs">Rules→AI</code>,{" "}
+            <code className="text-xs">Rules only</code>,{" "}
+            <code className="text-xs">AI only</code>) plus{" "}
+            <code className="text-xs">OpenAI</code> vs{" "}
+            <code className="text-xs">Claude</code> forced ai-tailor tabs. Needs both{" "}
+            <code className="text-xs">OPENAI_API_KEY</code> and{" "}
+            <code className="text-xs">ANTHROPIC_API_KEY</code> for the LLM pair.
+            Marks the version as tested.
           </p>
           <PromptTestForm versionId={active.id} />
         </section>

@@ -158,18 +158,25 @@ export async function getSystemConfig(): Promise<SystemConfig> {
 /**
  * Resolve active LLM (OpenAI or Claude) from admin selection + env keys.
  * Env LLM_PROVIDER overrides admin when set.
+ * Optional forceProvider wins for tests (OpenAI vs Claude matrix tabs).
  */
-export async function getActiveLlmConfig(): Promise<ActiveLlmConfig> {
+export async function getActiveLlmConfig(
+  forceProvider?: LlmProvider | null
+): Promise<ActiveLlmConfig> {
   try {
     const cfg = await getSystemConfig();
-    const selected = resolveProviderSelection(cfg.llmProvider);
+    const selected = forceProvider
+      ? forceProvider
+      : resolveProviderSelection(cfg.llmProvider);
+    // When forcing a provider for tests, ignore model override for the other vendor
+    const modelOverride = forceProvider ? "" : cfg.llmModelOverride;
     return buildActiveLlmConfig({
       selectedProvider: selected,
-      modelOverride: cfg.llmModelOverride,
+      modelOverride,
     });
   } catch {
     return buildActiveLlmConfig({
-      selectedProvider: resolveProviderSelection("openai"),
+      selectedProvider: forceProvider || resolveProviderSelection("openai"),
       modelOverride: "",
     });
   }

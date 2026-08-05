@@ -77,7 +77,7 @@ export function PromptTestForm({ versionId }: { versionId: string }) {
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    setProgress("Starting 4 engine sequences…");
+    setProgress("Starting 6 comparison sequences…");
     setTabs(
       PROMPT_TEST_SEQUENCES.map((def) => ({
         def,
@@ -89,7 +89,9 @@ export function PromptTestForm({ versionId }: { versionId: string }) {
     startTransition(async () => {
       try {
         // Sequential server matrix (one sequence at a time inside action)
-        setProgress("Running matrix: AI→Rules, Rules→AI, Rules only, AI only…");
+        setProgress(
+          "Running matrix: AI→Rules · Rules→AI · Rules · AI · OpenAI · Claude…"
+        );
         const matrix = await runPromptTestMatrix(versionId, jd, master);
         if (!matrix.results.length && !matrix.ok) {
           setError(matrix.error || "All sequence tests failed");
@@ -164,10 +166,10 @@ export function PromptTestForm({ versionId }: { versionId: string }) {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" variant="outline" disabled={pending}>
-            {pending ? "Running 4 sequences…" : "Run Test"}
+            {pending ? "Running 6 sequences…" : "Run Test"}
           </Button>
           <p className="text-[12.5px] text-[#6e6e73]">
-            Runs all four engine sequences and fills the tabs below for comparison.
+            Runs six packs: four engine orders + OpenAI-only + Claude-only.
           </p>
         </div>
       </form>
@@ -186,25 +188,22 @@ export function PromptTestForm({ versionId }: { versionId: string }) {
       <div className="space-y-3">
         <div>
           <p className="text-[12px] font-semibold uppercase tracking-wide text-[#86868b]">
-            Engine sequence results
+            Engine & LLM comparison
           </p>
           <p className="text-[12.5px] text-[#6e6e73]">
-            Tab 1: <code className="text-[11px]">ai-tailor, progressive-rules</code>
-            {" · "}
-            Tab 2: <code className="text-[11px]">progressive-rules, ai-tailor</code>
-            {" · "}
-            Tab 3: <code className="text-[11px]">progressive-rules</code>
-            {" · "}
-            Tab 4: <code className="text-[11px]">ai-tailor</code>
+            Tabs 1–4: engine order · Tabs 5–6:{" "}
+            <code className="text-[11px]">OpenAI</code> vs{" "}
+            <code className="text-[11px]">Claude</code> (ai-tailor forced to each
+            provider — needs both API keys in env).
           </p>
         </div>
 
         {summary.length > 0 ? (
           <div className="overflow-x-auto rounded-xl border border-black/[0.06] bg-white">
-            <table className="w-full min-w-[520px] text-left text-[12.5px]">
+            <table className="w-full min-w-[560px] text-left text-[12.5px]">
               <thead className="border-b border-black/[0.06] bg-black/[0.02] text-[#6e6e73]">
                 <tr>
-                  <th className="px-3 py-2 font-medium">Sequence</th>
+                  <th className="px-3 py-2 font-medium">Sequence / LLM</th>
                   <th className="px-3 py-2 font-medium">Engine used</th>
                   <th className="px-3 py-2 font-medium">ATS</th>
                   <th className="px-3 py-2 font-medium">Psych</th>
@@ -351,6 +350,24 @@ export function PromptTestForm({ versionId }: { versionId: string }) {
                 {active.result.mode ? (
                   <span className="text-[12px] text-[#6e6e73]">
                     Mode: {active.result.mode}
+                  </span>
+                ) : null}
+                {active.result.llmProvider ? (
+                  <span className="text-[12px] text-[#6e6e73]">
+                    LLM:{" "}
+                    <code className="rounded bg-slate-100 px-1 text-[11px]">
+                      {active.result.llmProvider}
+                      {active.result.llmModel
+                        ? ` · ${active.result.llmModel}`
+                        : ""}
+                    </code>
+                  </span>
+                ) : active.result.llmModel ? (
+                  <span className="text-[12px] text-[#6e6e73]">
+                    Model:{" "}
+                    <code className="rounded bg-slate-100 px-1 text-[11px]">
+                      {active.result.llmModel}
+                    </code>
                   </span>
                 ) : null}
                 <span className="text-[12px] text-[#6e6e73]">

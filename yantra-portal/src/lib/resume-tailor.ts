@@ -238,6 +238,8 @@ export async function tailorResume(opts: {
   ) => void | Promise<void>;
   /** Override admin sequence for tests */
   engineSequence?: ResumeEngineId[];
+  /** Force OpenAI or Claude for tests (prompt matrix tabs) */
+  llmProvider?: import("./resume/llm-config").LlmProvider | null;
 }): Promise<TailorResumeResult> {
   let promptId = "default";
   let promptTemplate = DEFAULT_PROMPT;
@@ -272,12 +274,14 @@ export async function tailorResume(opts: {
   for (const engine of sequence) {
     try {
       if (engine === "ai-tailor") {
-        const llm = await getActiveLlmConfig();
+        const llm = await getActiveLlmConfig(opts.llmProvider || null);
         if (!llm.configured) {
           enginesTried.push({
             engine,
             ok: false,
-            error: llm.reason || "LLM API key not configured for selected provider",
+            error:
+              llm.reason ||
+              `${llm.label || "LLM"} API key not configured for this provider`,
           });
           continue;
         }
@@ -291,6 +295,7 @@ export async function tailorResume(opts: {
           email: opts.email,
           masterProfileJson: opts.masterProfileJson,
           onStep: opts.onStep,
+          llmProvider: opts.llmProvider || null,
         });
 
         const opBase =

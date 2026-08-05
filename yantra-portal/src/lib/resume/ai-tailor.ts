@@ -92,6 +92,8 @@ export type AiTailorInput = {
   masterProfileJson?: string | null;
   /** Optional live UI progress (green checks) */
   onStep?: (stepId: string, status: "active" | "done" | "error") => void | Promise<void>;
+  /** Force OpenAI or Claude (prompt test matrix) */
+  llmProvider?: import("./llm-config").LlmProvider | null;
 };
 
 export type AiTailorResult = {
@@ -443,7 +445,7 @@ function scrubContradictionsInStructured(
 export async function generateResumeWithOpenAi(
   input: AiTailorInput
 ): Promise<AiTailorResult> {
-  const active = await getActiveLlmConfig();
+  const active = await getActiveLlmConfig(input.llmProvider || null);
   const cfg: LlmProviderConfig = {
     provider: active.provider,
     configured: active.configured,

@@ -53,6 +53,8 @@ export type PromptTestResultOk = {
   sequenceLabel: string;
   sequence: ResumeEngineId[];
   engineUsed: string;
+  llmProvider?: string;
+  llmModel?: string;
   enginesTried: { engine: string; ok: boolean; error?: string }[];
   text: string;
   atsScore: number;
@@ -89,7 +91,8 @@ export async function runPromptTest(
   masterResume: string,
   engineSequence?: ResumeEngineId[],
   tabId = "custom",
-  sequenceLabel = "custom"
+  sequenceLabel = "custom",
+  llmProvider?: "openai" | "anthropic" | null
 ): Promise<PromptTestResult> {
   try {
     const admin = await requireAdmin();
@@ -141,6 +144,7 @@ export async function runPromptTest(
       layoutId: "modern_minimal",
       email: "sample@example.com",
       engineSequence: sequence,
+      llmProvider: llmProvider || null,
     });
 
     if (prev && prev.id !== versionId) {
@@ -163,7 +167,9 @@ export async function runPromptTest(
       versionId,
       tabId,
       sequence: sequence.join(","),
+      llmProvider: llmProvider || "admin-default",
       engine: result.engine,
+      model: result.model,
       chars: result.text.length,
       atsScore: result.ats.score,
     });
@@ -175,6 +181,8 @@ export async function runPromptTest(
       sequenceLabel,
       sequence,
       engineUsed: result.engine,
+      llmProvider: llmProvider || undefined,
+      llmModel: result.model,
       enginesTried: result.enginesTried,
       text: result.text,
       atsScore: result.ats.score,
@@ -198,8 +206,8 @@ export async function runPromptTest(
 }
 
 /**
- * Run all four fixed sequences for side-by-side tab comparison.
- * Sequential to avoid overloading the LLM quota.
+ * Run all fixed sequences (engine order + OpenAI vs Claude) for tab comparison.
+ * Sequential to avoid overloading LLM quota.
  */
 export async function runPromptTestMatrix(
   versionId: string,
@@ -220,7 +228,8 @@ export async function runPromptTestMatrix(
         masterResume,
         tab.sequence,
         tab.id,
-        tab.label
+        tab.label,
+        tab.llmProvider || null
       );
       results.push(one);
     }
