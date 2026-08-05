@@ -1,11 +1,12 @@
 /**
  * Role Forge system constants.
- * DEFAULT_PROMPT = Prompt Bible (v2) — sole writing source for generation.
+ * DEFAULT_PROMPT = Prompt Bible (v3) — sole writing source for generation.
+ * Locks: name · employers · project set · dates. Free craft elsewhere.
  */
 
 import { BIBLE_PROMPT } from "./resume-v2/bible-prompt";
 
-/** Mega Bible — all section rules, prechecks, honesty, ATS/psych self-checks, 12×12 contract. */
+/** Mega Bible — high-freedom craft; identity locks only. */
 export const DEFAULT_PROMPT = BIBLE_PROMPT;
 
 /**

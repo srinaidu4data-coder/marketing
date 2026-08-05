@@ -1,9 +1,14 @@
 /**
- * Fixed resume pack shape for prompt-only generation.
- * Layouts change labels/visuals only — this schema is the content contract.
+ * Resume pack shape for prompt-primary generation.
+ * Bullet counts are free (floors only). Locks: name, employers, dates — enforced in Bible.
  */
 
-export const BULLETS_PER_BLOCK = 12;
+/** Soft target for UI hints; not a hard pad target. */
+export const BULLETS_PER_BLOCK = 10;
+/** Minimum bullets before we flag thin (no generic pad invent). */
+export const MIN_SUMMARY_BULLETS = 4;
+export const MIN_PROJECT_BULLETS = 3;
+export const MAX_BULLETS_SOFT = 20;
 
 export type ResumePackV2 = {
   header: {
@@ -54,26 +59,29 @@ function asStringArray(v: unknown): string[] {
   return v.map((x) => String(x ?? "").trim()).filter(Boolean);
 }
 
-function normalizeBullets(raw: unknown, label: string): {
+function normalizeBullets(
+  raw: unknown,
+  label: string,
+  minBullets: number
+): {
   bullets: string[];
   issues: PackValidationIssue[];
 } {
   const issues: PackValidationIssue[] = [];
   let bullets = asStringArray(raw);
-  if (bullets.length !== BULLETS_PER_BLOCK) {
+  // Free count — never invent filler pads; only soft-trim extreme length
+  if (bullets.length > MAX_BULLETS_SOFT) {
+    bullets = bullets.slice(0, MAX_BULLETS_SOFT);
     issues.push({
-      code: "bullet_count",
-      detail: `${label}: expected ${BULLETS_PER_BLOCK} bullets, got ${bullets.length}`,
+      code: "bullet_trim",
+      detail: `${label}: trimmed to ${MAX_BULLETS_SOFT} bullets`,
     });
   }
-  // Pad/trim only for structural survival — content quality is prompt's job
-  while (bullets.length < BULLETS_PER_BLOCK) {
-    bullets.push(
-      `Delivered measurable outcomes aligned to engagement goals (${bullets.length + 1}/${BULLETS_PER_BLOCK}).`
-    );
-  }
-  if (bullets.length > BULLETS_PER_BLOCK) {
-    bullets = bullets.slice(0, BULLETS_PER_BLOCK);
+  if (bullets.length < minBullets) {
+    issues.push({
+      code: "bullet_count",
+      detail: `${label}: thin content (${bullets.length} bullets; prefer ≥${minBullets})`,
+    });
   }
   return { bullets, issues };
 }
@@ -111,7 +119,8 @@ export function parseAndValidatePack(raw: unknown): {
 
   const sum = normalizeBullets(
     summaryIn.bullets ?? o.summaryBullets,
-    "Professional Summary"
+    "Professional Summary",
+    MIN_SUMMARY_BULLETS
   );
   issues.push(...sum.issues);
 
@@ -147,7 +156,7 @@ export function parseAndValidatePack(raw: unknown): {
 
   const projects = projectsRaw.map((p, i) => {
     const r = (p && typeof p === "object" ? p : {}) as Record<string, unknown>;
-    const b = normalizeBullets(r.bullets, `Project ${i + 1}`);
+    const b = normalizeBullets(r.bullets, `Project ${i + 1}`, MIN_PROJECT_BULLETS);
     issues.push(...b.issues);
     const employer = String(
       r.employerOrClient || r.employer || r.client || ""

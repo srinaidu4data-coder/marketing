@@ -55,24 +55,23 @@ function buildUserMessage(opts: {
   priorJson?: string;
 }): string {
   const parts = [
-    "=== MASTER RESUME (facts only — do not invent beyond this) ===",
+    "=== MASTER RESUME (locks: name · employers · project set · dates) ===",
     opts.master.trim(),
     "",
-    "=== JOB DESCRIPTION (language + priority for tailoring) ===",
+    "=== JOB DESCRIPTION (language + priority — maximize fit) ===",
     opts.jd.trim(),
     "",
-    "=== HARD STRUCTURE RULES (must obey) ===",
-    "- professionalSummary.bullets: EXACTLY 12 strings",
-    "- every project.bullets: EXACTLY 12 strings",
-    "- projects[]: one entry per employer/engagement in MASTER (same count, never drop/invent)",
-    "- employerOrClient, location, duration: copy from MASTER as-is",
-    "- Never invent metrics/numbers not in MASTER",
+    "=== HARD LOCKS ONLY ===",
+    "- header.name: exact (contact/master)",
+    "- projects[]: one per MASTER employer/engagement — never drop or invent employers",
+    "- employerOrClient + duration: exact from MASTER for each engagement",
+    "- Everything else is FREE craft (bullet counts, roles, skills shape, stack/env, wording)",
     "- Return JSON only per Bible contract",
   ];
   if (opts.contactHint?.name || opts.contactHint?.email) {
     parts.push(
       "",
-      "=== CONTACT (use these exact values in header) ===",
+      "=== CONTACT (name locked; use these in header when present) ===",
       `name: ${opts.contactHint.name || ""}`,
       `email: ${opts.contactHint.email || ""}`,
       `phone: ${opts.contactHint.phone || ""}`,
@@ -83,7 +82,7 @@ function buildUserMessage(opts: {
   if (opts.feedback) {
     parts.push(
       "",
-      "=== REGENERATION FEEDBACK (improve pack; same honesty rules) ===",
+      "=== REGENERATION FEEDBACK (keep locks; free craft elsewhere) ===",
       opts.feedback
     );
   }
@@ -283,8 +282,9 @@ export async function generateResumeV2(opts: {
     }
   }
 
+  // Name lock: always prefer known contact name when model drifts
+  if (pre.contact.name) pack.header.name = pre.contact.name;
   // Prefer precheck contact if model blanked them
-  if (!pack.header.name && pre.contact.name) pack.header.name = pre.contact.name;
   if (!pack.header.email && pre.contact.email) pack.header.email = pre.contact.email;
   if (!pack.header.phone && pre.contact.phone) pack.header.phone = pre.contact.phone;
   if (!pack.header.linkedin && pre.contact.linkedin) {
@@ -357,7 +357,7 @@ function emptyPack(): ResumePackV2 {
       location: "",
       linkedin: "",
     },
-    professionalSummary: { bullets: Array.from({ length: 12 }, () => "") },
+    professionalSummary: { bullets: [] },
     techSkills: "",
     education: [],
     certifications: [],
@@ -406,7 +406,7 @@ export async function generateResumeV2WithRegen(opts: {
     }
     if (!r.ok && r.precheckErrors.length) return r;
     priorJson = JSON.stringify(r.pack);
-    feedback = `Attempt ${i + 1} scored ATS ${r.ats.score}/100 (target ≥${target}). Missing keywords: ${(r.ats.missingKeywords || []).slice(0, 15).join(", ")}. Warnings: ${(r.ats.warnings || []).slice(0, 5).join("; ")}. Strengthen JD language in summary, skills, and recent project stack/environment. Keep exactly 12 bullets. Never invent numbers or employers.`;
+    feedback = `Attempt ${i + 1} scored ATS ${r.ats.score}/100 (target ≥${target}). Missing keywords: ${(r.ats.missingKeywords || []).slice(0, 15).join(", ")}. Warnings: ${(r.ats.warnings || []).slice(0, 5).join("; ")}. Strengthen JD language in summary, skills, and recent project stack/environment/bullets. Free bullet counts and titles. LOCKS: same name, same employers, same dates — never invent or drop employers.`;
   }
 
   if (best) {

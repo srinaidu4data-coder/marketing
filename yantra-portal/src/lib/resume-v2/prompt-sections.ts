@@ -64,15 +64,14 @@ name/phone/email/location/linkedin: from MASTER only; empty string if missing. N
   },
   {
     id: "summary",
-    title: "Summary ×12",
+    title: "Summary (free)",
     emoji: "⚡",
-    blurb: "Exactly 12 jargon-rich professional summary bullets.",
+    blurb: "8–14 jargon-rich bullets typical — free count, primacy on JD fit.",
     color: "bg-violet-50 border-violet-300",
-    expectHint: "JSON: { bullets: string[12] }",
-    microPrompt: `Write PROFESSIONAL SUMMARY as JSON: { "bullets": [ exactly 12 strings ] }
+    expectHint: "JSON: { bullets: string[] }",
+    microPrompt: `Write PROFESSIONAL SUMMARY as JSON: { "bullets": [ 8–14 high-value strings typical ] }
 Voice: consulting imperative (Delivered/Architected…), no I/me, no name/email in bullets.
-Make bullets jargon-rich and JD-aligned; primacy: strongest fit first 3.
-NEVER invent metrics/numbers. One years claim max if MASTER supports it.`,
+Jargon-rich, JD-aligned; primacy: strongest fit first 3. Free count — quality over quota.`,
   },
   {
     id: "skills",
@@ -83,35 +82,34 @@ NEVER invent metrics/numbers. One years claim max if MASTER supports it.`,
     expectHint: "JSON techSkills (string | array | groups)",
     microPrompt: `Produce techSkills JSON only:
 { "techSkills": /* string OR string[] OR { "Core": [], "Platforms": [], "Methods": [] } */ }
-JD-first ordering, expand critical acronyms once, 12–35 high-signal items.
-No "JD keywords:" labels. Creative but honest to MASTER domain.`,
+JD-first ordering, expand critical acronyms once, dense high-signal items.
+No "JD keywords:" labels. Full freedom on format.`,
   },
   {
     id: "projects",
-    title: "Projects ×12",
+    title: "Projects (locked roster)",
     emoji: "📁",
-    blurb: "Same project count as master; each with 12 bullets + stack/env.",
+    blurb: "Same employers/dates as master; free roles, stack, env, bullet counts.",
     color: "bg-amber-50 border-amber-300",
-    expectHint: "JSON projects[] with 12 bullets each",
+    expectHint: "JSON projects[] — employers & dates locked",
     microPrompt: `Produce projects JSON only:
 { "projects": [ {
   "role": "", "employerOrClient": "", "location": "", "duration": "",
-  "techStack": "", "environment": "", "bullets": [/* exactly 12 */]
+  "techStack": "", "environment": "", "bullets": [/* free count, dense */]
 } ] }
-Count MUST match MASTER engagements. employer/location/duration as-is from MASTER.
-role/stack/env/bullets: AI JD-flavored rewrite. Exactly 12 bullets each. No invented numbers/employers.
-Reverse chronological. Progressive titles: recent = JD family; early = junior form of same family.`,
+Count MUST match MASTER engagements. employerOrClient + duration LOCKED from MASTER.
+role/stack/env/bullets: free JD craft. Tools-first stack/env. Recent denser than early.`,
   },
   {
     id: "education",
     title: "Education",
     emoji: "🎓",
-    blurb: "From master only — format cleanly, never invent degrees.",
+    blurb: "Prefer master — free formatting and order.",
     color: "bg-indigo-50 border-indigo-300",
     expectHint: "JSON education[]",
-    microPrompt: `Produce education JSON from MASTER only:
+    microPrompt: `Produce education JSON:
 { "education": [ { "school": "", "degree": "", "year": "", "raw": "" } ] }
-Never invent degrees or schools. Empty array if none in MASTER.`,
+Prefer MASTER; normalize format. Empty array if none.`,
   },
   {
     id: "certs",
