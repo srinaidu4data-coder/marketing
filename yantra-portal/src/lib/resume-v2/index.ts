@@ -19,6 +19,10 @@ export {
 } from "./generate";
 export { forceGenerateUnrestricted } from "./force-generate";
 export {
+  ensurePackShipShape,
+  ensureShipCompatibleText,
+} from "./ensure-ship-shape";
+export {
   PROMPT_LAB_SECTIONS,
   getSection,
   type PromptSection,

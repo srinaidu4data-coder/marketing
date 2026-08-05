@@ -3,7 +3,7 @@
  */
 
 const HIDDEN =
-  /prompt-only|resume-v2|legacy fallback|empty or too short|ACTIVE prompt|LLM keys|precheck|ship-ready|Anthropic HTTP|OpenAI HTTP|schema:|diag:|Job description empty|Master resume too short|not ship-ready|regenerate-until|engines failed|RESUME_ENGINE/i;
+  /prompt-only|resume-v2|legacy fallback|empty or too short|ACTIVE prompt|LLM keys|precheck|ship-ready|Anthropic HTTP|OpenAI HTTP|schema:|diag:|Job description empty|Master resume too short|not ship-ready|regenerate-until|engines failed|RESUME_ENGINE|Employer\/Client|bullets \(need|No Employer|No pack generated|thin_bullets|missing pack/i;
 
 /** Returns null if the message must not be shown in UI. */
 export function toUserSafeError(raw: string | null | undefined): string | null {

@@ -304,17 +304,22 @@ export async function tailorResume(opts: {
       if (opts.email && !v2.pack.header.email) {
         v2.pack.header.email = opts.email;
       }
-      const { renderPackText, packToStructuredResume } = await import(
+      const { packToStructuredResume } = await import(
         "./resume-v2/render-pack"
       );
-      const text =
-        v2.text && v2.text.length > 100
-          ? v2.text
-          : renderPackText(v2.pack);
-      const structured =
-        v2.structured?.sections?.length
-          ? v2.structured
-          : packToStructuredResume(v2.pack, opts.layoutId || undefined);
+      const { ensureShipCompatibleText } = await import(
+        "./resume-v2/ensure-ship-shape"
+      );
+      const shaped = ensureShipCompatibleText(
+        v2.pack,
+        masterHydrated || opts.master
+      );
+      v2.pack = shaped.pack;
+      const text = shaped.text;
+      const structured = packToStructuredResume(
+        v2.pack,
+        opts.layoutId || undefined
+      );
       structured.meta.atsScore = v2.ats.score;
       structured.meta.psychScore = v2.psych.score;
       structured.meta.jobTitle = v2.pack.header.jobTitle || structured.meta.jobTitle;

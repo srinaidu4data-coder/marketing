@@ -271,24 +271,15 @@ export function ChainPacksTable({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                  {ship?.ok ? (
+                  {ship?.ok || hasText ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11.5px] font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-500/15">
                       <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2.25} />
-                      Ready to send
-                      {ship.minBulletsSeen != null
-                        ? ` · ${ship.minBulletsSeen}+ bullets`
-                        : ""}
+                      {ship?.ok ? "Ready to send" : "Pack ready — review"}
                     </span>
                   ) : (
-                    <span
-                      className="inline-flex items-center gap-1.5 rounded-full bg-red-500/10 px-2.5 py-1 text-[11.5px] font-semibold text-red-800 ring-1 ring-inset ring-red-500/15"
-                      title={ship?.issues.map((i) => i.detail).join("; ")}
-                    >
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11.5px] font-semibold text-amber-900 ring-1 ring-inset ring-amber-500/15">
                       <XCircle className="h-3.5 w-3.5" strokeWidth={2.25} />
-                      Needs fix
-                      {ship?.issues[0]
-                        ? ` · ${ship.issues[0].detail.slice(0, 36)}`
-                        : ""}
+                      Use Retry
                     </span>
                   )}
                   <Badge status={cc.sendStatus}>

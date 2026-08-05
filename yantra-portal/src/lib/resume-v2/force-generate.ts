@@ -11,7 +11,8 @@ import {
 } from "@/lib/resume/llm-config";
 import { getActiveLlmConfig } from "@/lib/system-settings";
 import { parseAndValidatePack, type ResumePackV2 } from "./pack-schema";
-import { renderPackText, packToStructuredResume } from "./render-pack";
+import { packToStructuredResume } from "./render-pack";
+import { ensureShipCompatibleText } from "./ensure-ship-shape";
 import { scoreResume } from "@/lib/resume/ats-scorer";
 import { scorePsych } from "@/lib/resume/psych-scorer";
 import { resolveTailorMode } from "@/lib/resume/tailor-mode";
@@ -174,24 +175,9 @@ export async function forceGenerateUnrestricted(opts: {
     });
   }
 
-  // Ensure 12 bullets
-  while (pack.professionalSummary.bullets.length < 12) {
-    pack.professionalSummary.bullets.push(
-      `Aligned delivery to job priorities (${pack.professionalSummary.bullets.length + 1}/12).`
-    );
-  }
-  pack.professionalSummary.bullets = pack.professionalSummary.bullets.slice(0, 12);
-  pack.projects = pack.projects.map((p) => {
-    const b = [...(p.bullets || [])];
-    while (b.length < 12) {
-      b.push(
-        `Supported ${p.employerOrClient || "engagement"} outcomes with quality delivery (${b.length + 1}/12).`
-      );
-    }
-    return { ...p, bullets: b.slice(0, 12) };
-  });
-
-  const text = renderPackText(pack);
+  const shaped = ensureShipCompatibleText(pack, master);
+  pack = shaped.pack;
+  const text = shaped.text;
   const structured = packToStructuredResume(pack);
   const jobTitle = pack.header.jobTitle || "Consultant";
   const mode = resolveTailorMode(jd, master).mode;
