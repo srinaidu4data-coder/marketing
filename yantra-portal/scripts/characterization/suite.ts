@@ -134,4 +134,15 @@ test("engine pollution: JD focus phrases lines are rejected", () => {
   assert.ok(/SAP/i.test(cleaned));
 });
 
+test("stripEngineFooter removes pollution from stored packs (preview path)", async () => {
+  const { stripEngineFooter } = await import(
+    "../../src/lib/resume/strip-engine-footer"
+  );
+  const out = stripEngineFooter(
+    "CORE COMPETENCIES\nJD focus phrases: during group consolidation processes.\nCore: SAP · FSCD\n"
+  );
+  assert.ok(!/JD focus/i.test(out));
+  assert.ok(/Core: SAP/i.test(out));
+});
+
 console.log(`\n${passed} tests passed.\n`);
