@@ -182,7 +182,7 @@ export async function forceGenerateUnrestricted(opts: {
   }
   pack.professionalSummary.bullets = pack.professionalSummary.bullets.slice(0, 12);
   pack.projects = pack.projects.map((p) => {
-    let b = [...(p.bullets || [])];
+    const b = [...(p.bullets || [])];
     while (b.length < 12) {
       b.push(
         `Supported ${p.employerOrClient || "engagement"} outcomes with quality delivery (${b.length + 1}/12).`

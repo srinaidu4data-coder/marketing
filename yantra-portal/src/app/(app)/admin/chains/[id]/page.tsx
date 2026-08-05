@@ -10,7 +10,6 @@ import {
 } from "@/app/actions/chains";
 import { getResendConfig } from "@/lib/email/resend";
 import {
-  decodeShipErrorMessage,
   encodeShipErrorMessage,
   shipReportsForChain,
 } from "@/lib/chain-ship-ui";
@@ -69,7 +68,6 @@ export default async function AdminChainDetailPage({
       return row?.sendStatus === "SENT";
     });
 
-  const shipErrorMsg = decodeShipErrorMessage(searchParams?.ship);
   const showRetry =
     !stuck &&
     (emptyFailed ||

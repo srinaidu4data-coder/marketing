@@ -24,7 +24,7 @@ import {
 import { assessCandidateReady } from "@/lib/candidate-ready";
 import { inspectPackShipReady } from "@/lib/resume/pack-ship-ready";
 import { serializeMasterProfile, parseMasterProfile } from "@/lib/resume/master-profile";
-import { sanitizePostgresText } from "@/lib/resume/extract-master";
+import { sanitizePostgresText } from "@/lib/text-sanitize";
 
 /** Chains older than this in GENERATING/SENDING are considered abandoned. */
 export const STALE_CHAIN_MS = 10 * 60 * 1000; // 10 minutes (OpenAI multi-candidate)
@@ -181,7 +181,6 @@ export async function generateChainResumes(
       where: { id: chainId },
       select: { rawJobText: true, vendorName: true },
     });
-    const { sanitizePostgresText } = await import("@/lib/text-sanitize");
     const rawJobText = sanitizePostgresText(
       (chainRow?.rawJobText || input.rawJobText || "").trim()
     );
@@ -843,7 +842,6 @@ export async function createAndGenerateChain(opts: {
     console.error("recoverStaleChains failed (continuing create)", e);
   }
 
-  const { sanitizePostgresText } = await import("@/lib/text-sanitize");
   let jdForStore = sanitizePostgresText((opts.rawJobText || "").trim());
   if (jdForStore.length < 8) {
     // Still create chain — AI force path will finish packs
