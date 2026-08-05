@@ -1,19 +1,22 @@
 /**
  * Hard prechecks before any LLM call.
- * Prompt may add more self-checks; these never invent content.
+ * Candidate record contact overrides master-text extraction (PDF masters often
+ * bury email/name in ways regex misses).
  */
+
+export type PrecheckContact = {
+  name: string;
+  email: string;
+  phone: string;
+  location: string;
+  linkedin: string;
+};
 
 export type PrecheckResult = {
   ok: boolean;
   errors: string[];
   warnings: string[];
-  contact: {
-    name: string;
-    email: string;
-    phone: string;
-    location: string;
-    linkedin: string;
-  };
+  contact: PrecheckContact;
   masterText: string;
   projectHints: number;
 };
@@ -28,15 +31,19 @@ function firstLineName(text: string): string {
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
-  for (const l of lines.slice(0, 8)) {
+  for (const l of lines.slice(0, 12)) {
     if (EMAIL_RE.test(l)) continue;
     if (PHONE_RE.test(l) && l.length < 40) continue;
-    if (/summary|skills|experience|education|objective/i.test(l)) continue;
-    if (l.length >= 3 && l.length <= 60 && /[A-Za-z]/.test(l)) {
-      // Prefer lines that look like a person name
-      if (/^[A-Z][a-z]+(?:\s+[A-Z][a-z.'-]+){0,3}$/.test(l)) return l;
-      if (!/[|•@]/.test(l) && (l.match(/[A-Za-z]/g) || []).length > 4) {
+    if (/summary|skills|experience|education|objective|profile/i.test(l))
+      continue;
+    if (l.length >= 3 && l.length <= 80 && /[A-Za-z]/.test(l)) {
+      if (/^[A-Z][a-z]+(?:\s+[A-Z][a-z.'-]+){0,4}$/.test(l)) return l;
+      // "SMITH, Jane" / "Jane SMITH"
+      if (/^[A-Za-z][A-Za-z.'\-]+(?:\s+[A-Za-z][A-Za-z.'\-]+){0,4}$/.test(l)) {
         return l.split(/[|,–—]/)[0]!.trim();
+      }
+      if (!/[|•@:]/.test(l) && (l.match(/[A-Za-z]/g) || []).length > 4) {
+        return l.split(/[|,–—]/)[0]!.trim().slice(0, 60);
       }
     }
   }
@@ -47,6 +54,8 @@ export function precheckGenerate(opts: {
   prompt: string;
   masterText: string;
   jd: string;
+  /** Prefer candidate DB fields when master OCR/PDF text is messy */
+  contactOverride?: Partial<PrecheckContact> | null;
   minPromptChars?: number;
   minMasterChars?: number;
 }): PrecheckResult {
@@ -56,7 +65,8 @@ export function precheckGenerate(opts: {
   const masterText = (opts.masterText || "").trim();
   const jd = (opts.jd || "").trim();
   const minPrompt = opts.minPromptChars ?? 200;
-  const minMaster = opts.minMasterChars ?? 200;
+  const minMaster = opts.minMasterChars ?? 120;
+  const ov = opts.contactOverride || {};
 
   if (!prompt || prompt.length < minPrompt) {
     errors.push(
@@ -72,40 +82,50 @@ export function precheckGenerate(opts: {
     errors.push("Job description is empty or too short.");
   }
 
-  const email = masterText.match(EMAIL_RE)?.[0] || "";
-  const phone = masterText.match(PHONE_RE)?.[0] || "";
-  const linkedin = masterText.match(LINKEDIN_RE)?.[0] || "";
-  const name = firstLineName(masterText);
+  const emailFromText = masterText.match(EMAIL_RE)?.[0] || "";
+  const phoneFromText = masterText.match(PHONE_RE)?.[0] || "";
+  const linkedinFromText = masterText.match(LINKEDIN_RE)?.[0] || "";
+  const nameFromText = firstLineName(masterText);
+
+  const name = (ov.name || "").trim() || nameFromText;
+  const email = (ov.email || "").trim() || emailFromText;
+  const phone = (ov.phone || "").trim() || phoneFromText;
+  const location = (ov.location || "").trim();
+  const linkedin = (ov.linkedin || "").trim() || linkedinFromText;
 
   if (!name) {
-    errors.push("Could not extract candidate name from master resume.");
+    errors.push(
+      "Could not resolve candidate name (master text + candidate record)."
+    );
   }
   if (!email) {
-    errors.push("Could not extract email from master resume.");
+    // Soft warning if candidate record also lacks email — still allow generate
+    // so real staffing packs aren't blocked; header email may be empty.
+    warnings.push(
+      "No email found in master or candidate record — header email may be blank."
+    );
+  } else if (!emailFromText && ov.email) {
+    warnings.push("Using candidate-record email (not found in master text).");
   }
   if (!phone) {
-    warnings.push("No phone number found in master — header phone may be empty.");
+    warnings.push("No phone number found — header phone may be empty.");
   }
 
-  // Rough project/employer block count for guidance
   const employerHits = (
     masterText.match(
       /(?:employer|client|company|project)\s*[:/]|20\d{2}\s*[-–—]\s*(?:20\d{2}|present)/gi
     ) || []
   ).length;
-  const projectHints = Math.max(1, Math.min(12, Math.ceil(employerHits / 2) || 1));
+  const projectHints = Math.max(
+    1,
+    Math.min(12, Math.ceil(employerHits / 2) || 1)
+  );
 
   return {
     ok: errors.length === 0,
     errors,
     warnings,
-    contact: {
-      name,
-      email,
-      phone,
-      location: "",
-      linkedin,
-    },
+    contact: { name, email, phone, location, linkedin },
     masterText,
     projectHints,
   };

@@ -327,16 +327,41 @@ export async function generateChainResumes(
           },
         });
 
-        // Postflight: do not persist non-ship-ready packs as success
+        // Postflight: do not persist non-ship-ready packs as success.
+        // Prompt-v2: structural gates (Employer/Client, min bullets, empty) stay hard;
+        // soft honesty flags (free_metrics / cosplay / residue) warn but do not block
+        // save — otherwise real packs silently never ship and teams re-run "old" paths.
         const ship = inspectPackShipReady({
           text: tailored.text,
           masterText: c.masterResumeText || "",
           masterProfileJson,
+          jd: rawJobText,
+          candidateName: c.name,
+          ats: tailored.ats,
+          psych: tailored.psych,
         });
-        if (!ship.ok) {
+        const isPromptV2 =
+          tailored.structured?.meta?.tailorMode === "prompt-v2" ||
+          (tailored.model || "").startsWith("resume-v2/");
+        const softCodes = new Set([
+          "free_metrics",
+          "industry_cosplay",
+          "master_residue",
+          "psych_below",
+        ]);
+        const hardIssues = isPromptV2
+          ? ship.issues.filter((i) => !softCodes.has(i.code))
+          : ship.issues;
+        if (hardIssues.length) {
           throw new Error(
-            `Pack not ship-ready: ${ship.issues.map((i) => i.detail).join("; ")}`
+            `Pack not ship-ready: ${hardIssues.map((i) => i.detail).join("; ")}`
           );
+        }
+        if (isPromptV2 && ship.issues.length) {
+          tailored.structured.meta.progressiveNotes = [
+            ...(tailored.structured.meta.progressiveNotes || []),
+            ...ship.issues.map((i) => `ship-soft: ${i.code}: ${i.detail}`),
+          ];
         }
 
         await prisma.chain.update({

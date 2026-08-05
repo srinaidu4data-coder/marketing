@@ -44,7 +44,13 @@ export type GenerateV2Result = {
 function buildUserMessage(opts: {
   master: string;
   jd: string;
-  contactHint?: { name: string; email: string; phone: string };
+  contactHint?: {
+    name: string;
+    email: string;
+    phone: string;
+    location?: string;
+    linkedin?: string;
+  };
   feedback?: string;
   priorJson?: string;
 }): string {
@@ -54,14 +60,24 @@ function buildUserMessage(opts: {
     "",
     "=== JOB DESCRIPTION (language + priority for tailoring) ===",
     opts.jd.trim(),
+    "",
+    "=== HARD STRUCTURE RULES (must obey) ===",
+    "- professionalSummary.bullets: EXACTLY 12 strings",
+    "- every project.bullets: EXACTLY 12 strings",
+    "- projects[]: one entry per employer/engagement in MASTER (same count, never drop/invent)",
+    "- employerOrClient, location, duration: copy from MASTER as-is",
+    "- Never invent metrics/numbers not in MASTER",
+    "- Return JSON only per Bible contract",
   ];
   if (opts.contactHint?.name || opts.contactHint?.email) {
     parts.push(
       "",
-      "=== EXTRACTED CONTACT HINTS (prefer these exact values in header) ===",
+      "=== CONTACT (use these exact values in header) ===",
       `name: ${opts.contactHint.name || ""}`,
       `email: ${opts.contactHint.email || ""}`,
-      `phone: ${opts.contactHint.phone || ""}`
+      `phone: ${opts.contactHint.phone || ""}`,
+      `location: ${opts.contactHint.location || ""}`,
+      `linkedin: ${opts.contactHint.linkedin || ""}`
     );
   }
   if (opts.feedback) {
@@ -127,6 +143,10 @@ export async function generateResumeV2(opts: {
   llmProvider?: LlmProvider | null;
   feedback?: string;
   priorJson?: string;
+  /** Candidate DB fields — used when master text extract fails */
+  candidateName?: string;
+  email?: string;
+  phone?: string;
   /** Skip LLM — for dry tests */
   dryPack?: ResumePackV2;
 }): Promise<GenerateV2Result> {
@@ -135,6 +155,11 @@ export async function generateResumeV2(opts: {
     prompt: opts.prompt,
     masterText: opts.master,
     jd: opts.jd,
+    contactOverride: {
+      name: opts.candidateName || "",
+      email: opts.email || "",
+      phone: opts.phone || "",
+    },
   });
 
   if (!pre.ok && !opts.dryPack) {
@@ -351,6 +376,9 @@ export async function generateResumeV2WithRegen(opts: {
   llmProvider?: LlmProvider | null;
   targetAts?: number;
   maxAttempts?: number;
+  candidateName?: string;
+  email?: string;
+  phone?: string;
 }): Promise<GenerateV2Result> {
   const target = opts.targetAts ?? 95;
   const max = opts.maxAttempts ?? 3;
@@ -367,6 +395,9 @@ export async function generateResumeV2WithRegen(opts: {
       llmProvider: opts.llmProvider,
       feedback,
       priorJson,
+      candidateName: opts.candidateName,
+      email: opts.email,
+      phone: opts.phone,
     });
     if (!best || r.ats.score > best.ats.score) best = r;
     if (r.ok && r.ats.score >= target) {

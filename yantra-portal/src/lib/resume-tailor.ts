@@ -280,7 +280,8 @@ export async function tailorResume(opts: {
   }
 
   // ── Prompt-only v2 path (default) ─────────────────────────────────
-  // Visible in UI via tailorMode + progressiveNotes + model prefix.
+  // NO silent legacy fallback — that made Sowmya/real packs look "unchanged".
+  // Set RESUME_ENGINE_V2=0 to force the old multi-engine path.
   let v2FallbackReason = "";
   if (shouldUseResumeV2(opts)) {
     try {
@@ -293,10 +294,19 @@ export async function tailorResume(opts: {
         llmProvider: opts.llmProvider || null,
         targetAts: 95,
         maxAttempts: 3,
+        candidateName: opts.candidateName,
+        email: opts.email,
       });
-      // Accept any substantial pack from v2 (not only ok:true) so we don't
-      // silently drop to progressive-rules and look "unchanged".
+      // Accept any substantial pack from v2
       if (v2.text && v2.text.length > 200 && v2.pack.projects.length > 0) {
+        // Prefer DB contact when model blanked header
+        if (opts.candidateName && !v2.pack.header.name) {
+          v2.pack.header.name = opts.candidateName;
+        }
+        if (opts.email && !v2.pack.header.email) {
+          v2.pack.header.email = opts.email;
+        }
+
         const enginesTried: TailorResumeResult["enginesTried"] = [
           {
             engine: "ai-tailor",
@@ -333,20 +343,28 @@ export async function tailorResume(opts: {
 
         const summaryCount = v2.pack.professionalSummary.bullets.length;
         const projectBulletCounts = v2.pack.projects.map((p) => p.bullets.length);
-        v2.structured.meta.tailorMode = "prompt-v2";
-        v2.structured.meta.progressiveNotes = [
+        // Re-render after contact fill
+        const { renderPackText, packToStructuredResume } = await import(
+          "./resume-v2/render-pack"
+        );
+        const text = renderPackText(v2.pack);
+        const structured = packToStructuredResume(v2.pack, opts.layoutId || undefined);
+        structured.meta.atsScore = v2.ats.score;
+        structured.meta.psychScore = v2.psych.score;
+        structured.meta.jobTitle = v2.pack.header.jobTitle;
+        structured.meta.tailorMode = "prompt-v2";
+        structured.meta.progressiveNotes = [
           "ENGINE=resume-v2-prompt-only (Prompt is the only writing source)",
           `Provider=${v2.provider || "?"} Model=${v2.model || "?"}`,
           `Summary bullets=${summaryCount} · Projects=${v2.pack.projects.length} · Per-project bullets=[${projectBulletCounts.join(",")}]`,
           `ATS ${v2.ats.score} · Psych ${v2.psych.score} · attempts ${v2.attempts}`,
           ...(v2.precheckWarnings || []).map((w) => `precheck: ${w}`),
           ...(v2.issues || []).slice(0, 8).map((i) => `schema: ${i.detail}`),
-          ...(v2.structured.meta.progressiveNotes || []),
         ];
 
         return {
-          structured: v2.structured,
-          text: v2.text,
+          structured,
+          text,
           ats: v2.ats,
           psych: v2.psych,
           usedLlm: true,
@@ -382,13 +400,11 @@ export async function tailorResume(opts: {
       await opts.onStep?.("resume-v2", "error");
       console.error("[tailorResume] resume-v2 threw:", v2FallbackReason);
     }
-  }
 
-  // Legacy path only if v2 off or failed — stamp so UI shows FALLBACK clearly
-  if (v2FallbackReason) {
-    console.warn(
-      "[tailorResume] Falling back to legacy engines because:",
-      v2FallbackReason
+    // Hard fail — do NOT fall through to legacy (that recreated "old system" results)
+    throw new Error(
+      `Prompt-only resume-v2 failed (no legacy fallback): ${v2FallbackReason || "unknown"}. ` +
+        `Check master text, ACTIVE prompt, and LLM keys. Set RESUME_ENGINE_V2=0 only if you intentionally want the old engine.`
     );
   }
 
@@ -408,14 +424,10 @@ export async function tailorResume(opts: {
   let lastError: Error | null = null;
   const legacyStamp = (structured: StructuredResume) => {
     structured.meta.progressiveNotes = [
-      v2FallbackReason
-        ? `ENGINE=legacy-fallback (resume-v2 failed: ${v2FallbackReason.slice(0, 200)})`
-        : "ENGINE=legacy multi-engine path",
+      "ENGINE=legacy multi-engine path (RESUME_ENGINE_V2=0)",
       ...(structured.meta.progressiveNotes || []),
     ];
-    if (v2FallbackReason) {
-      structured.meta.tailorMode = `legacy-fallback`;
-    }
+    structured.meta.tailorMode = structured.meta.tailorMode || "legacy";
     return structured;
   };
 
