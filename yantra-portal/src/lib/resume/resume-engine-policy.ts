@@ -25,7 +25,7 @@ export type ResumeEnginePolicy = {
   skillCaps: { recent: number; mid: number; early: number };
   minKeywordCoverage: number;
   minAtsScore: number;
-  /** Inject "JD keywords:" line into skills when coverage is weak */
+  /** Merge critical JD skill tokens into Core: when coverage is weak (no human-visible engine labels) */
   specialtyInject: boolean;
   /** Allow soft emergency bullets when AI + master are sparse */
   emergencyFill: boolean;

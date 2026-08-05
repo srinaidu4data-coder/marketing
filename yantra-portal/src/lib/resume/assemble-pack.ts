@@ -798,6 +798,26 @@ export async function assembleDeterministicPack(opts: {
       honestyFailed: false,
     });
   }
+  // FINAL scrub after research-enhance / reboost
+  try {
+    const { scrubAndRender } = await import("./pack-quality-scrub");
+    const finalClean = scrubAndRender(structured, {
+      jd: opts.jd,
+      masterText: opts.master,
+      jobTitle,
+    });
+    structured = finalClean.structured;
+    text = finalClean.text;
+    ats = scoreResume({
+      resumeText: text,
+      jd: opts.jd,
+      jobTitle,
+      recentProjectCount: Math.max(2, projects.length),
+      honestyFailed: false,
+    });
+  } catch {
+    /* keep */
+  }
   void honestyFailed;
 
   const psych = scorePsych({

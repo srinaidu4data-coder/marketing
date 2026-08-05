@@ -11,15 +11,16 @@ import {
   isEnvironmentMetaLine,
   scrubEnvironmentLineText,
 } from "./environment-stack";
+import {
+  ENGINE_POLLUTION_LINE_RE,
+  ENGINE_POLLUTION_BULLET_RE,
+  filterEnginePollutionTokens,
+  isEnginePollutionLine,
+  stripEnginePollutionLabel,
+} from "./engine-pollution";
 
-const BOOSTER_LINE =
-  /^(delivery focus:|ship-floor skills:|jd keywords:|jd focus phrases?:|jd focus:|core \/ jd-aligned skills:|target role:)/i;
-
-/** Entire line is JD meta dump — drop; tokens may be recovered if skill-like */
-const JD_FOCUS_DUMP_LINE = /^\s*JD\s+focus(\s+phrases?)?\s*:/i;
-
-const BOOSTER_BULLET =
-  /^[•\-–—*]\s*applied\s+.+\s+within\s+engagement\s+delivery/i;
+const BOOSTER_LINE = ENGINE_POLLUTION_LINE_RE;
+const BOOSTER_BULLET = ENGINE_POLLUTION_BULLET_RE;
 
 /** Sentence fragments accidentally scraped from JDs into skills */
 const SKILL_GARBAGE =
@@ -78,31 +79,30 @@ function cleanSkillToken(t: string): string | null {
 }
 
 function scrubSkillsLine(line: string): string | null {
-  // Legacy "JD focus phrases: Location · Position · …" — never keep the dump line
-  if (JD_FOCUS_DUMP_LINE.test(line.trim())) {
-    const body = line.replace(/^[^:]+:\s*/, "");
-    const parts = body
-      .split(/\s*[·|•,]\s*/)
-      .map(cleanSkillToken)
-      .filter(Boolean) as string[];
-    // Only recover clearly technical tokens; drop geo/meta entirely
+  // Engine labels: JD focus phrases / JD keywords / Delivery focus / etc.
+  if (isEnginePollutionLine(line) || ENGINE_POLLUTION_LINE_RE.test(line.trim())) {
+    const stripped = stripEnginePollutionLabel(line);
+    if (!stripped) return null;
+    const body = stripped.replace(/^Core:\s*/i, "");
+    const parts = filterEnginePollutionTokens(
+      body
+        .split(/\s*[·|•,]\s*/)
+        .map(cleanSkillToken)
+        .filter(Boolean) as string[]
+    );
     const tech = parts.filter((p) =>
-      /SAP|FSCD|ATTP|EPCIS|GS1|DSCSA|HANA|S\/4|FICO|ABAP|API|RAR|IFRS|BW|BTP|CPI|EWM|Agile|Scrum|SQL|ETL|OData|JSON|XML/i.test(
+      /SAP|FSCD|ATTP|EPCIS|GS1|DSCSA|HANA|S\/4|FICO|ABAP|API|RAR|IFRS|BW|BTP|CPI|EWM|Agile|Scrum|SQL|ETL|OData|JSON|XML|FICA|S4/i.test(
         p
       )
     );
     if (!tech.length) return null;
-    return `Core: ${tech.slice(0, 12).join(" · ")}`;
+    return `Core: ${tech.slice(0, 14).join(" · ")}`;
   }
-  if (BOOSTER_LINE.test(line.trim())) {
-    // Keep tokens after label only if clean
-    const body = line.replace(/^[^:]+:\s*/, "");
-    const parts = body
-      .split(/\s*[·|•,]\s*/)
-      .map(cleanSkillToken)
-      .filter(Boolean) as string[];
-    if (!parts.length) return null;
-    return parts.slice(0, 24).join(" · ");
+  // Mid-line pollution
+  if (/\bJD\s+focus|\bJD\s+keywords?|\bDelivery\s+focus|\bShip[- ]?floor/i.test(line)) {
+    const stripped = stripEnginePollutionLabel(line);
+    if (!stripped) return null;
+    line = stripped;
   }
   if (SKILL_GARBAGE.test(line)) return null;
   if (line.length > 120 && /ability to|perform discovery/i.test(line)) return null;
@@ -384,10 +384,12 @@ export function scrubPackQuality(
     // Never inject third-person bio ("Name targets…", "positioned as…").
     if (/summary|profile|pitch/i.test(h)) {
       let lines = sec.lines
-        .filter((l) => !BOOSTER_LINE.test(l.trim()))
-        .filter((l) => !/^delivery focus:/i.test(l.trim()))
+        .filter((l) => !isEnginePollutionLine(l) && !BOOSTER_LINE.test(l.trim()))
         .map((l) =>
           l
+            .replace(/\bJD\s+focus(\s+phrases?)?\s*:\s*/gi, "")
+            .replace(/\bJD\s+keywords?\s*:\s*/gi, "")
+            .replace(/\bDelivery\s+focus\s*:\s*/gi, "")
             .replace(/\bis positioned as (an?|the)\s+/gi, "")
             .replace(/\bpositioned as (an?|the)\s+/gi, "")
             .replace(/\bI am (an?|the)\s+/gi, "")
@@ -453,13 +455,23 @@ export function scrubPackQuality(
 export function scrubPackTextQuality(text: string): string {
   return (text || "")
     .split(/\r?\n/)
-    .filter((l) => !BOOSTER_LINE.test(l.trim()))
+    .map((l) => {
+      if (isEnginePollutionLine(l) || ENGINE_POLLUTION_LINE_RE.test(l.trim())) {
+        return stripEnginePollutionLabel(l) || "";
+      }
+      if (/\bJD\s+focus|\bJD\s+keywords?|\bDelivery\s+focus|\bShip[- ]?floor/i.test(l)) {
+        return stripEnginePollutionLabel(l) || "";
+      }
+      return l;
+    })
+    .filter((l) => l.trim().length > 0)
     .filter((l) => !BOOSTER_BULLET.test(l.trim()))
-    .filter((l) => !/^ship-floor skills:/i.test(l.trim()))
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .replace(/\bis positioned as (an?|the)\s+/gi, "")
     .replace(/positioned as a\s*-\s*/gi, "")
+    .replace(/\bJD\s+focus(\s+phrases?)?\s*:\s*/gi, "")
+    .replace(/\bJD\s+keywords?\s*:\s*/gi, "")
     .replace(/^[\-\–—]\s*SAP/gm, "SAP");
 }
 

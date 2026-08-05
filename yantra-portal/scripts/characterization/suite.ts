@@ -19,6 +19,11 @@ import {
   extractJdNgrams,
 } from "../../src/lib/resume/research-enhance-pack";
 import { SHIP_MIN_ATS, BEST_ATS, BEST_PSYCH } from "../../src/lib/resume/pack-ship-ready";
+import {
+  isEnginePollutionLine,
+  stripEnginePollutionLabel,
+} from "../../src/lib/resume/engine-pollution";
+import { scrubPackTextQuality } from "../../src/lib/resume/pack-quality-scrub";
 
 let passed = 0;
 function test(name: string, fn: () => void) {
@@ -105,6 +110,28 @@ test("ship constants contract", () => {
   assert.equal(SHIP_MIN_ATS, 95);
   assert.equal(BEST_ATS, 100);
   assert.equal(BEST_PSYCH, 100);
+});
+
+test("engine pollution: JD focus phrases lines are rejected", () => {
+  assert.equal(
+    isEnginePollutionLine("JD focus phrases: during group consolidation processes."),
+    true
+  );
+  assert.equal(
+    stripEnginePollutionLabel(
+      "JD focus phrases: during group consolidation processes."
+    ),
+    null
+  );
+  assert.equal(
+    stripEnginePollutionLabel("JD keywords: SAP · FSCD · S/4HANA"),
+    "Core: SAP · FSCD · S/4HANA"
+  );
+  const cleaned = scrubPackTextQuality(
+    "CORE COMPETENCIES\nJD focus phrases: during group consolidation processes.\nCore: SAP · FSCD\n"
+  );
+  assert.ok(!/JD focus/i.test(cleaned));
+  assert.ok(/SAP/i.test(cleaned));
 });
 
 console.log(`\n${passed} tests passed.\n`);

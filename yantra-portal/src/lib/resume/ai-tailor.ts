@@ -577,7 +577,7 @@ Return JSON:
 {
   "headline": "${jobTitle}",
   "summary": ["EXACTLY 10 dense technical lines, impersonal voice, heavy JD/master jargon, ONE years claim total, no I/me/my, no candidate name as subject, no 'positioned as'"],
-  "skills": ["20-35 skills: grounded first, then JD keywords"],
+  "skills": ["20-35 plain skill tokens only — never labels like JD focus phrases or JD keywords"],
   "impact": ["5-8 peak bullets grounded in master outcomes, JD language"],
   "methodology": ["3-5 delivery method lines"],
   "supportiveTitles": ["progressive variants of JD title only"],
@@ -850,14 +850,35 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
   );
   let text = renderPlainFromStructured(structured);
 
-  // Always inject critical JD tokens into skills (not only same_domain)
+  // Merge critical JD tokens into Core: — never a human-visible "JD keywords:" label
   if (policy.specialtyInject !== false && critical.length >= 2) {
-    const inject = `JD keywords: ${critical.slice(0, 14).join(" · ")}`;
     structured.sections = structured.sections.map((sec) => {
       if (!/skill|matrix|competenc|stack|instrument|capability|core/i.test(sec.heading))
         return sec;
-      if (sec.lines.some((l) => /JD keywords:/i.test(l))) return sec;
-      return { ...sec, lines: [inject, ...sec.lines] };
+      if (/experience|engagement|employment/i.test(sec.heading)) return sec;
+      // Drop any prior engine-label dumps
+      const lines = sec.lines.filter(
+        (l) =>
+          !/^\s*JD\s+(keywords?|focus)/i.test(l) &&
+          !/^\s*Delivery\s+focus/i.test(l) &&
+          !/^\s*Ship[- ]?floor/i.test(l)
+      );
+      const coreIdx = lines.findIndex((l) => /^Core\s*:/i.test(l.trim()));
+      const add = critical.slice(0, 14);
+      if (coreIdx >= 0) {
+        const old = lines[coreIdx]!.replace(/^Core\s*:\s*/i, "");
+        const merged = Array.from(
+          new Set(
+            [...old.split(/\s*[·|]\s*/), ...add]
+              .map((t) => t.trim())
+              .filter(Boolean)
+          )
+        ).slice(0, 28);
+        const next = [...lines];
+        next[coreIdx] = `Core: ${merged.join(" · ")}`;
+        return { ...sec, lines: next };
+      }
+      return { ...sec, lines: [`Core: ${add.join(" · ")}`, ...lines] };
     });
     text = renderPlainFromStructured(structured);
   }
@@ -955,6 +976,29 @@ ${JSON.stringify(parsed).slice(0, 14000)}`,
       earlyCareerOversell: false,
       honestyFailed: false,
     });
+  }
+
+  // FINAL scrub — research-enhance / reboost must not leave JD focus phrases etc.
+  try {
+    const { scrubAndRender } = await import("./pack-quality-scrub");
+    const finalClean = scrubAndRender(structured, {
+      jd: input.jd,
+      masterText: input.master,
+      jobTitle,
+    });
+    structured = finalClean.structured;
+    text = finalClean.text;
+    ats = (await import("./ats-scorer")).scoreResume({
+      resumeText: text,
+      jd: input.jd,
+      jobTitle,
+      recentProjectCount: Math.max(2, projects.length),
+      temporalViolations: 0,
+      earlyCareerOversell: false,
+      honestyFailed: false,
+    });
+  } catch {
+    /* keep */
   }
 
   if (honestyFailed && ats.score > 70) {

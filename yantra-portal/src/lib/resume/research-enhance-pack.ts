@@ -507,11 +507,15 @@ function weaveNgramsIntoSkills(
   ngrams: string[],
   resumeText: string
 ): string[] {
-  // Scrub any prior garbage inject from older engine versions
+  // Scrub any prior engine-label dumps (never re-emit them)
   const scrubbed = lines.filter(
     (l) =>
-      !/^\s*JD\s+focus\s+phrases?\s*:/i.test(l) &&
-      !/^\s*JD\s+keywords?\s*:/i.test(l)
+      !/^\s*JD\s+focus(\s+phrases?)?\s*:/i.test(l) &&
+      !/^\s*JD\s+keywords?\s*:/i.test(l) &&
+      !/^\s*Delivery\s+focus\s*:/i.test(l) &&
+      !/^\s*Ship[- ]?floor/i.test(l) &&
+      !/^\s*Target\s+role\s*:/i.test(l) &&
+      !/^\s*Core\s*\/\s*JD/i.test(l)
   );
 
   const missing = dedupeJdPhrases(

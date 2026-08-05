@@ -87,9 +87,9 @@ function mergeSkillsLine(
     hit = true;
     const without = sec.lines.filter(
       (l) =>
-        !/JD keywords:|Core \/ JD-aligned skills:|Ship-floor skills:|^Core:|^Delivery focus:/i.test(
+        !/JD keywords:|JD focus|Core \/ JD-aligned skills:|Ship-floor skills:|^Delivery focus:|^Target role:/i.test(
           l
-        )
+        ) && !/^Core\s*:/i.test(l.trim())
     );
     // Merge into existing Core: line if present
     const existingCore = without.find((l) => /^Core:/i.test(l));
