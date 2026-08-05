@@ -1,7 +1,7 @@
 /**
- * Hard prechecks before any LLM call.
- * Candidate record contact overrides master-text extraction (PDF masters often
- * bury email/name in ways regex misses).
+ * Prechecks for prompt-only generation.
+ * Soft where possible — never block a real chain because of brittle thresholds.
+ * Authoritative contact can come from the candidate record.
  */
 
 export type PrecheckContact = {
@@ -18,6 +18,8 @@ export type PrecheckResult = {
   warnings: string[];
   contact: PrecheckContact;
   masterText: string;
+  /** Normalized JD ready for the LLM */
+  jdText: string;
   projectHints: number;
 };
 
@@ -26,9 +28,26 @@ const PHONE_RE =
   /(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\d{10})\b/;
 const LINKEDIN_RE = /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/[^\s)]+/i;
 
+/** Strip invisible junk; keep real content for length checks */
+export function normalizeJdText(raw: string | null | undefined): string {
+  return String(raw || "")
+    .replace(/\u0000/g, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\r\n/g, "\n")
+    .trim();
+}
+
+export function normalizeMasterText(raw: string | null | undefined): string {
+  return String(raw || "")
+    .replace(/\u0000/g, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\r\n/g, "\n")
+    .trim();
+}
+
 function firstLineName(text: string): string {
   const lines = text
-    .split(/\r?\n/)
+    .split(/\n/)
     .map((l) => l.trim())
     .filter(Boolean);
   for (const l of lines.slice(0, 12)) {
@@ -38,7 +57,6 @@ function firstLineName(text: string): string {
       continue;
     if (l.length >= 3 && l.length <= 80 && /[A-Za-z]/.test(l)) {
       if (/^[A-Z][a-z]+(?:\s+[A-Z][a-z.'-]+){0,4}$/.test(l)) return l;
-      // "SMITH, Jane" / "Jane SMITH"
       if (/^[A-Za-z][A-Za-z.'\-]+(?:\s+[A-Za-z][A-Za-z.'\-]+){0,4}$/.test(l)) {
         return l.split(/[|,–—]/)[0]!.trim();
       }
@@ -54,32 +72,38 @@ export function precheckGenerate(opts: {
   prompt: string;
   masterText: string;
   jd: string;
-  /** Prefer candidate DB fields when master OCR/PDF text is messy */
   contactOverride?: Partial<PrecheckContact> | null;
+  /** When true, empty JD is a warning (caller will inject title fallback) */
+  allowShortJd?: boolean;
   minPromptChars?: number;
   minMasterChars?: number;
+  minJdChars?: number;
 }): PrecheckResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   const prompt = (opts.prompt || "").trim();
-  const masterText = (opts.masterText || "").trim();
-  const jd = (opts.jd || "").trim();
-  const minPrompt = opts.minPromptChars ?? 200;
-  const minMaster = opts.minMasterChars ?? 120;
+  const masterText = normalizeMasterText(opts.masterText);
+  const jdText = normalizeJdText(opts.jd);
+  const minPrompt = opts.minPromptChars ?? 80;
+  const minMaster = opts.minMasterChars ?? 80;
+  const minJd = opts.minJdChars ?? 8;
   const ov = opts.contactOverride || {};
 
   if (!prompt || prompt.length < minPrompt) {
-    errors.push(
-      `ACTIVE prompt is missing or too short (need ≥${minPrompt} chars). Prompt is the only writing source — promote a Bible prompt first.`
+    // Caller should inject BIBLE — treat as warning so generation can still run
+    warnings.push(
+      `Prompt short or missing (${prompt.length} chars; prefer ≥${minPrompt}). Bible/default will be used if provided by caller.`
     );
   }
   if (!masterText || masterText.length < minMaster) {
     errors.push(
-      `Master resume text is missing or too short after parse (need ≥${minMaster} chars). Re-upload DOCX/PDF.`
+      `Master resume too short after parse (${masterText.length} chars; need ≥${minMaster}). Re-upload DOCX/PDF with extractable text.`
     );
   }
-  if (!jd || jd.length < 40) {
-    errors.push("Job description is empty or too short.");
+  if (!jdText || jdText.length < minJd) {
+    const msg = `Job description empty or too short (${jdText.length} chars; need ≥${minJd}).`;
+    if (opts.allowShortJd) warnings.push(msg);
+    else errors.push(msg);
   }
 
   const emailFromText = masterText.match(EMAIL_RE)?.[0] || "";
@@ -94,21 +118,14 @@ export function precheckGenerate(opts: {
   const linkedin = (ov.linkedin || "").trim() || linkedinFromText;
 
   if (!name) {
-    errors.push(
-      "Could not resolve candidate name (master text + candidate record)."
+    warnings.push(
+      "Could not resolve candidate name from master — using override or 'Candidate'."
     );
   }
   if (!email) {
-    // Soft warning if candidate record also lacks email — still allow generate
-    // so real staffing packs aren't blocked; header email may be empty.
     warnings.push(
-      "No email found in master or candidate record — header email may be blank."
+      "No email in master or candidate record — header email may be blank."
     );
-  } else if (!emailFromText && ov.email) {
-    warnings.push("Using candidate-record email (not found in master text).");
-  }
-  if (!phone) {
-    warnings.push("No phone number found — header phone may be empty.");
   }
 
   const employerHits = (
@@ -125,8 +142,15 @@ export function precheckGenerate(opts: {
     ok: errors.length === 0,
     errors,
     warnings,
-    contact: { name, email, phone, location, linkedin },
+    contact: {
+      name: name || (ov.name || "").trim() || "Candidate",
+      email,
+      phone,
+      location,
+      linkedin,
+    },
     masterText,
+    jdText,
     projectHints,
   };
 }

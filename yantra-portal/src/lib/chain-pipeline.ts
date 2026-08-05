@@ -155,8 +155,7 @@ async function safeWriteFile(
 export async function generateChainResumes(
   input: GenerateChainInput
 ): Promise<GenerateChainResult> {
-  const { chainId, userId, rawJobText, vendorName, candidateIds, onProgress } =
-    input;
+  const { chainId, userId, vendorName, candidateIds, onProgress } = input;
   const errors: GenerateChainResult["errors"] = [];
   let timedOut = false;
   const deadline = generationDeadlineMs();
@@ -177,6 +176,33 @@ export async function generateChainResumes(
   };
 
   try {
+    // Authoritative JD always from Chain row (fixes empty-JD when caller arg was lost)
+    const chainRow = await prisma.chain.findUnique({
+      where: { id: chainId },
+      select: { rawJobText: true, vendorName: true },
+    });
+    const { sanitizePostgresText } = await import("@/lib/text-sanitize");
+    const rawJobText = sanitizePostgresText(
+      (chainRow?.rawJobText || input.rawJobText || "").trim()
+    );
+    const resolvedVendor =
+      (chainRow?.vendorName || vendorName || "").trim() || "Vendor";
+
+    if (rawJobText.length < 8) {
+      const msg = `Chain job requirement is empty or too short in database (${rawJobText.length} chars). Re-create the chain with a full job description.`;
+      await prisma.chain.update({
+        where: { id: chainId },
+        data: { status: "FAILED" },
+      });
+      return {
+        chainId,
+        status: "FAILED",
+        succeeded: 0,
+        failed: 1,
+        errors: [{ candidateId: "", name: "(chain)", message: msg }],
+      };
+    }
+
     await prisma.chain.update({
       where: { id: chainId },
       data: { status: "GENERATING" },
@@ -344,7 +370,7 @@ export async function generateChainResumes(
           master: c.masterResumeText || "",
           masterProfileJson,
           jd: rawJobText,
-          vendorName,
+          vendorName: resolvedVendor,
           candidateName: c.name,
           employeeId: userId,
           layoutId: c.layoutId,
@@ -747,12 +773,20 @@ export async function createAndGenerateChain(opts: {
     console.error("recoverStaleChains failed (continuing create)", e);
   }
 
+  const { sanitizePostgresText } = await import("@/lib/text-sanitize");
+  const jdForStore = sanitizePostgresText((opts.rawJobText || "").trim());
+  if (jdForStore.length < 8) {
+    throw new Error(
+      "Job requirement is empty or too short. Paste the full JD before generating."
+    );
+  }
+
   const chain = await prisma.chain.create({
     data: {
       employeeId: opts.userId,
       vendorName: opts.vendorName,
       vendorEmail: opts.vendorEmail,
-      rawJobText: opts.rawJobText,
+      rawJobText: jdForStore,
       employeeNote: opts.employeeNote || null,
       status: "GENERATING",
     },
@@ -772,7 +806,7 @@ export async function createAndGenerateChain(opts: {
   const result = await generateChainResumes({
     chainId: chain.id,
     userId: opts.userId,
-    rawJobText: opts.rawJobText,
+    rawJobText: jdForStore,
     vendorName: opts.vendorName,
     candidateIds: opts.candidateIds,
     onProgress: opts.onProgress,

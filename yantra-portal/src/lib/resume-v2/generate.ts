@@ -16,8 +16,12 @@ import {
   type PackValidationIssue,
 } from "./pack-schema";
 import { renderPackText, packToStructuredResume } from "./render-pack";
-import { precheckGenerate } from "./precheck";
+import { precheckGenerate, normalizeJdText } from "./precheck";
 import { JSON_SHAPE_REMINDER } from "./bible-prompt";
+
+function normalizeFallbackJd(jd: string): string {
+  return normalizeJdText(jd) || "Professional role — tailor using master experience.";
+}
 import { scoreResume } from "@/lib/resume/ats-scorer";
 import { scorePsych } from "@/lib/resume/psych-scorer";
 import { resolveTailorMode } from "@/lib/resume/tailor-mode";
@@ -159,8 +163,15 @@ export async function generateResumeV2(opts: {
   dryPack?: ResumePackV2;
 }): Promise<GenerateV2Result> {
   const enginesTried: GenerateV2Result["enginesTried"] = [];
+  // Always prefer a real Bible if caller passed an empty/tiny prompt
+  const { BIBLE_PROMPT } = await import("./bible-prompt");
+  const promptForRun =
+    (opts.prompt || "").trim().length >= 80
+      ? opts.prompt.trim()
+      : (BIBLE_PROMPT || opts.prompt || "").trim();
+
   const pre = precheckGenerate({
-    prompt: opts.prompt,
+    prompt: promptForRun,
     masterText: opts.master,
     jd: opts.jd,
     contactOverride: {
@@ -168,10 +179,18 @@ export async function generateResumeV2(opts: {
       email: opts.email || "",
       phone: opts.phone || "",
     },
+    allowShortJd: false,
+    minJdChars: 8,
+    minMasterChars: 80,
+    minPromptChars: 80,
   });
 
   if (!pre.ok && !opts.dryPack) {
     const empty = emptyPack();
+    const detail = [
+      ...pre.errors,
+      `diag: jdLen=${(opts.jd || "").length} masterLen=${(opts.master || "").length} promptLen=${promptForRun.length}`,
+    ].join(" · ");
     return {
       ok: false,
       pack: empty,
@@ -180,23 +199,27 @@ export async function generateResumeV2(opts: {
       issues: [],
       precheckErrors: pre.errors,
       precheckWarnings: pre.warnings,
-      ats: scoreResume({ resumeText: "", jd: opts.jd, jobTitle: "" }),
+      ats: scoreResume({ resumeText: "", jd: pre.jdText || opts.jd, jobTitle: "" }),
       psych: scorePsych({
         resumeText: "",
-        masterText: opts.master,
-        jd: opts.jd,
+        masterText: pre.masterText || opts.master,
+        jd: pre.jdText || opts.jd,
         jobTitle: "",
-        mode: resolveTailorMode(opts.jd, opts.master).mode,
+        mode: resolveTailorMode(pre.jdText || opts.jd, pre.masterText || opts.master)
+          .mode,
       }),
       model: "",
       provider: "",
       attempts: 0,
       tokensIn: 0,
       tokensOut: 0,
-      enginesTried: [{ engine: "resume-v2", ok: false, error: pre.errors.join("; ") }],
-      error: pre.errors.join(" · "),
+      enginesTried: [{ engine: "resume-v2", ok: false, error: detail }],
+      error: detail,
     };
   }
+
+  const jdForLlm = pre.jdText || normalizeFallbackJd(opts.jd);
+  const masterForLlm = pre.masterText || opts.master;
 
   let tokensIn = 0;
   let tokensOut = 0;
@@ -210,8 +233,8 @@ export async function generateResumeV2(opts: {
     pack = opts.dryPack;
   } else {
     const user = buildUserMessage({
-      master: pre.masterText || opts.master,
-      jd: opts.jd,
+      master: masterForLlm,
+      jd: jdForLlm,
       contactHint: pre.contact,
       feedback: opts.feedback,
       priorJson: opts.priorJson,
@@ -221,7 +244,7 @@ export async function generateResumeV2(opts: {
       attempts = 1;
       await opts.onPhase?.("resume-v2-llm", "active");
       const first = await callOnce({
-        prompt: opts.prompt,
+        prompt: promptForRun,
         user,
         provider: opts.llmProvider,
       });
@@ -250,7 +273,7 @@ export async function generateResumeV2(opts: {
           "\nPrior JSON:\n" +
           first.raw.slice(0, 12000);
         const second = await callOnce({
-          prompt: opts.prompt,
+          prompt: promptForRun,
           user: repairUser,
           provider: opts.llmProvider,
           temperature: 0.25,
@@ -280,13 +303,20 @@ export async function generateResumeV2(opts: {
         issues: [],
         precheckErrors: pre.errors,
         precheckWarnings: pre.warnings,
-        ats: scoreResume({ resumeText: "", jd: opts.jd, jobTitle: "" }),
+        ats: scoreResume({
+          resumeText: "",
+          jd: jdForLlm || opts.jd,
+          jobTitle: "",
+        }),
         psych: scorePsych({
           resumeText: "",
-          masterText: opts.master,
-          jd: opts.jd,
+          masterText: masterForLlm || opts.master,
+          jd: jdForLlm || opts.jd,
           jobTitle: "",
-          mode: resolveTailorMode(opts.jd, opts.master).mode,
+          mode: resolveTailorMode(
+            jdForLlm || opts.jd,
+            masterForLlm || opts.master
+          ).mode,
         }),
         model,
         provider,
@@ -320,16 +350,16 @@ export async function generateResumeV2(opts: {
   const text = renderPackText(pack);
   const structured = packToStructuredResume(pack);
   const jobTitle = pack.header.jobTitle;
-  const modeResult = resolveTailorMode(opts.jd, opts.master);
+  const modeResult = resolveTailorMode(jdForLlm, masterForLlm);
   const ats = scoreResume({
     resumeText: text,
-    jd: opts.jd,
+    jd: jdForLlm,
     jobTitle,
   });
   const psych = scorePsych({
     resumeText: text,
-    masterText: opts.master,
-    jd: opts.jd,
+    masterText: masterForLlm,
+    jd: jdForLlm,
     jobTitle,
     mode: modeResult.mode,
     candidateName: pack.header.name,

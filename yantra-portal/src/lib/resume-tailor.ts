@@ -280,20 +280,39 @@ export async function tailorResume(opts: {
   }
 
   // ── Prompt-only v2 path (default) ─────────────────────────────────
-  // NO silent legacy fallback — that made Sowmya/real packs look "unchanged".
-  // Set RESUME_ENGINE_V2=0 to force the old multi-engine path.
+  // Hydrate + normalize inputs so chain packs never fail on phantom "empty JD".
+  const { normalizeJdText, normalizeMasterText } = await import(
+    "./resume-v2/precheck"
+  );
+  const jdHydrated = normalizeJdText(opts.jd);
+  const masterHydrated = normalizeMasterText(opts.master);
+  if (!promptTemplate || promptTemplate.trim().length < 80) {
+    promptTemplate = BIBLE_PROMPT || DEFAULT_PROMPT;
+  }
+
   let v2FallbackReason = "";
   if (shouldUseResumeV2(opts)) {
     try {
       await opts.onStep?.("resume-v2-precheck", "active");
+      if (jdHydrated.length < 8) {
+        throw new Error(
+          `Job description empty after normalize (${(opts.jd || "").length} raw chars). ` +
+            `Chain must store full JD in rawJobText.`
+        );
+      }
+      if (masterHydrated.length < 80) {
+        throw new Error(
+          `Master resume too short after normalize (${masterHydrated.length} chars). Re-upload DOCX/PDF.`
+        );
+      }
       await opts.onStep?.("resume-v2-precheck", "done");
       await opts.onStep?.("resume-v2-prompt", "active");
       await opts.onStep?.("resume-v2-prompt", "done");
       await opts.onStep?.("resume-v2-llm", "active");
       const v2 = await generateResumeV2WithRegen({
         prompt: promptTemplate,
-        master: opts.master,
-        jd: opts.jd,
+        master: masterHydrated,
+        jd: jdHydrated,
         promptVersionId: promptId,
         llmProvider: opts.llmProvider || null,
         targetAts: 95,
