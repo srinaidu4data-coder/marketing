@@ -7,6 +7,11 @@ import {
   type PromptTestResultOk,
 } from "@/app/actions/templates";
 import { PROMPT_TEST_SEQUENCES } from "@/lib/prompt-test-matrix";
+import {
+  SOURCE_META,
+  type LineSourceId,
+  type ProvenanceReport,
+} from "@/lib/resume/line-provenance";
 import { cn } from "@/lib/utils";
 
 type TabDef = (typeof PROMPT_TEST_SEQUENCES)[number];
@@ -33,6 +38,105 @@ function scorePill(score: number, kind: "ATS" | "Psych") {
     >
       {kind} {score}
     </span>
+  );
+}
+
+const LEGEND_ORDER: LineSourceId[] = [
+  "master",
+  "openai",
+  "claude",
+  "progressive-rules",
+  "ai-tailor",
+  "policy",
+  "mixed",
+  "structure",
+  "unknown",
+];
+
+function ProvenanceLegend({ report }: { report?: ProvenanceReport }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#86868b]">
+        Line source legend
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {LEGEND_ORDER.map((id) => {
+          const meta = SOURCE_META[id];
+          const n = report?.counts[id] ?? 0;
+          return (
+            <span
+              key={id}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border border-black/[0.06] px-2.5 py-1 text-[11px]",
+                meta.className
+              )}
+              title={meta.label}
+            >
+              <span className={cn("h-2 w-2 rounded-full", meta.bar)} />
+              {meta.short}
+              {report ? (
+                <span className="tabular-nums opacity-70">({n})</span>
+              ) : null}
+            </span>
+          );
+        })}
+      </div>
+      <p className="text-[11px] leading-relaxed text-[#86868b]">
+        Attribution is approximate: each line is compared to the master, the Rules-only pack,
+        OpenAI-only pack, Claude-only pack, and policy templates. Primary color = best guess;
+        hover a line for the note.
+      </p>
+    </div>
+  );
+}
+
+function ProvenanceResume({
+  text,
+  provenance,
+}: {
+  text: string;
+  provenance?: ProvenanceReport;
+}) {
+  if (!provenance?.lines?.length) {
+    return (
+      <pre className="max-h-[28rem] overflow-auto whitespace-pre-wrap rounded-lg border border-black/[0.06] bg-[#fafafa] p-3 text-xs leading-relaxed text-[#1d1d1f]">
+        {text}
+      </pre>
+    );
+  }
+
+  return (
+    <div className="max-h-[28rem] overflow-auto rounded-lg border border-black/[0.06] bg-[#fafafa] p-2 text-xs leading-relaxed">
+      {provenance.lines.map((ln, i) => {
+        if (!ln.text.trim()) {
+          return <div key={i} className="h-2" />;
+        }
+        const meta = SOURCE_META[ln.source];
+        return (
+          <div
+            key={i}
+            title={
+              ln.note
+                ? `${meta.label}: ${ln.note}${
+                    ln.also?.length
+                      ? ` · also: ${ln.also.map((a) => SOURCE_META[a].short).join(", ")}`
+                      : ""
+                  }`
+                : meta.label
+            }
+            className={cn(
+              "mb-0.5 rounded-md px-2 py-0.5 whitespace-pre-wrap",
+              meta.className
+            )}
+          >
+            <span className="mr-2 inline-block min-w-[3.25rem] rounded bg-white/70 px-1 text-[9px] font-bold uppercase tracking-wide opacity-80">
+              {meta.short}
+            </span>
+            {ln.text}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -388,9 +492,13 @@ export function PromptTestForm({ versionId }: { versionId: string }) {
                     .join(" → ")}
                 </p>
               ) : null}
-              <pre className="max-h-[28rem] overflow-auto whitespace-pre-wrap rounded-lg border border-black/[0.06] bg-[#fafafa] p-3 text-xs leading-relaxed text-[#1d1d1f]">
-                {active.result.text}
-              </pre>
+
+              <ProvenanceLegend report={active.result.provenance} />
+
+              <ProvenanceResume
+                text={active.result.text}
+                provenance={active.result.provenance}
+              />
             </div>
           ) : null}
         </div>

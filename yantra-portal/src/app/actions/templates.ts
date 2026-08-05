@@ -64,6 +64,8 @@ export type PromptTestResultOk = {
   layoutId: string;
   jobTitle: string;
   mode?: string;
+  /** Line-level source coloring (filled after matrix compare) */
+  provenance?: import("@/lib/resume/line-provenance").ProvenanceReport;
 };
 
 export type PromptTestResult =
@@ -233,13 +235,49 @@ export async function runPromptTestMatrix(
       );
       results.push(one);
     }
-    const anyOk = results.some((r) => r.ok);
+
+    // Line-level provenance: compare each pack to master + peer packs + policy templates
+    const { buildProvenanceReport, templatesFromPolicy } = await import(
+      "@/lib/resume/line-provenance"
+    );
+    const { getResumeEnginePolicy } = await import("@/lib/system-settings");
+    const policy = await getResumeEnginePolicy();
+    const policyTemplates = templatesFromPolicy(policy);
+    const master =
+      masterResume.trim() ||
+      "Jane Smith\nSAP FICO Consultant\n10 years GL/AP/AR/Asset Accounting";
+
+    const textOf = (tabId: string) => {
+      const r = results.find((x) => x.ok && x.tabId === tabId) as
+        | PromptTestResultOk
+        | undefined;
+      return r?.text || "";
+    };
+
+    const enriched = results.map((r) => {
+      if (!r.ok) return r;
+      const provenance = buildProvenanceReport({
+        resumeText: r.text,
+        masterText: master,
+        rulesPackText: textOf("rules-only"),
+        openaiPackText: textOf("openai-only"),
+        claudePackText: textOf("claude-only"),
+        aiOnlyPackText: textOf("ai-only"),
+        policyTemplates,
+        viewingTabId: r.tabId,
+        viewingLlmProvider: r.llmProvider || null,
+        viewingEngineUsed: r.engineUsed,
+      });
+      return { ...r, provenance };
+    });
+
+    const anyOk = enriched.some((r) => r.ok);
     return {
       ok: anyOk,
-      results,
+      results: enriched,
       error: anyOk
         ? undefined
-        : results.find((r) => !r.ok && "error" in r)?.error ||
+        : enriched.find((r) => !r.ok && "error" in r)?.error ||
           "All sequence tests failed",
     };
   } catch (e) {
