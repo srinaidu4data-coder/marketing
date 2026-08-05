@@ -226,27 +226,19 @@ function finalizePack(
   };
 }
 
-function useResumeV2(opts: {
+/** Whether to prefer prompt-only v2 path (not a React hook). */
+function shouldUseResumeV2(opts: {
   engineSequence?: ResumeEngineId[];
 }): boolean {
   if (process.env.RESUME_ENGINE_V2 === "0") return false;
-  // Explicit legacy sequence for prompt-matrix engine tabs
-  if (opts.engineSequence?.length) {
-    const onlyLegacy = opts.engineSequence.every(
-      (e) => e === "ai-tailor" || e === "progressive-rules"
-    );
-    // Matrix tests that pass sequence intentionally exercise legacy path
-    if (onlyLegacy && process.env.RESUME_ENGINE_V2 !== "1") {
-      // Prefer v2 unless forced off — still allow legacy when sequence is rules-only only
-      if (
-        opts.engineSequence.length === 1 &&
-        opts.engineSequence[0] === "progressive-rules"
-      ) {
-        return false;
-      }
-    }
+  // Explicit progressive-rules-only stays on legacy path for matrix tabs
+  if (
+    opts.engineSequence?.length === 1 &&
+    opts.engineSequence[0] === "progressive-rules"
+  ) {
+    return false;
   }
-  return process.env.RESUME_ENGINE_V2 !== "0";
+  return true;
 }
 
 export async function tailorResume(opts: {
@@ -288,7 +280,7 @@ export async function tailorResume(opts: {
   }
 
   // ── Prompt-only v2 path (default) ─────────────────────────────────
-  if (useResumeV2(opts) && !(opts.engineSequence?.length === 1 && opts.engineSequence[0] === "progressive-rules")) {
+  if (shouldUseResumeV2(opts)) {
     try {
       await opts.onStep?.("resume-v2", "active");
       const v2 = await generateResumeV2WithRegen({

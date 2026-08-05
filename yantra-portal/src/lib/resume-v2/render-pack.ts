@@ -4,6 +4,7 @@
  */
 
 import type { ResumePackV2 } from "./pack-schema";
+import type { StructuredResume, ResumeSection } from "@/lib/resume/templates";
 
 function skillsToLines(skills: ResumePackV2["techSkills"]): string {
   if (typeof skills === "string") return skills.trim();
@@ -76,8 +77,6 @@ export function renderPackText(pack: ResumePackV2): string {
 
   return parts.filter((l, i, a) => !(l === "" && a[i - 1] === "")).join("\n");
 }
-
-import type { StructuredResume, ResumeSection } from "@/lib/resume/templates";
 
 function skillsLines(skills: ResumePackV2["techSkills"]): string[] {
   if (typeof skills === "string") return skills ? [skills] : [];

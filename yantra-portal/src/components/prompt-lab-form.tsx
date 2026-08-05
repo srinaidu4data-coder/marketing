@@ -7,7 +7,10 @@ import {
   runPromptLabFullCompare,
   type PromptLabSectionResult,
 } from "@/app/actions/prompt-lab";
-import { PROMPT_LAB_SECTIONS, type PromptSectionId } from "@/lib/resume-v2";
+import {
+  PROMPT_LAB_SECTIONS,
+  type PromptSectionId,
+} from "@/lib/resume-v2/prompt-sections";
 import { cn } from "@/lib/utils";
 
 const SAMPLE_MASTER = `Jane Smith

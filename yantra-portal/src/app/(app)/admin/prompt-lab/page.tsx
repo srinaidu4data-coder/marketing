@@ -1,7 +1,7 @@
 import { requireAdmin } from "@/lib/session";
 import { PageHeader, Badge } from "@/components/ui";
 import { PromptLabForm } from "@/components/prompt-lab-form";
-import { BIBLE_PROMPT } from "@/lib/resume-v2";
+import { BIBLE_PROMPT } from "@/lib/resume-v2/bible-prompt";
 import Link from "next/link";
 
 export default async function PromptLabPage() {
