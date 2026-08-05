@@ -13,6 +13,20 @@ export type ProgressStepDef = {
 export const RESUME_BUILD_STEPS: ProgressStepDef[] = [
   { id: "parse_master", label: "Master resume loaded (contact, employers, dates)" },
   { id: "parse_jd", label: "Job requirement analyzed" },
+  // Prompt-only resume-v2 path (primary)
+  {
+    id: "resume-v2",
+    label: "Prompt-only engine (Bible → LLM → 12×12 pack)",
+  },
+  {
+    id: "resume-v2-score",
+    label: "ATS / Psych scored (regen if ATS < 95)",
+  },
+  {
+    id: "resume-v2-done",
+    label: "Prompt-only pack ready (no rules rewriter)",
+  },
+  // Legacy steps (kept for older engines / progress UI)
   { id: "title", label: "Resume title updated from JD" },
   { id: "header", label: "Header contact applied from master" },
   { id: "summary", label: "Professional summary AI generated" },

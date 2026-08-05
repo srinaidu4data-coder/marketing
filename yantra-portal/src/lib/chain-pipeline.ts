@@ -418,7 +418,13 @@ export async function generateChainResumes(
           ),
           atsScore: tailored.ats.score,
           psychScore: tailored.psych?.score ?? 0,
-          tailorMode: tailored.modeResult?.mode || tailored.structured.meta.tailorMode || "",
+          // Prefer explicit meta stamp (prompt-v2 / legacy-fallback) over domain mode
+          tailorMode: sanitizePostgresText(
+            tailored.structured.meta.tailorMode ||
+              tailored.modeResult?.label ||
+              tailored.modeResult?.mode ||
+              ""
+          ),
           atsReady: tailored.ats.score >= 95, // ship floor; BEST = dual 100 on best flag
           atsBreakdownJson: sanitizePostgresText(
             JSON.stringify({

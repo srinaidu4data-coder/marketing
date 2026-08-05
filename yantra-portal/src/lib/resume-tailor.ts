@@ -280,6 +280,8 @@ export async function tailorResume(opts: {
   }
 
   // ── Prompt-only v2 path (default) ─────────────────────────────────
+  // Visible in UI via tailorMode + progressiveNotes + model prefix.
+  let v2FallbackReason = "";
   if (shouldUseResumeV2(opts)) {
     try {
       await opts.onStep?.("resume-v2", "active");
@@ -292,12 +294,17 @@ export async function tailorResume(opts: {
         targetAts: 95,
         maxAttempts: 3,
       });
-      if (v2.ok && v2.text.length > 200) {
+      // Accept any substantial pack from v2 (not only ok:true) so we don't
+      // silently drop to progressive-rules and look "unchanged".
+      if (v2.text && v2.text.length > 200 && v2.pack.projects.length > 0) {
         const enginesTried: TailorResumeResult["enginesTried"] = [
           {
             engine: "ai-tailor",
             ok: true,
-            error: v2.attempts > 1 ? `resume-v2 · ${v2.attempts} attempts` : "resume-v2",
+            error:
+              v2.attempts > 1
+                ? `resume-v2-prompt-only · ${v2.attempts} attempts`
+                : "resume-v2-prompt-only",
           },
         ];
         try {
@@ -321,13 +328,29 @@ export async function tailorResume(opts: {
           /* ignore usage log */
         }
         await opts.onStep?.("resume-v2", "done");
+        await opts.onStep?.("resume-v2-score", "done");
+        await opts.onStep?.("resume-v2-done", "done");
+
+        const summaryCount = v2.pack.professionalSummary.bullets.length;
+        const projectBulletCounts = v2.pack.projects.map((p) => p.bullets.length);
+        v2.structured.meta.tailorMode = "prompt-v2";
+        v2.structured.meta.progressiveNotes = [
+          "ENGINE=resume-v2-prompt-only (Prompt is the only writing source)",
+          `Provider=${v2.provider || "?"} Model=${v2.model || "?"}`,
+          `Summary bullets=${summaryCount} · Projects=${v2.pack.projects.length} · Per-project bullets=[${projectBulletCounts.join(",")}]`,
+          `ATS ${v2.ats.score} · Psych ${v2.psych.score} · attempts ${v2.attempts}`,
+          ...(v2.precheckWarnings || []).map((w) => `precheck: ${w}`),
+          ...(v2.issues || []).slice(0, 8).map((i) => `schema: ${i.detail}`),
+          ...(v2.structured.meta.progressiveNotes || []),
+        ];
+
         return {
           structured: v2.structured,
           text: v2.text,
           ats: v2.ats,
           psych: v2.psych,
           usedLlm: true,
-          model: v2.model || "resume-v2",
+          model: `resume-v2/${v2.model || "llm"}`,
           engine: "ai-tailor",
           enginesTried,
           passes: v2.attempts,
@@ -338,13 +361,35 @@ export async function tailorResume(opts: {
             pass: v2.ats.score >= 95,
             reasons: v2.issues.map((i) => i.detail),
           },
+          modeResult: {
+            mode: "transfer",
+            overlap: 0,
+            allowEmergencyFill: false,
+            jdTitlesOnRecent: true,
+            minBullets: 12,
+            label: "prompt-v2 (Bible-only)",
+          },
         };
       }
+      v2FallbackReason =
+        v2.error ||
+        v2.precheckErrors?.join("; ") ||
+        `v2 returned thin pack (text=${v2.text?.length || 0}, projects=${v2.pack?.projects?.length || 0})`;
       await opts.onStep?.("resume-v2", "error");
-      // fall through to legacy if v2 failed
-    } catch {
+      console.error("[tailorResume] resume-v2 did not produce a pack:", v2FallbackReason);
+    } catch (e) {
+      v2FallbackReason = e instanceof Error ? e.message : String(e);
       await opts.onStep?.("resume-v2", "error");
+      console.error("[tailorResume] resume-v2 threw:", v2FallbackReason);
     }
+  }
+
+  // Legacy path only if v2 off or failed — stamp so UI shows FALLBACK clearly
+  if (v2FallbackReason) {
+    console.warn(
+      "[tailorResume] Falling back to legacy engines because:",
+      v2FallbackReason
+    );
   }
 
   let sequence: ResumeEngineId[] =
@@ -361,6 +406,18 @@ export async function tailorResume(opts: {
 
   const enginesTried: TailorResumeResult["enginesTried"] = [];
   let lastError: Error | null = null;
+  const legacyStamp = (structured: StructuredResume) => {
+    structured.meta.progressiveNotes = [
+      v2FallbackReason
+        ? `ENGINE=legacy-fallback (resume-v2 failed: ${v2FallbackReason.slice(0, 200)})`
+        : "ENGINE=legacy multi-engine path",
+      ...(structured.meta.progressiveNotes || []),
+    ];
+    if (v2FallbackReason) {
+      structured.meta.tailorMode = `legacy-fallback`;
+    }
+    return structured;
+  };
 
   for (const engine of sequence) {
     try {
@@ -423,6 +480,7 @@ export async function tailorResume(opts: {
           `Sequence: ${sequence.join(" → ")}`,
           `Prompt: ${promptId.slice(0, 12)}`,
         ];
+        legacyStamp(result.structured);
 
         enginesTried.push({ engine, ok: true });
         const regenOpenAi = async () => {

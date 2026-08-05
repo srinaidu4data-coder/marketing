@@ -182,7 +182,12 @@ export async function runPromptTest(
       tabId,
       sequenceLabel,
       sequence,
-      engineUsed: result.engine,
+      engineUsed:
+        result.structured?.meta?.tailorMode === "prompt-v2"
+          ? "resume-v2-prompt-only"
+          : result.model?.startsWith("resume-v2/")
+            ? "resume-v2-prompt-only"
+            : result.engine,
       llmProvider: llmProvider || undefined,
       llmModel: result.model,
       enginesTried: result.enginesTried,

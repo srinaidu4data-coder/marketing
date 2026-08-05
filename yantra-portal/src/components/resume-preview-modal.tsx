@@ -9,6 +9,10 @@ import { useCallback, useEffect, useId, useState } from "react";
 import { Eye, X } from "lucide-react";
 import { stripEngineFooter } from "@/lib/resume/strip-engine-footer";
 
+function countBullets(text: string): number {
+  return (text.match(/^[•\-\u2022*]\s+/gm) || []).length;
+}
+
 export function ResumePreviewModal({
   candidateName,
   role,
@@ -81,8 +85,16 @@ export function ResumePreviewModal({
                 <p className="truncate text-[12px] text-[#86868b]">{role}</p>
                 <p className="mt-0.5 text-[11px] tabular-nums text-[#86868b]">
                   ATS {atsScore} · Psych {psychScore} ·{" "}
-                  {cleanText.length.toLocaleString()} chars
+                  {cleanText.length.toLocaleString()} chars ·{" "}
+                  {countBullets(cleanText)} bullets
                 </p>
+                {/Tech Stack:|Environment:|PROFESSIONAL SUMMARY/i.test(
+                  cleanText
+                ) ? (
+                  <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
+                    Structure: summary · skills · projects (v2-style)
+                  </p>
+                ) : null}
               </div>
               <button
                 type="button"
