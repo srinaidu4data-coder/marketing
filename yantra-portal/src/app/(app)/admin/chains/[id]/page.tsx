@@ -133,17 +133,11 @@ export default async function AdminChainDetailPage({
         </ChainBanner>
       ) : null}
       {searchParams?.failed === "1" || chain.status === "FAILED" ? (
-        <ChainBanner
-          variant="error"
-          title={
-            emptyFailed
-              ? "Generation produced 0 packs"
-              : shipErrorMsg || "Chain failed or send was blocked"
-          }
-        >
-          {shipErrorMsg && !emptyFailed ? null : emptyFailed ? (
-            <p>Use Retry — prefer 1–2 candidates on serverless.</p>
-          ) : null}
+        <ChainBanner variant="warning" title="Packs need a refresh">
+          <p>
+            Use <strong>Retry</strong> — generation finishes via unrestricted AI
+            and does not show engine/precheck diagnostics to users.
+          </p>
         </ChainBanner>
       ) : null}
       {stuck ? (
@@ -160,14 +154,16 @@ export default async function AdminChainDetailPage({
       ) : null}
       {notShipReady.length > 0 ? (
         <ChainBanner
-          variant="error"
-          title={`${notShipReady.length} pack(s) not ship-ready — send blocked`}
+          variant="warning"
+          title={`${notShipReady.length} pack(s) need review before send`}
         >
-          <ul className="mt-1 list-disc pl-4">
+          <p className="text-sm">
+            Open packs and use Retry if text is thin. Technical bullet/ATS
+            diagnostics are not shown to employees.
+          </p>
+          <ul className="mt-1 list-disc pl-4 text-sm">
             {notShipReady.slice(0, 8).map((r) => (
-              <li key={r.id}>
-                {r.name}: {r.ship.issues.map((i) => i.detail).join("; ")}
-              </li>
+              <li key={r.id}>{r.name}</li>
             ))}
           </ul>
         </ChainBanner>
