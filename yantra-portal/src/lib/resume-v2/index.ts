@@ -68,3 +68,9 @@ export {
   buildFitAccumulateFeedback,
   injectMissingPhrasesIntoPack,
 } from "./pack-accumulate";
+export {
+  scrubToToolNouns,
+  scrubEnvironment,
+  toolsFromJd,
+  isToolNoun,
+} from "./tools-nouns";

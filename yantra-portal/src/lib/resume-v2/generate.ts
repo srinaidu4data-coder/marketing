@@ -74,8 +74,9 @@ function buildUserMessage(opts: {
       "=== HIGHEST PRIORITY: FIT ACCUMULATE REPAIR (read first) ===",
       opts.feedback,
       "",
-      "ACCUMULATE LAW: KEEP every prior techStack tool, skill, environment token, and strong bullet.",
-      "ADD missing phrases/keywords into stack/env/bullets — never shrink a 5-tool stack to fewer tools.",
+      "ACCUMULATE LAW: KEEP prior tool NOUNS on techStack/environment; KEEP strong bullets.",
+      "ADD missing JD tool nouns to stack/env; put multi-word Fit PHRASES into bullets/summary only — never into Tech Stack.",
+      "Tech Stack example good: SAP IBP, S/4HANA, CPI, Jira. Bad: Hands-on expertise in DP, candidate must have 15+.",
       ""
     );
     if (opts.priorJson) {
@@ -108,11 +109,11 @@ function buildUserMessage(opts: {
     "LOCKS: name + every employerOrClient + duration exact. Same project count/order.",
     "FREE but JD-DOMAIN: header.jobTitle, EVERY projects[i].role, techStack, environment, bullets, summary, skills.",
     "EVERY PROJECT JD REWRITE (mandatory): regenerate role + techStack + environment + ALL bullets for projects[0], [1], [2], … ALL indices.",
-    "REQUIRED on every project: non-empty techStack (JD tools) and environment (delivery context).",
-    "FORBIDDEN: keep master FICO/RTR/module titles on any project when JD is BRIM/data/other domain.",
-    "FORBIDDEN: only rewrite recent project; mid/early must also show JD face on role, stack, env, bullets.",
-    "FORBIDDEN: empty techStack/environment; copy-paste master stack when JD domain differs.",
-    "ACCUMULATE: if PRIOR JSON present, KEEP prior techStack tools, skills, bullets; ADD missing JD phrases/keywords — never shrink stack.",
+    "REQUIRED every project: techStack + environment as NOUN tools only (SAP IBP, S/4HANA, Jira, ServiceNow, CPI).",
+    "FORBIDDEN in techStack/environment: phrases like 'hands-on expertise', 'candidate must have 15+', 'strong experience', any sentence.",
+    "JD multi-word capability phrases → summary + bullets ONLY (never Tech Stack).",
+    "FORBIDDEN: keep master FICO/RTR titles when JD is another domain; only rewrite recent project.",
+    "ACCUMULATE: KEEP prior tool nouns + bullets; ADD missing tool nouns / bullet proofs — never dump Fit phrases into Tech Stack.",
     "Budget: summary 6–8; EVERY project 8–12 bullets (min 8). No engagement-goals (N/M) filler. JSON only."
   );
 

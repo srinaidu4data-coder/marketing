@@ -35,7 +35,10 @@ Return ONE JSON object only (no markdown fences, no commentary).
 - Prefer recent slightly denser; still min 8 on mid/early
 - Maximum ~48 project bullets total across all projects
 - No duplicates, no filler, no engagement-goals (N/M) lines
-- **Every** project MUST include non-empty **techStack** and **environment** lines with JD tools/platforms (not soft skills)
+- **Every** project MUST include non-empty **techStack** and **environment**
+- **techStack / environment = NOUN tools only** (e.g. SAP IBP, S/4HANA, CPI, Jira, ServiceNow, Public Cloud)
+- **FORBIDDEN in techStack/environment:** requirement phrases, "hands-on", "expertise", "candidate must", "strong experience", multi-clause prose
+- Capability **phrases** belong in **summary and bullets only**, never in Tech Stack
 
 ## CRAFT
 - JD terms in summary, skills, **every** project role/stack/env/bullets

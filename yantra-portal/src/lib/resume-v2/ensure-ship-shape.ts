@@ -19,6 +19,11 @@ import {
   getSkillNeutralBulletBank,
   pickBankBullets,
 } from "@/lib/resume/skill-neutral-bullet-bank";
+import {
+  scrubToToolNouns,
+  scrubEnvironment,
+  toolsFromJd,
+} from "./tools-nouns";
 
 const EC = "Employer / Client:";
 
@@ -92,24 +97,6 @@ export function guessEmployersFromMaster(master: string, max = 6): string[] {
  * Mutate pack so every project has employer + dense bullets.
  * Uses Admin skill-neutral bank when short — never engagement-goals (N/M).
  */
-/** Pull tool-like tokens from JD for empty techStack pad (never fake employers). */
-function jdToolHints(jd?: string, limit = 10): string {
-  if (!jd?.trim()) return "";
-  const found: string[] = [];
-  const re =
-    /\b(SAP|BRIM|FI-CA|FICA|S\/4HANA|S4HANA|HANA|RAR|SOM|OTC|PTP|FICO|RTR|BW|BPC|MDG|EWM|Ariba|OpenText|ServiceNow|Jira|Concur|SuccessFactors|DataSphere|SAC)\b/gi;
-  const seen = new Set<string>();
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(jd)) && found.length < limit) {
-    const t = m[0];
-    const key = t.toUpperCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    found.push(t);
-  }
-  return found.join(", ");
-}
-
 export function ensurePackShipShape(
   pack: ResumePackV2,
   masterText?: string,
@@ -123,7 +110,8 @@ export function ensurePackShipShape(
       : DEFAULT_SKILL_NEUTRAL_BULLETS;
   const used = new Set<string>();
   const employers = guessEmployersFromMaster(masterText || "");
-  const stackFallback = jdToolHints(jd);
+  const stackFallback = toolsFromJd(jd, 10);
+  const envFallback = scrubEnvironment("", jd, 8) || stackFallback;
   let projects = [...(pack.projects || [])];
 
   if (!projects.length) {
@@ -133,7 +121,7 @@ export function ensurePackShipShape(
       location: "",
       duration: "",
       techStack: stackFallback,
-      environment: "Client delivery environment",
+      environment: envFallback,
       bullets: padBulletsFromBank([], bank, used, MIN_RECENT),
     }));
   } else {
@@ -147,14 +135,17 @@ export function ensurePackShipShape(
       // Ship law: every project ≥ MIN_BULLETS_PER_PROJECT
       void n;
       const minB = MIN_BULLETS_PER_PROJECT;
-      const stack = (p.techStack || "").trim() || stackFallback;
-      const env = (p.environment || "").trim();
+      // Scrub phrase pollution; noun tools only
+      const stack =
+        scrubToToolNouns(p.techStack || "", 14) || stackFallback;
+      const env =
+        scrubEnvironment(p.environment || "", jd, 10) || envFallback;
       return {
         ...p,
         role: (p.role || "").trim() || pack.header.jobTitle || "Consultant",
         employerOrClient: emp,
         techStack: stack,
-        environment: env || "Client delivery environment",
+        environment: env,
         bullets: padBulletsFromBank(
           p.bullets || [],
           bank,
@@ -169,6 +160,12 @@ export function ensurePackShipShape(
         ),
       };
     });
+  }
+
+  // Skills section: noun tools only (never keep requirement prose)
+  if (typeof pack.techSkills === "string") {
+    pack.techSkills =
+      scrubToToolNouns(pack.techSkills, 20) || toolsFromJd(jd, 12) || "";
   }
 
   const summary = padBulletsFromBank(

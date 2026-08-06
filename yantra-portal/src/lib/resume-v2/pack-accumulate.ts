@@ -6,6 +6,7 @@
 import type { ResumePackV2 } from "./pack-schema";
 import { MAX_BULLETS_PER_PROJECT } from "@/lib/resume/bullet-density";
 import { FILLER_BULLET } from "./ensure-ship-shape";
+import { scrubToToolNouns, scrubEnvironment } from "./tools-nouns";
 
 function splitTools(s: string): string[] {
   return (s || "")
@@ -99,21 +100,19 @@ export function accumulatePackCraft(
     }
     if (!bp || !np) continue;
 
-    const stack = joinTools([
-      ...splitTools(bp.techStack || ""),
-      ...splitTools(np.techStack || ""),
-    ]);
-    const envSeen = new Set<string>();
-    const envParts: string[] = [];
-    for (const e of [bp.environment || "", np.environment || ""]) {
-      const t = e.trim();
-      if (!t) continue;
-      const k = t.toLowerCase();
-      if (envSeen.has(k)) continue;
-      envSeen.add(k);
-      envParts.push(t);
-    }
-    const env = envParts.join("; ");
+    // Accrue tools as nouns only (scrub phrase pollution from either side)
+    const stack = scrubToToolNouns(
+      joinTools([
+        ...splitTools(bp.techStack || ""),
+        ...splitTools(np.techStack || ""),
+      ]),
+      16
+    );
+    const env = scrubEnvironment(
+      [bp.environment || "", np.environment || ""].filter(Boolean).join(", "),
+      undefined,
+      12
+    );
     // Prefer JD-facing role from next if it differs, else base
     const role =
       (np.role || "").trim().length >= (bp.role || "").trim().length
@@ -174,9 +173,8 @@ export function accumulatePackCraft(
 }
 
 /**
- * Deterministic weave: ensure missing Fit phrases/keywords appear in pack text
- * (skills + every project techStack) so Fit dashboard can tick them.
- * Does not invent employers/metrics — only appends JD gap labels already extracted.
+ * Weave missing Fit phrases into BULLETS only (never Tech Stack / Environment).
+ * Tool-like single nouns from gaps may be added to stack via scrub elsewhere.
  */
 export function injectMissingPhrasesIntoPack(
   pack: ResumePackV2,
@@ -185,27 +183,15 @@ export function injectMissingPhrasesIntoPack(
   const gaps = (missingLabels || [])
     .map((s) => String(s || "").trim())
     .filter((s) => s.length >= 2 && s.length <= 80)
-    .slice(0, 20);
+    .slice(0, 16);
   if (!gaps.length) return pack;
 
   const packBlob = JSON.stringify(pack).toLowerCase();
   const stillMissing = gaps.filter((g) => !packBlob.includes(g.toLowerCase()));
   if (!stillMissing.length) return pack;
 
-  const addTools = joinTools([
-    ...splitTools(
-      typeof pack.techSkills === "string"
-        ? pack.techSkills
-        : Array.isArray(pack.techSkills)
-          ? pack.techSkills.join(", ")
-          : ""
-    ),
-    ...stillMissing,
-  ]);
-
+  // Phrases → bullets only. Never dump into techStack (causes "candidate must have 15+" pollution).
   const projects = (pack.projects || []).map((p) => {
-    const stack = joinTools([...splitTools(p.techStack || ""), ...stillMissing]);
-    // One proof bullet per project if phrase still not in bullets
     const bulletNeed = stillMissing
       .filter(
         (g) =>
@@ -218,26 +204,20 @@ export function injectMissingPhrasesIntoPack(
         (g) =>
           `Supported ${g} workstreams with configuration, validation, and stakeholder alignment.`
       );
-    const bullets = mergeBulletLists(p.bullets || [], bulletNeed);
     return {
       ...p,
-      techStack: stack,
-      environment:
-        (p.environment || "").trim() ||
-        "Client delivery environment with integrated SAP landscape",
-      bullets,
+      bullets: mergeBulletLists(p.bullets || [], bulletNeed),
     };
   });
 
   return {
     ...pack,
-    techSkills: addTools,
     projects,
     meta: {
       ...(pack.meta || {}),
       notes: [
         ...((pack.meta?.notes as string[]) || []),
-        `inject_phrases:${stillMissing.slice(0, 6).join("|")}`,
+        `inject_phrases_bullets_only:${stillMissing.slice(0, 6).join("|")}`,
       ].slice(0, 30),
     },
   };
@@ -263,23 +243,24 @@ export function buildFitAccumulateFeedback(opts: {
     "=== FIT ACCUMULATE REPAIR (Bible free fields only — keep LOCKS) ===",
     `Current Fit confidence: ${opts.fitConfidence}/100 (need ≥80). Loop ${opts.loop}/${opts.maxLoops}.`,
     "ACCUMULATE — do NOT replace prior craft:",
-    "- Tech Stack: KEEP every existing tool; ADD missing JD tools (union, comma-separated).",
-    "- Environment: KEEP prior; ADD JD platforms/context if missing.",
-    "- Bullets: KEEP strong prior bullets; ADD new distinct bullets that prove MISSING phrases/keywords (until 8–12 per project).",
-    "- Skills section: KEEP prior skills; ADD missing JD terms.",
-    "- Roles: if wrong domain (e.g. FICO under BRIM JD), rewrite to JD family but do not drop proof bullets.",
+    "- Tech Stack: NOUN TOOLS ONLY (SAP IBP, S/4HANA, Jira, CPI, …). KEEP prior tools; ADD JD product nouns only — never sentences or 'must have'.",
+    "- Environment: indirect tools/platforms only (Jira, ServiceNow, S/4HANA, Public Cloud, …) — NOUNS only.",
+    "- Bullets: KEEP strong prior bullets; ADD bullets that prove MISSING multi-word phrases (until 8–12 per project).",
+    "- Skills: product/module nouns only — not requirement prose.",
+    "- Roles: if wrong domain, rewrite to JD family but do not drop proof bullets.",
     "PRIOR JSON is the baseline — output full pack with accrued fields, not a thinner rewrite.",
   ];
 
   if (phrases.length) {
     lines.push(
       "",
-      "=== MUST WEAVE — JD PHRASES & KEYWORDS (were missing / marked PHRASE on Fit dashboard) ===",
-      "Each of these MUST appear naturally in summary and/or project techStack/environment/bullets:",
+      "=== MUST WEAVE — JD PHRASES (Fit gaps) → SUMMARY + BULLETS ONLY ===",
+      "Do NOT put these multi-word phrases into Tech Stack or Environment.",
+      "Put capability phrases in professional summary and project bullets:",
       ...phrases.slice(0, 24).map((p, i) => `${i + 1}. "${p}"`)
     );
     lines.push(
-      "How to use phrases: embed exact wording where honest (tools in Tech Stack; multi-word capabilities in bullets; modules in environment).",
+      "Tech Stack / Environment: only short tool nouns from the JD (e.g. IBP, S/4HANA, CPI, Jira, ServiceNow).",
       "Do not invent employers/metrics. Prefer qualitative proof if numbers unknown."
     );
   }
