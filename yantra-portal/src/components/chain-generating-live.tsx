@@ -88,7 +88,10 @@ export function ChainGeneratingLive({
   const serverTip = progress?.tip;
   const showTip = tipTick % 2 === 0 ? rotatingTip : serverTip || rotatingTip;
 
-  const steps = progress?.steps || [];
+  const steps = useMemo(
+    () => progress?.steps ?? [],
+    [progress?.steps]
+  );
   const pct = progress?.pct ?? 5;
   const headline =
     progress?.headline ||
