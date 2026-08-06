@@ -8,6 +8,7 @@ import {
   type MasterProfile,
   type MasterEngagement,
 } from "@/lib/resume/master-profile";
+import { JD_REWRITE_MAX_INDEX } from "./bible-prompt";
 
 export type EvidenceSnippet = {
   slot: number;
@@ -64,7 +65,7 @@ export function rankBankLexical(jd: string, bank: string[], topK = 40): string[]
 
 function formatEngagementSkeleton(e: MasterEngagement, index: number): string {
   const end = e.endYear === "Present" ? "Present" : String(e.endYear);
-  const jdRewrite = index <= 2;
+  const jdRewrite = index <= JD_REWRITE_MAX_INDEX;
   const lines = [
     `[SLOT ${index}] employerOrClient: ${e.client}`,
     `  duration: ${e.startYear} – ${end}`,
@@ -72,8 +73,8 @@ function formatEngagementSkeleton(e: MasterEngagement, index: number): string {
     `  historical_master_title: ${e.title || ""}`,
     `  project: ${e.project || ""}`,
     jdRewrite
-      ? `  POLICY: projects[${index}] is RECENT (i≤2) — FULL JD rewrite of role/techStack/environment/bullets; era-honest for ${e.startYear}–${end}.`
-      : `  POLICY: projects[${index}] is EARLY (i≥3) — FREEZE/NEUTRAL; keep master-faithful era-true content; do NOT invent role/stack/env/bullets for JD.`,
+      ? `  POLICY: projects[${index}] is RECENT (i≤${JD_REWRITE_MAX_INDEX}) — FULL JD rewrite of role/techStack/environment/bullets; era-honest for ${e.startYear}–${end}.`
+      : `  POLICY: projects[${index}] is EARLY (i>${JD_REWRITE_MAX_INDEX}) — FREEZE/NEUTRAL; keep master-faithful era-true content; do NOT invent role/stack/env/bullets for JD.`,
   ];
   return lines.join("\n");
 }
@@ -148,9 +149,9 @@ function buildFromProfile(
   const parts: string[] = [
     "=== PROJECT-COMPLETE SKELETON (ALL employers — never drop a slot) ===",
     "LOCKS on every slot: employerOrClient, duration, location.",
-    "JD REWRITE only SLOT 0, 1, 2 (role/stack/env/bullets → JD domain, era-honest).",
-    "SLOT index ≥ 3: FREEZE — neutral/master/era-true; little JD matching; do not invent free fields.",
-    "Do NOT paste historical FICO/RTR titles on slots 0–2 when JD is another domain.",
+    `JD REWRITE only SLOT 0..${JD_REWRITE_MAX_INDEX} (role/stack/env/bullets → JD domain, era-honest).`,
+    `SLOT index > ${JD_REWRITE_MAX_INDEX}: FREEZE — neutral/master/era-true; little JD matching; do not invent free fields.`,
+    `Do NOT paste historical FICO/RTR titles on slots 0–${JD_REWRITE_MAX_INDEX} when JD is another domain.`,
     "Evidence bullets are facts only — do not invent employers/metrics.",
     "",
   ];

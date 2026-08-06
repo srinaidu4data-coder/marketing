@@ -13,6 +13,7 @@ import { resolveTailorMode } from "@/lib/resume/tailor-mode";
 import { packHasFreeMetrics } from "@/lib/resume/resume-honesty";
 import { FILLER_BULLET } from "./ensure-ship-shape";
 import type { ResumePackV2 } from "./pack-schema";
+import { JD_REWRITE_MAX_INDEX } from "./bible-prompt";
 
 export type ScoreBand = "green" | "soft" | "hard";
 
@@ -96,8 +97,8 @@ export function detectProjectResidue(opts: {
       if (blob.includes(t)) jdHits++;
     }
 
-    // JD-face checks ONLY for recency slots 0..2 (early career i≥3 is allowed to stay neutral)
-    if (i > 2) continue;
+    // JD-face checks ONLY for recency slots (early career freeze is allowed to stay neutral)
+    if (i > JD_REWRITE_MAX_INDEX) continue;
 
     // Role-title residue: "FICO/RTR Architect" under BRIM JD even if bullets look OK
     const role = (p.role || "").toLowerCase();
@@ -397,23 +398,23 @@ export function scorePack(opts: {
   };
 }
 
-/** Build regen feedback from score (C2 tier1). */
+/** Build regen feedback from score (C2 tier1). Pure policy: JD rewrite only projects[0..2]. */
 export function feedbackFromScore(score: PackScoreReport): string {
   const parts = [
-    "REGEN: keep name/employers/dates/education locks.",
-    "Rewrite EVERY project index (0..n-1) **role title**, techStack, environment, all bullets to the JD domain.",
-    "FORBIDDEN: leave FICO/RTR/master module titles on any project when JD is BRIM/data/other domain.",
-    "FORBIDDEN: master domain face on mid/early projects; Company+(N/M) filler; invent free metrics.",
-    "header.jobTitle and every projects[i].role must match the JD role family.",
+    "REGEN: keep name/employers/dates/education/certs locks.",
+    "JD REWRITE ONLY projects[0], [1], [2]: role, techStack, environment, all bullets → JD domain (era-honest).",
+    "projects[i≥3]: FREEZE neutral/master/era-true — do NOT JD-paint early career.",
+    "header.jobTitle + projects[0..2].role = JD role family. FORBIDDEN: FICO/RTR face on 0..2 when JD is another domain.",
+    "FORBIDDEN: Company+(N/M) filler; invent free metrics or certs.",
   ];
   if (score.ats.missingKeywords?.length) {
     parts.push(
-      `Missing JD keywords to weave honestly: ${score.ats.missingKeywords.slice(0, 12).join(", ")}`
+      `Missing JD keywords to weave on summary/skills/projects[0..2] only: ${score.ats.missingKeywords.slice(0, 12).join(", ")}`
     );
   }
   if (score.residueHits.length) {
     parts.push(
-      `Residue on projects: ${score.residueHits
+      `Residue on recent slots: ${score.residueHits
         .map((h) => `[${h.index}] ${h.employer} (${h.detail})`)
         .join("; ")}`
     );

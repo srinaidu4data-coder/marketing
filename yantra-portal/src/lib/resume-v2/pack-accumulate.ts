@@ -7,6 +7,7 @@ import type { ResumePackV2 } from "./pack-schema";
 import { MAX_BULLETS_PER_PROJECT } from "@/lib/resume/bullet-density";
 import { FILLER_BULLET } from "./ensure-ship-shape";
 import { scrubToToolNouns, scrubEnvironment } from "./tools-nouns";
+import { JD_REWRITE_MAX_INDEX } from "./bible-prompt";
 
 function splitTools(s: string): string[] {
   return (s || "")
@@ -190,9 +191,9 @@ export function injectMissingPhrasesIntoPack(
   const stillMissing = gaps.filter((g) => !packBlob.includes(g.toLowerCase()));
   if (!stillMissing.length) return pack;
 
-  // Phrases → bullets only on RECENT slots (i≤2). Never into techStack; never paint early career (i≥3).
+  // Phrases → bullets only on RECENT slots (i≤JD_REWRITE_MAX_INDEX). Never into techStack; never paint early career.
   const projects = (pack.projects || []).map((p, index) => {
-    if (index > 2) return p;
+    if (index > JD_REWRITE_MAX_INDEX) return p;
     const bulletNeed = stillMissing
       .filter(
         (g) =>

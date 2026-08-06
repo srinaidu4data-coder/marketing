@@ -1,12 +1,13 @@
 /**
  * Prompt-compliance report for a generated pack.
- * Answers: did AI rewrite role/stack/env/bullets for every project vs master/JD?
- * Honesty is separate — this is "did the free craft fields change toward the JD".
+ * Pure policy: JD rewrite expected on projects[0..2] only; i≥3 may stay neutral.
+ * Structural checks (stack/env/bullets present) still apply to every project.
  */
 
 import type { ResumePackV2 } from "./pack-schema";
 import { parseStoredMasterProfile } from "@/lib/resume/master-profile";
 import { FILLER_BULLET } from "./ensure-ship-shape";
+import { JD_REWRITE_MAX_INDEX } from "./bible-prompt";
 
 export type ComplianceItem = {
   id: string;
@@ -91,7 +92,7 @@ export function buildPackCompliance(opts: {
     detail: `${ecBlocks.length} block(s)`,
   });
 
-  // 3–6 per project via pack if available
+  // Structural: all projects. JD-face craft: only recency slots 0..JD_REWRITE_MAX_INDEX
   const projects = pack?.projects || [];
   if (projects.length) {
     let rolesJd = 0;
@@ -103,6 +104,8 @@ export function buildPackCompliance(opts: {
     const masterTitles = new Set(
       (profile?.engagements || []).map((e) => (e.title || "").toLowerCase().trim())
     );
+    const rewriteSlots = projects.slice(0, JD_REWRITE_MAX_INDEX + 1);
+    const rewriteN = Math.max(1, rewriteSlots.length);
 
     for (let i = 0; i < projects.length; i++) {
       const p = projects[i]!;
@@ -112,22 +115,22 @@ export function buildPackCompliance(opts: {
       const bullets = (p.bullets || []).filter((b) => b && !FILLER_BULLET.test(b));
       const roleT = tokens(role);
       const stackT = tokens(stack);
-      if (overlap(roleT, jdTok) >= 1 || MODULES.some((m) => jdTok.has(m) && roleT.has(m))) {
+      const isRewriteSlot = i <= JD_REWRITE_MAX_INDEX;
+
+      // JD role face only required on recency slots
+      if (
+        isRewriteSlot &&
+        (overlap(roleT, jdTok) >= 1 ||
+          MODULES.some((m) => jdTok.has(m) && roleT.has(m)))
+      ) {
         rolesJd++;
       }
-      // Role changed from master title
-      if (role && !masterTitles.has(role.toLowerCase())) {
+      if (isRewriteSlot && role && !masterTitles.has(role.toLowerCase())) {
         rolesNotMasterModule++;
-      }
-      // Wrong module in role while JD has different module
-      const roleWrong = MODULES.filter((m) => roleT.has(m) && !jdTok.has(m));
-      const jdMods = MODULES.filter((m) => jdTok.has(m));
-      if (roleWrong.length && jdMods.length && !roleWrong.some((m) => jdMods.includes(m))) {
-        // still counts as fail for role JD — already tracked via rolesJd
       }
       if (stack.length >= 4) {
         stacksPresent++;
-        if (overlap(stackT, jdTok) >= 1) stacksJd++;
+        if (isRewriteSlot && overlap(stackT, jdTok) >= 1) stacksJd++;
       }
       if (env.length >= 3) envsPresent++;
       if (bullets.length >= 6) bulletsOk++;
@@ -136,9 +139,11 @@ export function buildPackCompliance(opts: {
     const n = projects.length;
     items.push({
       id: "roles_jd",
-      label: "Project roles rewritten toward JD (not pure master titles)",
-      ok: rolesJd >= Math.ceil(n * 0.6) || rolesNotMasterModule >= Math.ceil(n * 0.6),
-      detail: `${rolesJd}/${n} roles share JD tokens; ${rolesNotMasterModule}/${n} differ from master titles`,
+      label: `Roles JD-rewritten on projects[0..${JD_REWRITE_MAX_INDEX}] only`,
+      ok:
+        rolesJd >= Math.ceil(rewriteN * 0.6) ||
+        rolesNotMasterModule >= Math.ceil(rewriteN * 0.6),
+      detail: `${rolesJd}/${rewriteN} recent roles share JD tokens; ${rolesNotMasterModule}/${rewriteN} differ from master (early career freeze OK)`,
     });
     items.push({
       id: "tech_stack",
@@ -148,9 +153,11 @@ export function buildPackCompliance(opts: {
     });
     items.push({
       id: "tech_stack_jd",
-      label: "Tech Stack includes JD-domain tools",
-      ok: stacksJd >= Math.ceil(n * 0.5) || (stacksPresent === n && stacksJd >= 1),
-      detail: `${stacksJd}/${n} stacks share JD tool tokens`,
+      label: `Tech Stack JD tools on projects[0..${JD_REWRITE_MAX_INDEX}]`,
+      ok:
+        stacksJd >= Math.ceil(rewriteN * 0.5) ||
+        (stacksPresent === n && stacksJd >= 1),
+      detail: `${stacksJd}/${rewriteN} recent stacks share JD tool tokens`,
     });
     items.push({
       id: "environment",

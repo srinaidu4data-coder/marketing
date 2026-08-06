@@ -674,9 +674,8 @@ function parseMasterProjects(
 }
 
 /**
- * Rewrite EVERY project role title toward the JD (employer/dates stay from master).
- * Recent + mid: exact JD title (project-level match).
- * Early: associate/junior form of JD title (progressive honesty, still JD-aligned).
+ * Pure recency policy (matches Bible JD_REWRITE_MAX_INDEX=2):
+ * Recent + mid: JD title. Early: keep master (freeze — no JD paint).
  */
 export function alignProjectRoleTitle(
   masterTitle: string,
@@ -685,16 +684,10 @@ export function alignProjectRoleTitle(
 ): string {
   const jd = (jobTitle || "").trim();
   const master = (masterTitle || "").trim();
+  if (era === "early") return master || "Consultant";
   if (!jd) return master || "Consultant";
   if (era === "recent" || era === "mid") return jd.slice(0, 120);
-  // Early: progressive junior form of the same JD role
-  const base = jd.replace(/\s*[-â€“â€”|/].*$/, "").trim() || jd;
-  const deLeaded = base
-    .replace(/\b(Senior|Lead|Principal|Staff|Director)\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (/^associate\b/i.test(deLeaded)) return deLeaded.slice(0, 120);
-  return `Associate ${deLeaded}`.slice(0, 120);
+  return master || jd.slice(0, 120) || "Consultant";
 }
 
 /**

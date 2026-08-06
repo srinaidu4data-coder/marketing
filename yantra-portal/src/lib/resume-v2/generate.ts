@@ -91,16 +91,16 @@ function buildUserMessage(opts: {
       "=== JD (weave missing phrases into free fields) ===",
       opts.jd.trim().slice(0, 8000),
       "",
-      "=== MASTER LOCKS ONLY (do not invent employers/dates; free craft may JD-rewrite roles/stack/env/bullets) ===",
+      "=== MASTER LOCKS ONLY (name/employers/dates/certs; JD craft only on projects[0..2]) ===",
       opts.master.trim().slice(0, 12000),
       ""
     );
   } else {
     parts.push(
-      "=== MASTER (locks: name, employers, dates, order) ===",
+      "=== MASTER (locks: name, employers, dates, order, certs) ===",
       opts.master.trim().slice(0, 28000),
       "",
-      "=== JD (target role language — all free fields follow this) ===",
+      "=== JD (target language for free fields: summary, skills, projects[0..2] only) ===",
       opts.jd.trim().slice(0, 12000),
       ""
     );
@@ -523,7 +523,7 @@ export async function generateResumeV2WithRegen(opts: {
     }
     if (!r.ok && r.precheckErrors.length) return r;
     priorJson = JSON.stringify(r.pack);
-    feedback = `Attempt ${i + 1} scored ATS ${r.ats.score}/100 (target ≥${target}). Missing keywords: ${(r.ats.missingKeywords || []).slice(0, 15).join(", ")}. Strengthen JD language in summary, skills, AND every project index (not only projects[0]): rewrite role, techStack, environment, and all bullets for projects[0..n-1] to the JD domain. FORBIDDEN: leaving mid/early projects as master FICO/copy while only recent is JD. LOCKS: name, employers, dates, location, education only.`;
+    feedback = `Attempt ${i + 1} scored ATS ${r.ats.score}/100 (target ≥${target}). Missing keywords: ${(r.ats.missingKeywords || []).slice(0, 15).join(", ")}. Strengthen JD language in summary, skills, and projects[0..2] only (role, techStack, environment, bullets — era-honest). projects[i≥3] stay FREEZE neutral/master — do NOT JD-paint early career. FORBIDDEN: FICO/RTR face on projects[0..2] when JD is another domain. LOCKS: name, employers, dates, location, education, certs.`;
   }
 
   if (best) {
