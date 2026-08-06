@@ -66,26 +66,15 @@ function buildUserMessage(opts: {
   evidenceBlock?: string;
 }): string {
   const parts = [
-    "=== MASTER RESUME (locks: name · employers · project set · dates) ===",
-    opts.master.trim(),
+    "=== MASTER (locks: name, employers, dates, order) ===",
+    opts.master.trim().slice(0, 28000),
     "",
-    "=== JOB DESCRIPTION (language + priority — maximize fit) ===",
-    opts.jd.trim(),
+    "=== JD ===",
+    opts.jd.trim().slice(0, 12000),
     "",
-    "=== HARD LOCKS ONLY ===",
-    "- header.name / phone / email / linkedin: from master/contact",
-    "- projects[]: one per MASTER employer — never drop or invent employers",
-    "- employerOrClient + duration + location: exact from MASTER for each engagement",
-    "- education: from MASTER only",
-    "",
-    "=== JD REWRITE — EVERY PROJECT (MANDATORY) ===",
-    "- For projects[0], projects[1], projects[2], … ALL indices: fully regenerate role, techStack, environment, and ALL bullets from the JD",
-    "- FORBIDDEN: only rewriting the first/recent project and leaving mid/early projects as master copy",
-    "- FORBIDDEN: keeping master FICO/RTR/tools face on any project when JD is a different domain (e.g. BRIM)",
-    "- Summary + techSkills: fully JD-driven invent",
-    "- FORBIDDEN filler: 'Delivered measurable outcomes for [Company] aligned to engagement goals (N/M)' — never",
-    "- If bullets are thin: use the ADMIN SKILL-NEUTRAL BULLET BANK below (pick distinct lines) or invent equal-quality JD-domain bullets",
-    "- Return JSON only per Bible contract",
+    "LOCKS: name + every employerOrClient + duration exact. Same project count/order.",
+    "FREE: titles, summary 6–8 bullets, skills, stack/env (tools only), bullets by recency 6–8/4–6/3–4.",
+    "Rewrite ALL projects for this JD (not only recent). No engagement-goals (N/M) filler. JSON only.",
   ];
   if (opts.evidenceBlock) {
     parts.push("", opts.evidenceBlock);

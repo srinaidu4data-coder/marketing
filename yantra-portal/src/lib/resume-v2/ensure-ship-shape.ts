@@ -7,7 +7,11 @@
 
 import type { ResumePackV2 } from "./pack-schema";
 import { renderPackText } from "./render-pack";
-import { BULLETS_PER_BLOCK } from "./pack-schema";
+/** Soft floors by era — not forced 10–12 everywhere (latency + honesty). */
+const MIN_SUMMARY = 6;
+const MIN_RECENT = 6;
+const MIN_MID = 4;
+const MIN_EARLY = 3;
 import {
   DEFAULT_SKILL_NEUTRAL_BULLETS,
   getSkillNeutralBulletBank,
@@ -23,7 +27,7 @@ function padBulletsFromBank(
   bullets: string[],
   bank: string[],
   used: Set<string>,
-  minCount = BULLETS_PER_BLOCK
+  minCount = MIN_RECENT
 ): string[] {
   const out = bullets
     .map((b) => String(b || "").replace(/^[•\-–*]\s*/, "").trim())
@@ -33,7 +37,7 @@ function padBulletsFromBank(
     const need = minCount - out.length;
     out.push(...pickBankBullets(bank, need, used));
   }
-  return out.slice(0, Math.max(minCount, out.length));
+  return out.slice(0, Math.max(minCount, out.length, out.length));
 }
 
 /** Strip banned filler from any pack after LLM or before render */
@@ -108,20 +112,28 @@ export function ensurePackShipShape(
       duration: "",
       techStack: "",
       environment: "",
-      bullets: padBulletsFromBank([], bank, used, 10),
+      bullets: padBulletsFromBank([], bank, used, MIN_RECENT),
     }));
   } else {
+    const n = projects.length;
     projects = projects.map((p, i) => {
       const emp =
         (p.employerOrClient || "").trim() ||
         employers[i] ||
         employers[0] ||
         `Client ${i + 1}`;
+      // Reverse-chron: index 0 = recent
+      const minB =
+        i === 0
+          ? MIN_RECENT
+          : i < Math.ceil(n / 2)
+            ? MIN_MID
+            : MIN_EARLY;
       return {
         ...p,
         role: (p.role || "").trim() || pack.header.jobTitle || "Consultant",
         employerOrClient: emp,
-        bullets: padBulletsFromBank(p.bullets || [], bank, used, 10),
+        bullets: padBulletsFromBank(p.bullets || [], bank, used, minB),
       };
     });
   }
@@ -130,7 +142,7 @@ export function ensurePackShipShape(
     pack.professionalSummary?.bullets || [],
     bank,
     used,
-    8
+    MIN_SUMMARY
   );
 
   return {

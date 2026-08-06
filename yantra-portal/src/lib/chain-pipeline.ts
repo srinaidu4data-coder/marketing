@@ -256,9 +256,13 @@ export async function generateChainResumes(
       surgeFires: 0,
     };
 
-    for (let ci = 0; ci < candidates.length; ci++) {
-      const c = candidates[ci];
-      // C3: stop starting candidates with <45s headroom
+    // Parallel candidate packs (default 2) — major multi-candidate latency win
+    const concurrency = Math.max(
+      1,
+      Math.min(4, Number(process.env.CHAIN_CONCURRENCY || 2) || 2)
+    );
+
+    const runOne = async (c: (typeof candidates)[0], ci: number) => {
       if (Date.now() > deadline - 45_000 && ci > 0) {
         timedOut = true;
         errors.push({
@@ -267,14 +271,7 @@ export async function generateChainResumes(
           message:
             "Skipped: less than 45s remaining in generation budget for this chain.",
         });
-        for (const r of candidates.slice(ci + 1)) {
-          errors.push({
-            candidateId: r.id,
-            name: r.name,
-            message: "Skipped: generation time budget already reached.",
-          });
-        }
-        break;
+        return;
       }
       if (Date.now() > deadline) {
         timedOut = true;
@@ -284,21 +281,7 @@ export async function generateChainResumes(
           message:
             "Skipped: generation time budget reached (serverless limit). Create a smaller chain or upgrade function duration.",
         });
-        await audit("chain.candidate_failed", userId, {
-          chainId,
-          candidateId: c.id,
-          message: "time_budget",
-        });
-        // Mark remaining as skipped in one audit
-        const remaining = candidates.slice(ci + 1);
-        for (const r of remaining) {
-          errors.push({
-            candidateId: r.id,
-            name: r.name,
-            message: "Skipped: generation time budget already reached.",
-          });
-        }
-        break;
+        return;
       }
 
       try {
@@ -393,6 +376,8 @@ export async function generateChainResumes(
           layoutId: c.layoutId,
           email: c.email,
           chainBudget,
+          // Single LLM wave for chain latency (opt out: CHAIN_FAST_MODE=0)
+          fastMode: process.env.CHAIN_FAST_MODE !== "0",
           onStep: async (stepId, status) => {
             const { stepWaitingOn, engagementTip } = await import(
               "@/lib/resume/generation-progress"
@@ -478,65 +463,10 @@ export async function generateChainResumes(
         let docxPath: string | null = null;
         let pdfPath: string | null = null;
 
-        await emit({
-          type: "step",
-          candidateId: c.id,
-          candidateName: c.name,
-          stepId: "docx",
-          label: stepLabel("docx"),
-          status: "active",
-        });
-        try {
-          const docxBuf = await renderDocxBuffer(tailored.structured);
-          const docxName = `${base}.docx`;
-          const ok = await safeWriteFile(path.join(dir, docxName), docxBuf);
-          if (ok) docxPath = `uploads/chains/${chainId}/${docxName}`;
-        } catch (e) {
-          console.error(`[chain ${chainId}] DOCX render failed for ${c.name}`, e);
-        }
-        await emit({
-          type: "step",
-          candidateId: c.id,
-          candidateName: c.name,
-          stepId: "docx",
-          label: stepLabel("docx"),
-          status: "done",
-        });
-
-        await prisma.chain.update({
-          where: { id: chainId },
-          data: { status: "GENERATING" },
-        });
-
-        if (c.exportFormat === "DOCX_PDF") {
-          try {
-            const pdfBuf = await renderPdfBuffer(tailored.structured);
-            const pdfName = `${base}.pdf`;
-            const ok = await safeWriteFile(path.join(dir, pdfName), pdfBuf);
-            if (ok) pdfPath = `uploads/chains/${chainId}/${pdfName}`;
-          } catch (e) {
-            console.error(`[chain ${chainId}] PDF render failed for ${c.name}`, e);
-          }
-        }
-
-        // DB is source of truth — always persist pack even if disk writes failed
-        await emit({
-          type: "step",
-          candidateId: c.id,
-          candidateName: c.name,
-          stepId: "saved",
-          label: stepLabel("saved"),
-          status: "active",
-        });
-        const existing = await prisma.chainCandidate.findFirst({
-          where: { chainId, candidateId: c.id },
-        });
-        const packData = {
-          // Strip NULs — Postgres rejects U+0000 in UTF-8 text (error 22021)
+        // Early DB persist: text ready for instant download rebuild (no LLM on download)
+        const packDataCore = {
           tailoredResumeText: sanitizePostgresText(tailored.text || ""),
           tailoredResumePath: textRel,
-          docxPath,
-          pdfPath,
           layoutId: c.layoutId,
           jobTitle: sanitizePostgresText(tailored.structured.meta.jobTitle || ""),
           skillFingerprint: sanitizePostgresText(
@@ -544,14 +474,13 @@ export async function generateChainResumes(
           ),
           atsScore: tailored.ats.score,
           psychScore: tailored.psych?.score ?? 0,
-          // Prefer explicit meta stamp (prompt-v2 / legacy-fallback) over domain mode
           tailorMode: sanitizePostgresText(
             tailored.structured.meta.tailorMode ||
               tailored.modeResult?.label ||
               tailored.modeResult?.mode ||
               ""
           ),
-          atsReady: tailored.ats.score >= 95, // ship floor; BEST = dual 100 on best flag
+          atsReady: tailored.ats.score >= 95,
           atsBreakdownJson: sanitizePostgresText(
             JSON.stringify({
               ats: tailored.ats,
@@ -574,19 +503,87 @@ export async function generateChainResumes(
             })
           ),
         };
-        if (existing) {
+        const existingEarly = await prisma.chainCandidate.findFirst({
+          where: { chainId, candidateId: c.id },
+        });
+        if (existingEarly) {
           await prisma.chainCandidate.update({
-            where: { id: existing.id },
-            data: packData,
+            where: { id: existingEarly.id },
+            data: { ...packDataCore, docxPath: null, pdfPath: null },
           });
         } else {
           await prisma.chainCandidate.create({
             data: {
               chainId,
               candidateId: c.id,
-              ...packData,
+              ...packDataCore,
+              docxPath: null,
+              pdfPath: null,
               sendStatus: "PENDING",
             },
+          });
+        }
+        await emit({
+          type: "step",
+          candidateId: c.id,
+          candidateName: c.name,
+          stepId: "saved",
+          label: stepLabel("saved"),
+          status: "done",
+          detail: "Pack text ready — building Word/PDF…",
+        });
+
+        // DOCX + PDF in parallel (CPU)
+        await emit({
+          type: "step",
+          candidateId: c.id,
+          candidateName: c.name,
+          stepId: "docx",
+          label: stepLabel("docx"),
+          status: "active",
+        });
+        const wantPdf = c.exportFormat === "DOCX_PDF";
+        await Promise.all([
+          (async () => {
+            try {
+              const docxBuf = await renderDocxBuffer(tailored.structured);
+              const docxName = `${base}.docx`;
+              const ok = await safeWriteFile(path.join(dir, docxName), docxBuf);
+              if (ok) docxPath = `uploads/chains/${chainId}/${docxName}`;
+            } catch (e) {
+              console.error(`[chain ${chainId}] DOCX render failed for ${c.name}`, e);
+            }
+          })(),
+          wantPdf
+            ? (async () => {
+                try {
+                  const pdfBuf = await renderPdfBuffer(tailored.structured);
+                  const pdfName = `${base}.pdf`;
+                  const ok = await safeWriteFile(path.join(dir, pdfName), pdfBuf);
+                  if (ok) pdfPath = `uploads/chains/${chainId}/${pdfName}`;
+                } catch (e) {
+                  console.error(`[chain ${chainId}] PDF render failed for ${c.name}`, e);
+                }
+              })()
+            : Promise.resolve(),
+        ]);
+        await emit({
+          type: "step",
+          candidateId: c.id,
+          candidateName: c.name,
+          stepId: "docx",
+          label: stepLabel("docx"),
+          status: "done",
+        });
+
+        // Patch artifact paths (text already shippable)
+        const existing = await prisma.chainCandidate.findFirst({
+          where: { chainId, candidateId: c.id },
+        });
+        if (existing) {
+          await prisma.chainCandidate.update({
+            where: { id: existing.id },
+            data: { docxPath, pdfPath },
           });
         }
         await emit({
@@ -750,6 +747,31 @@ export async function generateChainResumes(
           });
         }
       }
+    };
+
+    // Wave pool — process up to CHAIN_CONCURRENCY candidates at once
+    {
+      let next = 0;
+      const workers = Array.from(
+        { length: Math.min(concurrency, candidates.length) },
+        async () => {
+          while (true) {
+            const ci = next++;
+            if (ci >= candidates.length) break;
+            if (timedOut) {
+              const c = candidates[ci]!;
+              errors.push({
+                candidateId: c.id,
+                name: c.name,
+                message: "Skipped: generation time budget already reached.",
+              });
+              continue;
+            }
+            await runOne(candidates[ci]!, ci);
+          }
+        }
+      );
+      await Promise.all(workers);
     }
 
     const packRows = await prisma.chainCandidate.findMany({

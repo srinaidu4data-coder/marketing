@@ -14,19 +14,23 @@ import {
   renderPdfFromPlainText,
 } from "@/lib/resume/render-pdf";
 import { renderHtmlFromPlainText } from "@/lib/resume/render-html-export";
-import { detectDomain, extractJobTitle } from "@/lib/resume/jd-parse";
-import {
-  criticalJdPhrases,
-  hasCriticalJdCoverage,
-} from "@/lib/resume/jd-weave";
-import { getResumeEnginePolicy } from "@/lib/system-settings";
-import {
-  inspectPackShipReady,
-  mustRegeneratePack,
-} from "@/lib/resume/pack-ship-ready";
+import { extractJobTitle } from "@/lib/resume/jd-parse";
 import { packDownloadFilename } from "@/lib/resume/pack-filename";
 import { stripEngineFooter } from "@/lib/resume/strip-engine-footer";
 import { sanitizePostgresText } from "@/lib/resume/extract-master";
+import {
+  createPerfTrace,
+  mark,
+  flushPerfLog,
+  hashText,
+} from "@/lib/resume/perf-timing";
+
+/**
+ * PERF LAW (P0):
+ * - Download never invokes LLM unless ?regen=1 explicitly.
+ * - Prefer disk artifact; else rebuild from stored tailoredResumeText (CPU only).
+ * - Missing pack text → 202 artifact_pending (do not block on generation).
+ */
 
 async function tryRead(stored: string | null | undefined): Promise<Buffer | null> {
   if (!stored) return null;
@@ -37,60 +41,44 @@ async function tryRead(stored: string | null | undefined): Promise<Buffer | null
   }
 }
 
-/**
- * Only force full AI re-tailor when pack content is missing/bad.
- * Disk files are best-effort (Vercel /tmp is wiped on cold start) — missing
- * docxPath or a missing file must NOT trigger OpenAI. DB text is source of truth.
- */
-async function needAiRegen(opts: {
-  text: string;
-  jd: string;
-  master: string;
-  masterProfileJson?: string | null;
-  force?: boolean;
-}): Promise<boolean> {
-  if (opts.force) return true;
-  if (!opts.text || opts.text.length < 80) return true;
-  if (
-    mustRegeneratePack({
-      text: opts.text,
-      masterText: opts.master,
-      masterProfileJson: opts.masterProfileJson,
-      jd: opts.jd,
-    })
-  ) {
-    return true;
-  }
-
-  const policy = await getResumeEnginePolicy();
-  const title = extractJobTitle(opts.jd);
-  const domain = detectDomain(opts.jd, title, policy);
-  const critical = criticalJdPhrases(opts.jd, domain, policy);
-  if (critical.length >= 3 && !hasCriticalJdCoverage(opts.text, critical, 0.4)) {
-    return true;
-  }
-  return false;
-}
-
 function fileHeaders(
   filename: string,
   contentType: string,
   extra?: Record<string, string>
 ) {
-  // RFC 5987 filename* for Unicode; ASCII fallback for old clients
   const ascii = filename.replace(/[^\x20-\x7E]/g, "_");
   return {
     "Content-Type": contentType,
     "Content-Disposition": `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
-    "Cache-Control": "private, no-store",
+    // Versioned by content at generation time; short private cache for repeat clicks
+    "Cache-Control": "private, max-age=120",
     ...extra,
   };
+}
+
+function pendingResponse(chainId: string, ccId: string) {
+  return NextResponse.json(
+    {
+      status: "artifact_pending",
+      message:
+        "Pack text not ready yet. Wait for generation to finish, then download again.",
+      chainId,
+      ccId,
+    },
+    {
+      status: 202,
+      headers: { "Cache-Control": "no-store" },
+    }
+  );
 }
 
 export async function GET(
   req: Request,
   { params }: { params: { chainId: string; ccId: string } }
 ) {
+  const trace = createPerfTrace(`dl:${params.chainId}:${params.ccId}`);
+  mark(trace, "download_request");
+
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -110,16 +98,14 @@ export async function GET(
 
   const row = cc;
   const url = new URL(req.url);
-  // word / doc / ms-word → docx
   let fmt = (url.searchParams.get("fmt") || "txt").toLowerCase();
   if (fmt === "word" || fmt === "doc" || fmt === "msword" || fmt === "ms-word") {
     fmt = "docx";
   }
-  const force = url.searchParams.get("regen") === "1";
+  const forceRegen = url.searchParams.get("regen") === "1";
   const master = (row.candidate.masterResumeText || "").trim();
-  const masterProfileJson = row.candidate.masterProfileJson || null;
   const jd = row.chain.rawJobText || "";
-  const storedText = row.tailoredResumeText || "";
+  const storedText = stripEngineFooter(row.tailoredResumeText || "").trim();
 
   const nameOpts = {
     candidateName: row.candidate.name,
@@ -138,281 +124,186 @@ export async function GET(
     );
   }
 
-  const needAi = await needAiRegen({
-    text: storedText,
-    jd,
-    master,
-    masterProfileJson,
-    force,
-  });
-
-  async function runAi() {
-    return tailorResume({
-      master,
-      masterProfileJson,
-      jd,
-      vendorName: row.chain.vendorName,
-      candidateName: row.candidate.name,
-      layoutId: row.layoutId || row.candidate.layoutId,
-      email: row.candidate.email,
-    });
-  }
-
-  async function persistPack(
-    tailored: Awaited<ReturnType<typeof tailorResume>>
-  ) {
-    const ship = inspectPackShipReady({
-      text: tailored.text,
-      masterText: master,
-      masterProfileJson,
-    });
-    if (!ship.ok) {
-      throw new Error(
-        `Pack not ship-ready: ${ship.issues.map((i) => i.detail).join("; ")}`
+  // Explicit opt-in only — never auto AI on download
+  if (forceRegen) {
+    try {
+      mark(trace, "llm_first_byte", "regen=1");
+      const tailored = await tailorResume({
+        master,
+        masterProfileJson: row.candidate.masterProfileJson || null,
+        jd,
+        vendorName: row.chain.vendorName,
+        candidateName: row.candidate.name,
+        layoutId: row.layoutId || row.candidate.layoutId,
+        email: row.candidate.email,
+        fastMode: true,
+      });
+      mark(trace, "llm_complete");
+      await prisma.chainCandidate.update({
+        where: { id: row.id },
+        data: {
+          tailoredResumeText: sanitizePostgresText(tailored.text || ""),
+          jobTitle: sanitizePostgresText(tailored.structured.meta.jobTitle || ""),
+          skillFingerprint: sanitizePostgresText(
+            tailored.structured.meta.skillFingerprint || ""
+          ),
+          atsScore: tailored.ats.score,
+          psychScore: tailored.psych?.score ?? 0,
+          atsReady: tailored.ats.score >= 95,
+          atsBreakdownJson: sanitizePostgresText(
+            JSON.stringify({ regenDownload: true, ats: tailored.ats })
+          ),
+        },
+      });
+      nameOpts.jobTitle = tailored.structured.meta.jobTitle || nameOpts.jobTitle;
+      // Fall through using new text for this response
+      const text = stripEngineFooter(tailored.text || "");
+      if (fmt === "docx") {
+        mark(trace, "docx_start");
+        const buf = await renderDocxBuffer(tailored.structured);
+        mark(trace, "docx_complete");
+        mark(trace, "response_first_byte");
+        flushPerfLog(trace, { fmt, path: "regen_docx" });
+        return new NextResponse(new Uint8Array(buf), {
+          headers: fileHeaders(
+            fname("docx"),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          ),
+        });
+      }
+      if (fmt === "pdf") {
+        mark(trace, "pdf_start");
+        const buf = await renderPdfBuffer(tailored.structured);
+        mark(trace, "pdf_complete");
+        flushPerfLog(trace, { fmt, path: "regen_pdf" });
+        return new NextResponse(new Uint8Array(buf), {
+          headers: fileHeaders(fname("pdf"), "application/pdf"),
+        });
+      }
+      flushPerfLog(trace, { fmt, path: "regen_text" });
+      return new NextResponse(text, {
+        headers: fileHeaders(fname(fmt === "html" ? "html" : "txt"), "text/plain; charset=utf-8"),
+      });
+    } catch (e) {
+      flushPerfLog(trace, { fmt, path: "regen_error" });
+      return NextResponse.json(
+        {
+          error:
+            e instanceof Error ? e.message : "Regeneration failed. Try again.",
+        },
+        { status: 500 }
       );
     }
-    const breakdown = {
-      ...tailored.ats,
-      packValidation: tailored.packValidation
-        ? {
-            ok: tailored.packValidation.ok,
-            score: tailored.packValidation.score,
-            summary: tailored.packValidation.summary,
-            clientsFound: tailored.packValidation.clientsFound.length,
-            clientsMissing: tailored.packValidation.clientsMissing,
-            yearsClaims: tailored.packValidation.yearsClaimsInSummary,
-          }
-        : null,
-      shipReady: ship,
-    };
-    await prisma.chainCandidate.update({
-      where: { id: row.id },
-      data: {
-        tailoredResumeText: sanitizePostgresText(tailored.text || ""),
-        jobTitle: sanitizePostgresText(tailored.structured.meta.jobTitle || ""),
-        skillFingerprint: sanitizePostgresText(
-          tailored.structured.meta.skillFingerprint || ""
-        ),
-        atsScore: tailored.ats.score,
-        atsReady: tailored.ats.ready && ship.ok,
-        atsBreakdownJson: sanitizePostgresText(JSON.stringify(breakdown)),
-      },
-    });
-    // Keep nameOpts in sync for this response when AI just ran
-    nameOpts.jobTitle = tailored.structured.meta.jobTitle || nameOpts.jobTitle;
-    nameOpts.skillFingerprint =
-      tailored.structured.meta.skillFingerprint || nameOpts.skillFingerprint;
   }
 
-  async function docxFromStoredText(text: string): Promise<Buffer> {
-    return renderDocxFromPlainText({
-      candidateName: row.candidate.name,
-      jobTitle: nameOpts.jobTitle || undefined,
-      text,
-      layoutId: row.layoutId || row.candidate.layoutId,
-    });
+  if (storedText.length < 80) {
+    mark(trace, "cache_miss", "no_pack_text");
+    flushPerfLog(trace, { fmt, path: "pending" });
+    return pendingResponse(params.chainId, params.ccId);
   }
 
-  async function pdfFromStoredText(text: string): Promise<Buffer> {
-    return renderPdfFromPlainText({
-      candidateName: row.candidate.name,
-      jobTitle: nameOpts.jobTitle || undefined,
-      text,
-    });
-  }
+  const textKey = hashText(storedText);
 
-  // ─── MS Word (.docx) ─────────────────────────────────────────────
+  // ─── DOCX ─────────────────────────────────────────────────────────
   if (fmt === "docx") {
     const type =
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    if (!needAi) {
-      const fromDisk = await tryRead(row.docxPath);
-      if (fromDisk) {
-        return new NextResponse(new Uint8Array(fromDisk), {
-          headers: fileHeaders(fname("docx"), type),
-        });
-      }
-      if (storedText.length >= 80) {
-        try {
-          const buf = await docxFromStoredText(storedText);
-          return new NextResponse(new Uint8Array(buf), {
-            headers: fileHeaders(fname("docx"), type),
-          });
-        } catch (e) {
-          console.error("docx rebuild from stored text failed", e);
-        }
-      }
+    const fromDisk = await tryRead(row.docxPath);
+    if (fromDisk) {
+      mark(trace, "cache_hit", "disk_docx");
+      mark(trace, "response_first_byte");
+      flushPerfLog(trace, { fmt, path: "disk", bytes: fromDisk.length, key: textKey });
+      return new NextResponse(new Uint8Array(fromDisk), {
+        headers: fileHeaders(fname("docx"), type, {
+          "X-Artifact-Source": "disk",
+          "X-Content-Key": textKey,
+        }),
+      });
     }
-
+    mark(trace, "cache_miss", "rebuild_docx");
+    mark(trace, "rebuild_docx");
+    mark(trace, "docx_start");
     try {
-      const tailored = await runAi();
-      await persistPack(tailored);
-      const buf = await renderDocxBuffer(tailored.structured);
+      const buf = await renderDocxFromPlainText({
+        candidateName: row.candidate.name,
+        jobTitle: nameOpts.jobTitle || undefined,
+        text: storedText,
+        layoutId: row.layoutId || row.candidate.layoutId,
+      });
+      mark(trace, "docx_complete");
+      mark(trace, "response_first_byte");
+      flushPerfLog(trace, { fmt, path: "rebuild", bytes: buf.length, key: textKey });
       return new NextResponse(new Uint8Array(buf), {
-        headers: fileHeaders(fname("docx"), type),
+        headers: fileHeaders(fname("docx"), type, {
+          "X-Artifact-Source": "rebuild",
+          "X-Content-Key": textKey,
+        }),
       });
     } catch (e) {
-      console.error("docx AI regenerate failed", e);
-      if (storedText.length >= 80) {
-        try {
-          const buf = await docxFromStoredText(storedText);
-          return new NextResponse(new Uint8Array(buf), {
-            headers: fileHeaders(fname("docx"), type),
-          });
-        } catch {
-          /* ignore */
-        }
-      }
+      console.error("docx rebuild failed", e);
+      flushPerfLog(trace, { fmt, path: "rebuild_error" });
       return NextResponse.json(
-        {
-          error:
-            e instanceof Error
-              ? e.message
-              : "AI resume generation failed. Check OPENAI_API_KEY.",
-        },
+        { error: "Could not build Word file from stored pack." },
         { status: 500 }
       );
     }
   }
 
-  // ─── PDF ─────────────────────────────────────────────────────────
+  // ─── PDF ──────────────────────────────────────────────────────────
   if (fmt === "pdf") {
     const type = "application/pdf";
-    if (!needAi) {
-      const fromDisk = await tryRead(row.pdfPath);
-      if (fromDisk) {
-        return new NextResponse(new Uint8Array(fromDisk), {
-          headers: fileHeaders(fname("pdf"), type),
-        });
-      }
-      if (storedText.length >= 80) {
-        try {
-          const buf = await pdfFromStoredText(storedText);
-          return new NextResponse(new Uint8Array(buf), {
-            headers: fileHeaders(fname("pdf"), type),
-          });
-        } catch (e) {
-          console.error("pdf rebuild from stored text failed", e);
-        }
-      }
+    const fromDisk = await tryRead(row.pdfPath);
+    if (fromDisk) {
+      mark(trace, "cache_hit", "disk_pdf");
+      flushPerfLog(trace, { fmt, path: "disk", bytes: fromDisk.length });
+      return new NextResponse(new Uint8Array(fromDisk), {
+        headers: fileHeaders(fname("pdf"), type, {
+          "X-Artifact-Source": "disk",
+        }),
+      });
     }
-
+    mark(trace, "cache_miss", "rebuild_pdf");
+    mark(trace, "pdf_start");
     try {
-      const tailored = await runAi();
-      await persistPack(tailored);
-      const buf = await renderPdfBuffer(tailored.structured);
+      const buf = await renderPdfFromPlainText({
+        candidateName: row.candidate.name,
+        jobTitle: nameOpts.jobTitle || undefined,
+        text: storedText,
+      });
+      mark(trace, "pdf_complete");
+      flushPerfLog(trace, { fmt, path: "rebuild", bytes: buf.length });
       return new NextResponse(new Uint8Array(buf), {
-        headers: fileHeaders(fname("pdf"), type),
+        headers: fileHeaders(fname("pdf"), type, {
+          "X-Artifact-Source": "rebuild",
+        }),
       });
     } catch (e) {
-      console.error("pdf AI regenerate failed", e);
-      if (storedText.length >= 80) {
-        try {
-          const buf = await pdfFromStoredText(storedText);
-          return new NextResponse(new Uint8Array(buf), {
-            headers: fileHeaders(fname("pdf"), type),
-          });
-        } catch {
-          /* ignore */
-        }
-      }
+      console.error("pdf rebuild failed", e);
       return NextResponse.json(
-        {
-          error:
-            e instanceof Error
-              ? e.message
-              : "AI resume generation failed. Check OPENAI_API_KEY.",
-        },
+        { error: "Could not build PDF from stored pack." },
         { status: 500 }
       );
     }
   }
 
-  // ─── HTML ────────────────────────────────────────────────────────
+  // ─── HTML ─────────────────────────────────────────────────────────
   if (fmt === "html") {
-    let text = storedText;
-    if (needAi) {
-      try {
-        const tailored = await runAi();
-        await persistPack(tailored);
-        text = tailored.text;
-      } catch (e) {
-        console.error("html AI regenerate failed", e);
-        if (storedText.length < 80) {
-          return NextResponse.json(
-            {
-              error:
-                e instanceof Error
-                  ? e.message
-                  : "AI resume generation failed.",
-            },
-            { status: 500 }
-          );
-        }
-      }
-    } else {
-      const ship = inspectPackShipReady({
-        text: storedText,
-        masterText: master,
-        masterProfileJson,
-      });
-      if (!ship.ok) {
-        return NextResponse.json(
-          {
-            error: `Stored pack not ship-ready: ${ship.issues.map((i) => i.detail).join("; ")}. Use ?regen=1 or regenerate the chain.`,
-          },
-          { status: 409 }
-        );
-      }
-    }
-
+    mark(trace, "cache_hit", "html_from_text");
     const html = renderHtmlFromPlainText({
       candidateName: row.candidate.name,
       jobTitle: nameOpts.jobTitle || undefined,
-      text: stripEngineFooter(text),
+      text: storedText,
     });
+    flushPerfLog(trace, { fmt, path: "text" });
     return new NextResponse(html, {
       headers: fileHeaders(fname("html"), "text/html; charset=utf-8"),
     });
   }
 
-  // ─── TXT (default) ───────────────────────────────────────────────
-  if (needAi) {
-    try {
-      const tailored = await runAi();
-      await persistPack(tailored);
-      return new NextResponse(stripEngineFooter(tailored.text), {
-        headers: fileHeaders(fname("txt"), "text/plain; charset=utf-8"),
-      });
-    } catch (e) {
-      console.error("txt AI regenerate failed", e);
-      return NextResponse.json(
-        {
-          error:
-            e instanceof Error
-              ? e.message
-              : "AI resume generation failed.",
-        },
-        { status: 500 }
-      );
-    }
-  }
-
-  const ship = inspectPackShipReady({
-    text: storedText,
-    masterText: master,
-    masterProfileJson,
-  });
-  if (!ship.ok) {
-    return NextResponse.json(
-      {
-        error: `Stored pack not ship-ready: ${ship.issues.map((i) => i.detail).join("; ")}. Use ?regen=1 or regenerate the chain.`,
-      },
-      { status: 409 }
-    );
-  }
-
-  return new NextResponse(stripEngineFooter(storedText), {
+  // ─── TXT ──────────────────────────────────────────────────────────
+  mark(trace, "cache_hit", "txt");
+  flushPerfLog(trace, { fmt, path: "text", chars: storedText.length });
+  return new NextResponse(storedText, {
     headers: fileHeaders(fname("txt"), "text/plain; charset=utf-8"),
   });
 }

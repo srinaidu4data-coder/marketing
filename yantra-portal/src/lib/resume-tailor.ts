@@ -275,6 +275,11 @@ export async function tailorResume(opts: {
   chainBudget?: RunPackChainBudget;
   /** Disable adaptive runPack (tests) — falls back to WithRegen */
   useRunPack?: boolean;
+  /**
+   * Fast path for chain generation / download regen:
+   * single LLM wave, no soft/BoN, no ATS-until-100 climb.
+   */
+  fastMode?: boolean;
 }): Promise<TailorResumeResult> {
   let promptId = "default";
   let promptTemplate = DEFAULT_PROMPT;
@@ -432,6 +437,10 @@ export async function tailorResume(opts: {
       await opts.onStep?.("resume-v2-prompt", "done");
       await opts.onStep?.("resume-v2-llm", "active");
 
+      const fast =
+        opts.fastMode === true ||
+        process.env.CHAIN_FAST_MODE === "1" ||
+        process.env.RESUME_FAST === "1";
       const useRunPack = opts.useRunPack !== false && process.env.RESUME_RUN_PACK !== "0";
 
       if (useRunPack) {
@@ -451,6 +460,10 @@ export async function tailorResume(opts: {
           email: opts.email,
           masterProfileJson: opts.masterProfileJson,
           chainBudget: opts.chainBudget,
+          // Production chain latency: one LLM wave unless explicitly opted into multi-tier
+          enableSoftRegen: fast ? false : process.env.RESUME_SOFT_REGEN === "1",
+          enableBon: fast ? false : process.env.RESUME_BON === "1",
+          enableRetrieve: process.env.RESUME_RETRIEVE !== "0",
           onPhase: async (phase, status) => {
             await opts.onStep?.(phase, status);
           },
@@ -482,8 +495,8 @@ export async function tailorResume(opts: {
             "Professional consulting role tailored from master experience.",
           promptVersionId: promptId,
           llmProvider: opts.llmProvider || null,
-          targetAts: 95,
-          maxAttempts: 2,
+          targetAts: fast ? 0 : 95,
+          maxAttempts: fast ? 1 : 2,
           candidateName: opts.candidateName,
           email: opts.email,
           onPhase: async (phase, status) => {
