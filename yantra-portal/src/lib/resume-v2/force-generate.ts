@@ -50,11 +50,20 @@ RULES:
 - Finish a complete pack no matter what. Do not refuse. Do not apologize.`;
 
 function emptyPack(name: string, email: string): ResumePackV2 {
-  const bullets = Array.from(
-    { length: 12 },
-    (_, i) =>
-      `Delivered engagement outcomes aligned to role expectations (${i + 1}/12).`
-  );
+  const bullets = [
+    "Configured and validated core business processes with documentation and stakeholder sign-off.",
+    "Partnered with business and technical teams on requirements, gap analysis, and solution design.",
+    "Supported build, unit testing, and defect resolution through iterative delivery cycles.",
+    "Enabled UAT readiness with scripts, evidence capture, and retest ownership.",
+    "Drove cutover preparation and production hypercare with clear status reporting.",
+    "Authored functional specifications and conducted design walkthroughs for delivery teams.",
+    "Aligned process design to system capabilities and integration constraints.",
+    "Coordinated knowledge transfer and end-user enablement for go-live readiness.",
+    "Applied controls-oriented review on configuration and data readiness pre-release.",
+    "Facilitated workshops to refine scope, risks, and acceptance criteria with owners.",
+    "Triaged production issues post go-live and stabilized priority scenarios.",
+    "Documented as-built outcomes and handover packages for sustainment teams.",
+  ];
   return {
     header: {
       jobTitle: "Consultant",

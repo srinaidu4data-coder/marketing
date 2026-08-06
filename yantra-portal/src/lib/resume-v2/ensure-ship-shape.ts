@@ -11,16 +11,60 @@ import { BULLETS_PER_BLOCK } from "./pack-schema";
 
 const EC = "Employer / Client:";
 
+const FILLER_BULLET =
+  /aligned to engagement goals\s*\(\d+\s*\/\s*\d+\)|engagement outcomes aligned to role expectations\s*\(\d+\s*\/\s*\d+\)|Supported .+ outcomes with quality delivery\s*\(\d+\s*\/\s*\d+\)|measurable outcomes for .+\(\d+\s*\/\s*\d+\)/i;
+
+/** Varied technical pads — never company+(N/M) filler the user rejected */
+const JD_PAD_TEMPLATES = [
+  (ctx: string) =>
+    `Configured and validated core process flows for ${ctx} with documentation, unit checks, and stakeholder sign-off.`,
+  (ctx: string) =>
+    `Partnered with business and integration teams on ${ctx} design workshops, gap analysis, and solution recommendations.`,
+  (ctx: string) =>
+    `Supported build, test, and hypercare for ${ctx} releases including defect triage and knowledge transfer.`,
+  (ctx: string) =>
+    `Aligned ${ctx} requirements to system capabilities; authored functional specs and walkthroughs for delivery teams.`,
+  (ctx: string) =>
+    `Drove UAT readiness for ${ctx} scenarios—scripts, evidence, retests, and go-live checklist ownership.`,
+  (ctx: string) =>
+    `Coordinated cutover and production stabilization activities for ${ctx} with clear status cadence to leadership.`,
+  (ctx: string) =>
+    `Applied controls-oriented review on ${ctx} configuration and data readiness prior to transport/release.`,
+  (ctx: string) =>
+    `Enabled end-user adoption for ${ctx} through training collateral, floor support, and issue escalation paths.`,
+];
+
 function padBullets(bullets: string[], label: string): string[] {
+  const roleHint = (label || "the engagement").trim() || "the engagement";
   const out = bullets
     .map((b) => String(b || "").replace(/^[•\-–*]\s*/, "").trim())
-    .filter(Boolean);
+    .filter((b) => b && !FILLER_BULLET.test(b));
+  let i = 0;
   while (out.length < BULLETS_PER_BLOCK) {
-    out.push(
-      `Delivered measurable outcomes for ${label} aligned to engagement goals (${out.length + 1}/${BULLETS_PER_BLOCK}).`
-    );
+    const fn = JD_PAD_TEMPLATES[i % JD_PAD_TEMPLATES.length]!;
+    const line = fn(roleHint);
+    if (!out.includes(line)) out.push(line);
+    else out.push(fn(`${roleHint} workstream ${out.length + 1}`));
+    i++;
   }
   return out.slice(0, BULLETS_PER_BLOCK);
+}
+
+/** Strip banned filler from any pack after LLM or before render */
+export function stripFillerBullets(pack: {
+  professionalSummary?: { bullets?: string[] };
+  projects?: { bullets?: string[]; employerOrClient?: string; role?: string }[];
+}): void {
+  if (pack.professionalSummary?.bullets) {
+    pack.professionalSummary.bullets = pack.professionalSummary.bullets.filter(
+      (b) => b && !FILLER_BULLET.test(b)
+    );
+  }
+  for (const p of pack.projects || []) {
+    if (p.bullets?.length) {
+      p.bullets = p.bullets.filter((b) => b && !FILLER_BULLET.test(b));
+    }
+  }
 }
 
 /** Pull rough employer names from master text */
@@ -68,6 +112,7 @@ export function ensurePackShipShape(
   pack: ResumePackV2,
   masterText?: string
 ): ResumePackV2 {
+  stripFillerBullets(pack);
   const employers = guessEmployersFromMaster(masterText || "");
   let projects = [...(pack.projects || [])];
 

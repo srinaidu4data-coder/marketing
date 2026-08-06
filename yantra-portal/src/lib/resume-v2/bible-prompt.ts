@@ -137,6 +137,7 @@ JD face — **every project**:
 - [ ] projects[1] fully JD-rewritten (if exists)
 - [ ] projects[2+] fully JD-rewritten (if exist)
 - [ ] jobTitle + techSkills + summary are JD domain
+- [ ] **Zero** filler bullets: no "aligned to engagement goals (N/M)", no "measurable outcomes for [Company] (N/M)"
 
 ---
 

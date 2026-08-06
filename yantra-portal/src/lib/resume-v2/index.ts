@@ -21,6 +21,7 @@ export { forceGenerateUnrestricted } from "./force-generate";
 export {
   ensurePackShipShape,
   ensureShipCompatibleText,
+  stripFillerBullets,
 } from "./ensure-ship-shape";
 export {
   PROMPT_LAB_SECTIONS,
