@@ -135,11 +135,19 @@ export function ensurePackShipShape(
       // Ship law: every project ≥ MIN_BULLETS_PER_PROJECT
       void n;
       const minB = MIN_BULLETS_PER_PROJECT;
-      // Scrub phrase pollution; noun tools only
-      const stack =
+      // Scrub phrase pollution; noun tools only; stack ≠ environment lists
+      let stack =
         scrubToToolNouns(p.techStack || "", 14) || stackFallback;
-      const env =
+      let env =
         scrubEnvironment(p.environment || "", jd, 10) || envFallback;
+      if (stack && env && stack.toLowerCase() === env.toLowerCase()) {
+        const parts = stack.split(", ").filter(Boolean);
+        stack = parts.slice(0, Math.ceil(parts.length / 2) || 1).join(", ");
+        env =
+          parts.slice(Math.ceil(parts.length / 2)).join(", ") ||
+          scrubEnvironment("", jd, 8) ||
+          env;
+      }
       return {
         ...p,
         role: (p.role || "").trim() || pack.header.jobTitle || "Consultant",

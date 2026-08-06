@@ -64,14 +64,16 @@ export function rankBankLexical(jd: string, bank: string[], topK = 40): string[]
 
 function formatEngagementSkeleton(e: MasterEngagement, index: number): string {
   const end = e.endYear === "Present" ? "Present" : String(e.endYear);
+  const jdRewrite = index <= 2;
   const lines = [
     `[SLOT ${index}] employerOrClient: ${e.client}`,
     `  duration: ${e.startYear} – ${end}`,
     `  location: ${e.location || ""}`,
-    // Historical title is lock-context only — never paste when JD domain differs
-    `  historical_master_title_DO_NOT_COPY_IF_WRONG_DOMAIN: ${e.title || ""}`,
+    `  historical_master_title: ${e.title || ""}`,
     `  project: ${e.project || ""}`,
-    `  REQUIRED: invent projects[${index}].role from the JD domain (not the historical title above).`,
+    jdRewrite
+      ? `  POLICY: projects[${index}] is RECENT (i≤2) — FULL JD rewrite of role/techStack/environment/bullets; era-honest for ${e.startYear}–${end}.`
+      : `  POLICY: projects[${index}] is EARLY (i≥3) — FREEZE/NEUTRAL; keep master-faithful era-true content; do NOT invent role/stack/env/bullets for JD.`,
   ];
   return lines.join("\n");
 }
@@ -145,9 +147,10 @@ function buildFromProfile(
 ): LightRetrieveResult {
   const parts: string[] = [
     "=== PROJECT-COMPLETE SKELETON (ALL employers — never drop a slot) ===",
-    "For EACH slot: same employerOrClient, duration, location (LOCKS).",
-    "Rewrite role, techStack, environment, and ALL bullets in **JD domain language** for EVERY slot.",
-    "Do NOT paste historical_master_title when it is a different module/domain than the JD (e.g. FICO title on a BRIM JD).",
+    "LOCKS on every slot: employerOrClient, duration, location.",
+    "JD REWRITE only SLOT 0, 1, 2 (role/stack/env/bullets → JD domain, era-honest).",
+    "SLOT index ≥ 3: FREEZE — neutral/master/era-true; little JD matching; do not invent free fields.",
+    "Do NOT paste historical FICO/RTR titles on slots 0–2 when JD is another domain.",
     "Evidence bullets are facts only — do not invent employers/metrics.",
     "",
   ];

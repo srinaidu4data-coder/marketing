@@ -1,7 +1,10 @@
 /**
- * ROLE FORGE BIBLE — compact production prompt (latency-optimized).
- * Locks enforced in code; model focuses on tailored content craft.
+ * ROLE FORGE BIBLE — production system prompt (SOT).
+ * Recency JD rewrite (projects[0..2]) + neutral early career + era honesty + noun tools.
  */
+
+/** Full JD rewrite only for these indices (0 = most recent). */
+export const JD_REWRITE_MAX_INDEX = 2;
 
 export const BIBLE_PROMPT = `# RoleForge resume generator
 
@@ -13,39 +16,53 @@ Return ONE JSON object only (no markdown fences, no commentary).
 - employerOrClient: exact master spelling
 - duration: exact master dates
 - education: only what master states (normalize format OK)
+- certifications: only what master states (never invent certs)
+- For projects[i] with i ≥ 3 (early career): do NOT invent role, techStack, environment, or bullets — keep master/neutral content (era-true)
 
-## FREE (maximize JD fit — still must match JD domain)
-- jobTitle, summary bullets, skills, **project roles**, techStack, environment, bullets
-- Prefer master metrics; qualitative impact if no numbers. Never invent employers/dates/degrees/certs.
+## FREE (maximize JD fit within rules below)
+- header.jobTitle, professionalSummary, techSkills
+- projects[0], projects[1], projects[2]: role, techStack, environment, bullets (JD domain + era-honest)
+- Prefer master metrics; qualitative impact if no numbers
+- Never invent employers, dates, degrees, or certifications
 
-## EVERY PROJECT JD REWRITE (mandatory — not only recent)
-- For **every** projects[i] (0..n-1): rewrite **role**, techStack, environment, and **all** bullets into the **JD domain language**.
-- **FORBIDDEN:** keep master role titles (e.g. FICO/RTR Architect) when JD is another domain (e.g. BRIM / data migration).
-- **FORBIDDEN:** only rewrite projects[0] / recent and leave mid/early as master copy.
-- header.jobTitle and **every** project.role must read as the target JD role family (same domain).
+## RECENCY JD REWRITE (mandatory for projects[0], [1], [2] only)
+- For projects[i] with i = 0, 1, or 2: fully rewrite role, techStack, environment, and ALL bullets into the JD domain language
+- header.jobTitle and projects[0..2].role must read as the target JD role family
+- FORBIDDEN on projects[0..2]: leave master module face when JD is a different domain (e.g. keep FICO/RTR title when JD is BRIM/IBP/data)
+- ERA HONESTY still applies on 0..2: only use tools/titles mainstream by that project's end year (no "Data Science" in 1999; no S/4HANA before it existed)
+
+## EARLY CAREER FREEZE (projects[i] with i ≥ 3)
+- FORBIDDEN: rewrite projects[3], [4], … to the JD
+- Keep them neutral / master-faithful and era-true
+- Little or no JD keyword matching is correct and preferred
+- Do not invent new role titles, techStack, environment, or bullets for i ≥ 3
 
 ## ACCUMULATE (multi-pass Fit repair)
-- When PRIOR JSON / repair feedback is present: **keep** prior techStack tools, skills, environment tokens, and strong bullets.
-- **Add** missing JD keywords and **phrases** (multi-word Fit items) — do not wipe a 5-tool stack down to 2.
-- Weave every listed missing PHRASE into stack, environment, summary, or bullets (exact phrasing when honest).
+- When PRIOR JSON / repair feedback is present: keep prior tool nouns, skills, and strong bullets
+- Add missing JD tool NOUNS only (never wipe a 5-tool stack down to 2)
+- Weave multi-word Fit PHRASES into summary and bullets only (never into techStack/environment)
+- Only accumulate JD craft onto projects[0..2]; do not JD-paint projects[i ≥ 3]
+- Stay era-honest on every slot
 
 ## BUDGET (latency + quality)
 - professionalSummary.bullets: 6–8
-- **Every** project: **8–12** bullets (never fewer than 8 — ship gate)
+- Every project: 8–12 bullets (never fewer than 8 — ship gate)
 - Prefer recent slightly denser; still min 8 on mid/early
-- Maximum ~48 project bullets total across all projects
+- Maximum ~48 project bullets total
 - No duplicates, no filler, no engagement-goals (N/M) lines
-- **Every** project MUST include non-empty **techStack** and **environment**
-- **techStack / environment = NOUN tools only** (e.g. SAP IBP, S/4HANA, CPI, Jira, ServiceNow, Public Cloud)
-- **FORBIDDEN in techStack/environment:** requirement phrases, "hands-on", "expertise", "candidate must", "strong experience", multi-clause prose
-- Capability **phrases** belong in **summary and bullets only**, never in Tech Stack
+- Every project MUST include non-empty techStack and environment
+- techStack / environment = NOUN tools only (e.g. SAP IBP, S/4HANA, CPI, Jira, ServiceNow, Public Cloud)
+- FORBIDDEN in techStack/environment: requirement phrases, "hands-on", "expertise", "candidate must", "strong experience", multi-clause prose
+- Capability phrases belong in summary and bullets only, never in Tech Stack
+- techStack and environment must list DIFFERENT technical nouns (no identical lists)
 
 ## CRAFT
-- JD terms in summary, skills, **every** project role/stack/env/bullets
+- JD terms in summary, skills, and projects[0..2] role/stack/env/bullets
 - Consulting voice: Delivered/Architected/… — no I/me, no third-person bio, no name in summary
-- Primacy: strongest JD proof first
+- Primacy: strongest JD proof first (recent roles)
 - Peak-end: close recent roles with impact/go-live/KT
-- No rates, ROLE::, JD MATCH, AI provenance, or engine footers
+- No rates, CTC, ROLE::, JD MATCH, AI provenance, or engine footers
+- Technical Skills, Tech Stack, Environment: nouns only — not regular English phrases
 
 ## JSON shape
 {
@@ -63,4 +80,4 @@ Return ONE JSON object only (no markdown fences, no commentary).
 If a locked fact is missing, use empty string — do not guess.
 `;
 
-export const JSON_SHAPE_REMINDER = `JSON only: header (name locked), professionalSummary.bullets[6-8], techSkills, education, certifications, projects[] with exact employerOrClient+duration from MASTER and bullets by recency (6-8/4-6/3-4). No markdown.`;
+export const JSON_SHAPE_REMINDER = `JSON only: header (name locked), professionalSummary.bullets[6-8], techSkills, education, certifications from master only, projects[] with exact employerOrClient+duration. JD rewrite ONLY projects[0..2]; projects[i≥3] stay neutral/era-true. techStack/environment = noun tools only, different lists. Min 8 bullets per project. No markdown.`;

@@ -190,8 +190,9 @@ export function injectMissingPhrasesIntoPack(
   const stillMissing = gaps.filter((g) => !packBlob.includes(g.toLowerCase()));
   if (!stillMissing.length) return pack;
 
-  // Phrases → bullets only. Never dump into techStack (causes "candidate must have 15+" pollution).
-  const projects = (pack.projects || []).map((p) => {
+  // Phrases → bullets only on RECENT slots (i≤2). Never into techStack; never paint early career (i≥3).
+  const projects = (pack.projects || []).map((p, index) => {
+    if (index > 2) return p;
     const bulletNeed = stillMissing
       .filter(
         (g) =>
@@ -243,25 +244,25 @@ export function buildFitAccumulateFeedback(opts: {
     "=== FIT ACCUMULATE REPAIR (Bible free fields only — keep LOCKS) ===",
     `Current Fit confidence: ${opts.fitConfidence}/100 (need ≥80). Loop ${opts.loop}/${opts.maxLoops}.`,
     "ACCUMULATE — do NOT replace prior craft:",
-    "- Tech Stack: NOUN TOOLS ONLY (SAP IBP, S/4HANA, Jira, CPI, …). KEEP prior tools; ADD JD product nouns only — never sentences or 'must have'.",
-    "- Environment: indirect tools/platforms only (Jira, ServiceNow, S/4HANA, Public Cloud, …) — NOUNS only.",
-    "- Bullets: KEEP strong prior bullets; ADD bullets that prove MISSING multi-word phrases (until 8–12 per project).",
+    "- Tech Stack: NOUN TOOLS ONLY. KEEP prior tools; ADD JD product nouns only — never sentences or 'must have'.",
+    "- Environment: platforms/collab tools only (Jira, ServiceNow, S/4HANA, Public Cloud) — NOUNS only; different list from techStack.",
+    "- Bullets: KEEP strong prior bullets; ADD proofs for missing phrases (until 8–12) — ONLY on projects[0..2].",
     "- Skills: product/module nouns only — not requirement prose.",
-    "- Roles: if wrong domain, rewrite to JD family but do not drop proof bullets.",
-    "PRIOR JSON is the baseline — output full pack with accrued fields, not a thinner rewrite.",
+    "- Roles on projects[0..2]: JD family + era-honest. projects[i≥3]: do NOT JD-rewrite; keep neutral.",
+    "PRIOR JSON is the baseline — accrue; do not wipe.",
   ];
 
   if (phrases.length) {
     lines.push(
       "",
-      "=== MUST WEAVE — JD PHRASES (Fit gaps) → SUMMARY + BULLETS ONLY ===",
-      "Do NOT put these multi-word phrases into Tech Stack or Environment.",
-      "Put capability phrases in professional summary and project bullets:",
+      "=== MUST WEAVE — JD PHRASES → SUMMARY + projects[0..2] BULLETS ONLY ===",
+      "Do NOT put multi-word phrases into Tech Stack or Environment.",
+      "Do NOT apply these phrases to projects[i≥3] (early career freeze).",
       ...phrases.slice(0, 24).map((p, i) => `${i + 1}. "${p}"`)
     );
     lines.push(
-      "Tech Stack / Environment: only short tool nouns from the JD (e.g. IBP, S/4HANA, CPI, Jira, ServiceNow).",
-      "Do not invent employers/metrics. Prefer qualitative proof if numbers unknown."
+      "Tech Stack / Environment: short tool nouns only (IBP, S/4HANA, CPI, Jira, ServiceNow).",
+      "Do not invent employers/metrics/certs. Prefer qualitative proof if numbers unknown."
     );
   }
   if (other.length) {

@@ -42,10 +42,10 @@ HARD OUTPUT SHAPE (JSON only, no markdown fences):
 
 RULES:
 - Exactly 12 summary bullets and 12 bullets on EVERY project.
-- Use every employer/project from the master (same count). Lock employer names, dates, locations, education, contact from master.
-- For EVERY project index (0..n-1), fully invent from the JD: role, techStack, environment, all bullets. Do NOT leave mid/early projects as master copy.
-- If master was FICO and JD is BRIM (or other domain), EVERY project must read as the JD domain.
-- Aggressively tailor to the JD with strong technical jargon.
+- Use every employer/project from the master (same count). Lock employer names, dates, locations, education, contact, certs from master — never invent certs.
+- JD rewrite ONLY projects[0], [1], [2]: role, techStack, environment, all bullets into JD domain (era-honest).
+- projects[i≥3]: keep neutral/master/era-true — do NOT invent free fields for the JD.
+- techStack/environment: NOUN tools only (not phrases). Stack and environment lists must differ.
 - NEVER invent fake metrics if none exist in master — use qualitative outcomes.
 - Finish a complete pack no matter what. Do not refuse. Do not apologize.`;
 

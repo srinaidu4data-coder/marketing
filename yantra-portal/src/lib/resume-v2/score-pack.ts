@@ -96,7 +96,10 @@ export function detectProjectResidue(opts: {
       if (blob.includes(t)) jdHits++;
     }
 
-    // Role-title residue: "FICO/RTR Architect" under BRIM JD even if bullets/JD-shared HANA words exist
+    // JD-face checks ONLY for recency slots 0..2 (early career i≥3 is allowed to stay neutral)
+    if (i > 2) continue;
+
+    // Role-title residue: "FICO/RTR Architect" under BRIM JD even if bullets look OK
     const role = (p.role || "").toLowerCase();
     if (role.length >= 4) {
       const roleMasterMods = MODULE_MARKERS.filter(
@@ -115,7 +118,7 @@ export function detectProjectResidue(opts: {
       }
     }
 
-    // Residue: strong master face, weak JD-specific face on this project
+    // Residue: strong master face, weak JD-specific face on recent/mid slots
     if (masterHits >= 2 && jdHits <= 1 && i > 0) {
       hits.push({
         index: i,
@@ -123,7 +126,6 @@ export function detectProjectResidue(opts: {
         detail: `master_face masterHits=${masterHits} jdHits=${jdHits}`,
       });
     }
-    // Recent project with zero JD-specific language is also a problem
     if (i === 0 && jdHits === 0 && masterHits >= 2) {
       hits.push({
         index: i,
@@ -131,7 +133,6 @@ export function detectProjectResidue(opts: {
         detail: `recent_no_jd_face masterHits=${masterHits}`,
       });
     }
-    // Stack line pure master domain (e.g. techStack = "SAP FICO GL CO" on BRIM JD)
     const stack = (p.techStack || "").toLowerCase();
     if (stack.length > 4) {
       let stackMaster = 0;

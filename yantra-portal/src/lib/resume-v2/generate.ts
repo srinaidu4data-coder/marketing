@@ -74,9 +74,10 @@ function buildUserMessage(opts: {
       "=== HIGHEST PRIORITY: FIT ACCUMULATE REPAIR (read first) ===",
       opts.feedback,
       "",
-      "ACCUMULATE LAW: KEEP prior tool NOUNS on techStack/environment; KEEP strong bullets.",
-      "ADD missing JD tool nouns to stack/env; put multi-word Fit PHRASES into bullets/summary only — never into Tech Stack.",
-      "Tech Stack example good: SAP IBP, S/4HANA, CPI, Jira. Bad: Hands-on expertise in DP, candidate must have 15+.",
+      "ACCUMULATE LAW: KEEP prior tool NOUNS; KEEP strong bullets. ADD missing tool nouns only.",
+      "Fit PHRASES → bullets/summary only. Never put phrases into Tech Stack/Environment.",
+      "Only repair projects[0..2] for JD fit. projects[i≥3] stay neutral — do not JD-paint early career.",
+      "Tech Stack good: SAP IBP, S/4HANA, CPI, Jira. Bad: Hands-on expertise, candidate must have 15+.",
       ""
     );
     if (opts.priorJson) {
@@ -106,15 +107,15 @@ function buildUserMessage(opts: {
   }
 
   parts.push(
-    "LOCKS: name + every employerOrClient + duration exact. Same project count/order.",
-    "FREE but JD-DOMAIN: header.jobTitle, EVERY projects[i].role, techStack, environment, bullets, summary, skills.",
-    "EVERY PROJECT JD REWRITE (mandatory): regenerate role + techStack + environment + ALL bullets for projects[0], [1], [2], … ALL indices.",
-    "REQUIRED every project: techStack + environment as NOUN tools only (SAP IBP, S/4HANA, Jira, ServiceNow, CPI).",
-    "FORBIDDEN in techStack/environment: phrases like 'hands-on expertise', 'candidate must have 15+', 'strong experience', any sentence.",
-    "JD multi-word capability phrases → summary + bullets ONLY (never Tech Stack).",
-    "FORBIDDEN: keep master FICO/RTR titles when JD is another domain; only rewrite recent project.",
-    "ACCUMULATE: KEEP prior tool nouns + bullets; ADD missing tool nouns / bullet proofs — never dump Fit phrases into Tech Stack.",
-    "Budget: summary 6–8; EVERY project 8–12 bullets (min 8). No engagement-goals (N/M) filler. JSON only."
+    "LOCKS: name + every employerOrClient + duration exact. Same project count/order. Certs/education from master only — never invent.",
+    "JD REWRITE ONLY projects[0], projects[1], projects[2]: role + techStack + environment + ALL bullets in JD domain (era-honest).",
+    "projects[i] with i≥3: FREEZE — keep neutral/master/era-true; do NOT invent role/stack/env/bullets; little JD matching is correct.",
+    "header.jobTitle + projects[0..2].role = JD role family. FORBIDDEN: FICO/RTR face on 0..2 when JD is another domain.",
+    "ERA: never put modern jargon on a project whose end year predates that tech (no Data Science in 1999).",
+    "techStack + environment: NOUN tools only, DIFFERENT lists (Jira/ServiceNow/S/4HANA/IBP/CPI — not sentences).",
+    "FORBIDDEN in stack/env: hands-on, expertise, candidate must, strong experience. Phrases → summary/bullets only.",
+    "ACCUMULATE: keep prior tool nouns + bullets; add missing tool nouns; Fit phrases into bullets only; do not JD-paint i≥3.",
+    "Budget: summary 6–8; EVERY project 8–12 bullets (min 8). No engagement-goals (N/M) filler. No rates/CTC. JSON only."
   );
 
   if (opts.evidenceBlock && !isFitAccumulate) {

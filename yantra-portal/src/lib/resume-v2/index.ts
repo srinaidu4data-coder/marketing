@@ -1,4 +1,8 @@
-export { BIBLE_PROMPT, JSON_SHAPE_REMINDER } from "./bible-prompt";
+export {
+  BIBLE_PROMPT,
+  JSON_SHAPE_REMINDER,
+  JD_REWRITE_MAX_INDEX,
+} from "./bible-prompt";
 export {
   BULLETS_PER_BLOCK,
   parseAndValidatePack,
