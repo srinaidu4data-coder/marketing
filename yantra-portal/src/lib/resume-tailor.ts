@@ -307,10 +307,10 @@ export async function tailorResume(opts: {
       const { packToStructuredResume } = await import(
         "./resume-v2/render-pack"
       );
-      const { ensureShipCompatibleText } = await import(
+      const { ensureShipCompatibleTextAsync } = await import(
         "./resume-v2/ensure-ship-shape"
       );
-      const shaped = ensureShipCompatibleText(
+      const shaped = await ensureShipCompatibleTextAsync(
         v2.pack,
         masterHydrated || opts.master
       );

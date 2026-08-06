@@ -132,6 +132,10 @@ Every bullet must be a **specific, JD-domain technical achievement** (module/too
 If you need more bullets: invent additional distinct JD work — do not pad with company-name + (N/M) templates.
 If a prior draft contains those filler lines: **delete them** and replace with real JD bullets.
 
+When bullets are thin, use the **ADMIN SKILL-NEUTRAL BULLET BANK** supplied in the user message
+(Admin → Bullet bank). Pick distinct bank lines (skill-neutral delivery language) or invent
+equally specific JD-domain bullets. Never invent company+(N/M) engagement-goals templates.
+
 ---
 
 # PART 4 — SELF-CHECK

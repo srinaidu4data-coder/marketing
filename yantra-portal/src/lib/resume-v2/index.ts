@@ -20,8 +20,11 @@ export {
 export { forceGenerateUnrestricted } from "./force-generate";
 export {
   ensurePackShipShape,
+  ensurePackShipShapeAsync,
   ensureShipCompatibleText,
+  ensureShipCompatibleTextAsync,
   stripFillerBullets,
+  FILLER_BULLET,
 } from "./ensure-ship-shape";
 export {
   PROMPT_LAB_SECTIONS,

@@ -29,6 +29,12 @@ export default async function PromptPage() {
             >
               Open Prompt Lab →
             </a>
+            <a
+              href="/admin/bullet-bank"
+              className="text-sm font-medium text-sky-700 underline underline-offset-2"
+            >
+              Bullet bank →
+            </a>
           </div>
         }
       />

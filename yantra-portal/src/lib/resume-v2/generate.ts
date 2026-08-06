@@ -57,6 +57,8 @@ function buildUserMessage(opts: {
   };
   feedback?: string;
   priorJson?: string;
+  /** Admin skill-neutral bank block for thin bullet lookup */
+  bulletBankBlock?: string;
 }): string {
   const parts = [
     "=== MASTER RESUME (locks: name · employers · project set · dates) ===",
@@ -76,8 +78,13 @@ function buildUserMessage(opts: {
     "- FORBIDDEN: only rewriting the first/recent project and leaving mid/early projects as master copy",
     "- FORBIDDEN: keeping master FICO/RTR/tools face on any project when JD is a different domain (e.g. BRIM)",
     "- Summary + techSkills: fully JD-driven invent",
+    "- FORBIDDEN filler: 'Delivered measurable outcomes for [Company] aligned to engagement goals (N/M)' — never",
+    "- If bullets are thin: use the ADMIN SKILL-NEUTRAL BULLET BANK below (pick distinct lines) or invent equal-quality JD-domain bullets",
     "- Return JSON only per Bible contract",
   ];
+  if (opts.bulletBankBlock) {
+    parts.push("", opts.bulletBankBlock);
+  }
   if (opts.contactHint?.name || opts.contactHint?.email) {
     parts.push(
       "",
@@ -217,12 +224,24 @@ export async function generateResumeV2(opts: {
   if (opts.dryPack) {
     pack = opts.dryPack;
   } else {
+    let bulletBankBlock = "";
+    try {
+      const {
+        getSkillNeutralBulletBank,
+        formatBulletBankForPrompt,
+      } = await import("@/lib/resume/skill-neutral-bullet-bank");
+      const bank = await getSkillNeutralBulletBank();
+      bulletBankBlock = formatBulletBankForPrompt(bank, 50);
+    } catch {
+      /* bank optional */
+    }
     const user = buildUserMessage({
       master: masterForLlm,
       jd: jdForLlm,
       contactHint: pre.contact,
       feedback: opts.feedback,
       priorJson: opts.priorJson,
+      bulletBankBlock,
     });
 
     try {

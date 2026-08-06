@@ -12,7 +12,7 @@ import {
 import { getActiveLlmConfig } from "@/lib/system-settings";
 import { parseAndValidatePack, type ResumePackV2 } from "./pack-schema";
 import { packToStructuredResume } from "./render-pack";
-import { ensureShipCompatibleText } from "./ensure-ship-shape";
+import { ensureShipCompatibleTextAsync } from "./ensure-ship-shape";
 import { scoreResume } from "@/lib/resume/ats-scorer";
 import { scorePsych } from "@/lib/resume/psych-scorer";
 import { resolveTailorMode } from "@/lib/resume/tailor-mode";
@@ -185,7 +185,7 @@ export async function forceGenerateUnrestricted(opts: {
     });
   }
 
-  const shaped = ensureShipCompatibleText(pack, master);
+  const shaped = await ensureShipCompatibleTextAsync(pack, master);
   pack = shaped.pack;
   const text = shaped.text;
   const structured = packToStructuredResume(pack);
