@@ -88,6 +88,11 @@ export type RunPackOptions = {
   enableRetrieve?: boolean;
   enableSoftRegen?: boolean;
   enableBon?: boolean;
+  /**
+   * Auto Fit craft repair until craftConfidence ≥ 80 (default ON).
+   * Independent of soft/BoN/fastMode — product law for stack/env/bullets/phrases.
+   */
+  enableFitRepair?: boolean;
   chainBudget?: RunPackChainBudget;
   onPhase?: (
     phase:
@@ -167,13 +172,20 @@ function buildMeta(opts: {
   };
 }
 
-function measureFit(text: string, jd: string, jobTitle?: string) {
+function measureFit(text: string, jd: string, jobTitle?: string, layoutId?: string) {
   return buildFitReport({
     resumeText: text,
     jd,
     jobTitle,
-    layoutId: "ats_classic",
+    layoutId: layoutId || "ats_classic",
   });
+}
+
+/** Gate for auto loops — craftConfidence (not layout-capped confidence) */
+function fitGateScore(fit: ReturnType<typeof buildFitReport>): number {
+  return typeof fit.craftConfidence === "number"
+    ? fit.craftConfidence
+    : fit.confidence;
 }
 
 function shapeAndScore(
@@ -233,6 +245,8 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
   const enableRetrieve = opts.enableRetrieve !== false;
   const enableSoft = opts.enableSoftRegen !== false;
   const enableBon = opts.enableBon !== false;
+  // Fit repair is ON by default — fastMode must not silently kill it
+  const enableFitRepair = opts.enableFitRepair !== false;
   const master = (opts.master || "").trim() || "Professional experience.";
   const jd =
     (opts.jd || "").trim() ||
@@ -486,27 +500,40 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
     notes.push("tier2_skipped_budget_or_disabled");
   }
 
-  // ── Fit confidence ≥ 80: accumulate loops (Bible-only, accrue stack/bullets) ──
+  // ── Fit craft gate ≥ 80: accumulate loops (Bible-only; independent of fastMode soft/BoN) ──
   let fit = measureFit(best.text, jd, best.pack.header.jobTitle);
   let fitLoops = 0;
+  let gate = fitGateScore(fit);
   notes.push(
-    `fit0 confidence=${fit.confidence} coverage=${fit.coveragePct} missing=${fit.missing.slice(0, 6).join("|")}`
+    `fit0 craft=${gate} display=${fit.confidence} coverage=${fit.coveragePct} missing=${fit.missing.slice(0, 8).join("|")}`
   );
 
+  if (!enableFitRepair) {
+    notes.push("fit_repair_disabled");
+  }
+
   while (
-    fit.confidence < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE &&
+    enableFitRepair &&
+    gate < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE &&
     fitLoops < RUN_PACK_BUDGETS.MAX_FIT_LOOPS &&
     llmWaves < RUN_PACK_BUDGETS.MAX_LLM_WAVES &&
-    remainingMs(opts.chainBudget?.deadlineMs) >= RUN_PACK_BUDGETS.CAND_SOFT_MS
+    remainingMs(opts.chainBudget?.deadlineMs) >= 25_000
   ) {
     fitLoops += 1;
     llmWaves += 1;
     await opts.onPhase?.("run-pack-tier1", "active");
     const missingReqs = fit.requirements
-      .filter((r) => !r.present)
+      .filter(
+        (r) =>
+          !r.present &&
+          (r.kind === "phrase" ||
+            r.kind === "keyword" ||
+            r.kind === "title" ||
+            r.kind === "structure")
+      )
       .map((r) => ({ kind: r.kind, label: r.label }));
     const feedback = buildFitAccumulateFeedback({
-      fitConfidence: fit.confidence,
+      fitConfidence: gate,
       missing: fit.missing,
       missingRequirements: missingReqs,
       loop: fitLoops,
@@ -517,7 +544,7 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
     try {
       const { getActiveLlmConfig } = await import("@/lib/system-settings");
       const cfg = await getActiveLlmConfig(opts.llmProvider || null);
-      if (cfg.anthropic?.configured && cfg.provider === "openai") {
+      if (cfg.anthropic?.configured && (cfg.provider === "openai" || !opts.llmProvider)) {
         fitProvider = "anthropic";
       }
     } catch {
@@ -528,6 +555,7 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
     const loopGen = await generateResumeV2({
       ...genBase,
       llmProvider: fitProvider,
+      // Always Bible system from genBase.prompt (caller must pass code Bible)
       feedback,
       priorJson: prior,
       temperature: 0.35 + fitLoops * 0.05,
@@ -555,47 +583,28 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
         jd,
         shaped.result.pack.header.jobTitle
       );
+      const nextGate = fitGateScore(nextFit);
       notes.push(
-        `fit${fitLoops} conf ${fit.confidence}→${nextFit.confidence} stackGrow loops=${fitLoops}`
+        `fit${fitLoops} craft ${gate}→${nextGate} display=${nextFit.confidence} phrasesMissing=${nextFit.missing.slice(0, 4).join("|")}`
       );
-      // Keep merge if confidence improved OR coverage improved OR not worse with more tools
-      if (
-        nextFit.confidence >= fit.confidence ||
-        nextFit.coveragePct >= fit.coveragePct ||
-        nextFit.presentCount >= fit.presentCount
-      ) {
-        best = shaped.result;
-        score = shaped.score;
-        fit = nextFit;
-        path = "tier1";
-      } else {
-        // Still take accumulate merge if stack/bullets grew (points accrued)
-        best.pack = merged;
-        const re = shapeAndScore(
-          { ...best, pack: merged },
-          master,
-          jd,
-          rankedBank,
-          opts.masterProfileJson,
-          opts.candidateName
-        );
-        best = re.result;
-        score = re.score;
-        fit = measureFit(best.text, jd, best.pack.header.jobTitle);
-        notes.push(`fit${fitLoops}_kept_accumulate conf=${fit.confidence}`);
-      }
+      // Always keep accumulate merge (points accrue); adopt if gate improved or equal
+      best = shaped.result;
+      score = shaped.score;
+      fit = nextFit;
+      gate = nextGate;
+      path = "tier1";
     } else {
       notes.push(`fit${fitLoops}_empty_response`);
     }
     await opts.onPhase?.("run-pack-tier1", "done");
   }
 
-  if (fit.confidence < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE) {
+  if (gate < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE) {
     notes.push(
-      `fit_below_target final=${fit.confidence} need=${RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE}`
+      `fit_below_target craft=${gate} display=${fit.confidence} need=${RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE}`
     );
   } else {
-    notes.push(`fit_ok final=${fit.confidence}`);
+    notes.push(`fit_ok craft=${gate} display=${fit.confidence}`);
   }
 
   // ── Force if still unusable (mutually exclusive with more BoN) ──────
@@ -645,8 +654,8 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
   }
 
   if (score.hardFail) quality = "weak";
-  if (fit.confidence < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE) quality = "weak";
-  if (score.ok && path !== "force" && fit.confidence >= RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE) {
+  if (gate < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE) quality = "weak";
+  if (score.ok && path !== "force" && gate >= RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE) {
     quality = "ok";
   }
 
@@ -674,7 +683,7 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
     retrieveMode: light.retrieveMode,
     bonN,
     notes,
-    fitConfidence: fit.confidence,
+    fitConfidence: gate,
     fitLoops,
   });
 
@@ -685,10 +694,10 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
     best.structured.meta.psychScore = score.psych.score;
     best.structured.meta.progressiveNotes = [
       `runPack path=${generationMeta.pathLabel} cost=${generationMeta.costUsd.toFixed(4)} waves=${llmWaves}`,
-      `Fit confidence=${fit.confidence} loops=${fitLoops} (target ≥${RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE})`,
-      `retrieve=${light.retrieveMode} slots=${light.slotCount}`,
+      `Fit craft=${gate} display=${fit.confidence} loops=${fitLoops} (target ≥${RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE})`,
+      `retrieve=${light.retrieveMode} slots=${light.slotCount} fitRepair=${enableFitRepair ? "on" : "off"}`,
       `band=${score.band} quality=${quality}`,
-      ...notes.slice(0, 8),
+      ...notes.slice(0, 10),
       ...score.reasons.slice(0, 4),
     ];
     best.text = best.text || renderPackText(best.pack);

@@ -57,6 +57,12 @@ export function FitReportPanel({
           >
             {report.confidence}% · {report.confidenceLabel}
           </span>
+          <span
+            className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-indigo-900"
+            title="Craft gate (phrases/keywords) used by auto Fit repair — target ≥80"
+          >
+            craft {report.craftConfidence ?? report.confidence}%
+          </span>
           <span className="text-[11px] font-medium text-[#86868b]">
             coverage {report.coveragePct}%
           </span>

@@ -376,8 +376,9 @@ export async function generateChainResumes(
           layoutId: c.layoutId,
           email: c.email,
           chainBudget,
-          // Single LLM wave for chain latency (opt out: CHAIN_FAST_MODE=0)
-          fastMode: process.env.CHAIN_FAST_MODE !== "0",
+          // Quality default: Fit accumulate ON. Opt into one-wave-only with CHAIN_FAST_MODE=1
+          // (fast still runs Fit repair — only soft/BoN trim unless RESUME_FIT_REPAIR=0)
+          fastMode: process.env.CHAIN_FAST_MODE === "1",
           onStep: async (stepId, status) => {
             const { stepWaitingOn, engagementTip } = await import(
               "@/lib/resume/generation-progress"

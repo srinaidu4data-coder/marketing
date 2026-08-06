@@ -41,6 +41,11 @@ export type FitReport = {
   coveragePct: number;
   confidence: number;
   confidenceLabel: "low" | "medium" | "high" | "excellent";
+  /**
+   * Craft gate for auto-repair loops (keywords/phrases/title/employer/summary only).
+   * Does NOT apply layout caps that permanently freeze confidence below 80.
+   */
+  craftConfidence: number;
   requirements: FitRequirement[];
   missing: string[];
   presentCount: number;
@@ -350,11 +355,23 @@ export function buildFitReport(opts: {
     });
   }
 
+  // Craft-only rows for auto-repair gate (phrases/keywords/title/summary/employer)
+  const craftReqs = requirements.filter((r) =>
+    ["title", "keyword", "phrase", "structure"].includes(r.kind)
+  );
+  const craftPresent = craftReqs.filter((r) => r.present).length;
+  const craftTotal = craftReqs.length || 1;
+  let craftConfidence = Math.round((craftPresent / craftTotal) * 100);
+  if (!titlePresent) craftConfidence = Math.min(craftConfidence, 72);
+  if (!hasEmployer) craftConfidence = Math.min(craftConfidence, 78);
+  if (!hasSummary) craftConfidence = Math.min(craftConfidence, 75);
+  craftConfidence = Math.max(0, Math.min(100, craftConfidence));
+
   const presentCount = requirements.filter((r) => r.present).length;
   const totalCount = requirements.length || 1;
   const coveragePct = Math.round((presentCount / totalCount) * 100);
 
-  // Calibrated confidence (not always 100)
+  // Display confidence (includes layout) — may sit under 80 if layout mismatches
   let confidence = coveragePct;
   if (!titlePresent) confidence = Math.min(confidence, 72);
   if (!hasEmployer) confidence = Math.min(confidence, 80);
@@ -388,18 +405,21 @@ export function buildFitReport(opts: {
 
   const scanLoadOk = summaryLines <= 12 && summaryChars <= 2200;
   const missingReqs = requirements.filter((r) => !r.present);
-  const missing = missingReqs.map((r) => r.label);
   // Phrases first in missing list (AI must weave multi-word JD items)
+  // Prefer craft gaps for auto-repair feedback
+  const craftMissing = craftReqs.filter((r) => !r.present);
   const missingOrdered = [
-    ...missingReqs.filter((r) => r.kind === "phrase"),
-    ...missingReqs.filter((r) => r.kind === "keyword"),
-    ...missingReqs.filter((r) => r.kind !== "phrase" && r.kind !== "keyword"),
+    ...craftMissing.filter((r) => r.kind === "phrase"),
+    ...craftMissing.filter((r) => r.kind === "keyword"),
+    ...craftMissing.filter((r) => r.kind !== "phrase" && r.kind !== "keyword"),
+    ...missingReqs.filter((r) => !["phrase", "keyword", "title", "structure"].includes(r.kind)),
   ].map((r) => r.label);
 
   return {
     jobTitle,
     coveragePct,
     confidence,
+    craftConfidence,
     confidenceLabel,
     requirements,
     missing: missingOrdered.slice(0, 28),

@@ -282,18 +282,27 @@ export async function tailorResume(opts: {
   fastMode?: boolean;
 }): Promise<TailorResumeResult> {
   let promptId = "default";
-  let promptTemplate = DEFAULT_PROMPT;
+  // Karpathy: single source of truth — code BIBLE_PROMPT wins unless ACTIVE has full product law
+  let promptTemplate = BIBLE_PROMPT || DEFAULT_PROMPT;
   try {
     const active = await prisma.promptVersion.findFirst({
       where: { status: "ACTIVE" },
       orderBy: { createdAt: "desc" },
     });
-    if (active && (active.content || "").trim().length > 400) {
-      promptTemplate = active.content;
+    const activeBody = (active?.content || "").trim();
+    const hasProductLaw =
+      /EVERY PROJECT/i.test(activeBody) &&
+      (/ACCUMULATE|techStack|JD REWRITE/i.test(activeBody) ||
+        activeBody.length > 2000);
+    if (active && activeBody.length > 400 && hasProductLaw) {
+      promptTemplate = activeBody;
       promptId = active.id;
-    } else if ((BIBLE_PROMPT || "").trim().length > 400) {
-      // Seed-quality Bible when DB has no usable ACTIVE prompt
-      promptTemplate = BIBLE_PROMPT;
+    } else if (active) {
+      promptId = active.id;
+      // Keep code Bible; log drift for ops
+      console.warn(
+        "[tailorResume] ACTIVE prompt lacks product law (EVERY PROJECT/ACCUMULATE) — using code BIBLE_PROMPT"
+      );
     }
   } catch {
     promptTemplate = BIBLE_PROMPT || DEFAULT_PROMPT;
@@ -377,7 +386,7 @@ export async function tailorResume(opts: {
           ? `PATH=${meta.pathLabel} · COST=${costUsd < 0.01 ? costUsd.toFixed(4) : costUsd.toFixed(3)} · waves=${meta.llmCalls} · quality=${meta.quality}`
           : `Provider=${v2.provider || "?"} Model=${v2.model || "?"}`,
         meta
-          ? `retrieve=${meta.retrieveMode}${meta.retrieveUsed ? " · used" : ""} · residue=${meta.residueFail ? "fail" : "ok"}`
+          ? `Fit craft=${meta.fitConfidence ?? "?"} loops=${meta.fitLoops ?? 0} · retrieve=${meta.retrieveMode}${meta.retrieveUsed ? " · used" : ""} · residue=${meta.residueFail ? "fail" : "ok"}`
           : "",
         `Projects=${v2.pack.projects.length} · ATS ${v2.ats.score} · Psych ${v2.psych.score}`,
         ...(v2.precheckWarnings || []).slice(0, 4),
@@ -438,17 +447,23 @@ export async function tailorResume(opts: {
       await opts.onStep?.("resume-v2-prompt", "done");
       await opts.onStep?.("resume-v2-llm", "active");
 
+      // fastMode only trims soft/BoN — Fit accumulate repair stays ON (product law)
       const fast =
         opts.fastMode === true ||
         process.env.CHAIN_FAST_MODE === "1" ||
         process.env.RESUME_FAST === "1";
-      const useRunPack = opts.useRunPack !== false && process.env.RESUME_RUN_PACK !== "0";
+      const useRunPack =
+        opts.useRunPack !== false && process.env.RESUME_RUN_PACK !== "0";
+      // Fit repair always on unless explicit kill switch
+      const enableFitRepair = process.env.RESUME_FIT_REPAIR !== "0";
 
       if (useRunPack) {
         if (opts.chainBudget) {
-          opts.chainBudget.packsStarted = (opts.chainBudget.packsStarted || 0) + 1;
+          opts.chainBudget.packsStarted =
+            (opts.chainBudget.packsStarted || 0) + 1;
         }
         const packResult = await runPack({
+          // Always pass resolved Bible (code or ACTIVE with product law)
           prompt: promptTemplate,
           master: masterHydrated || opts.master || "Professional experience.",
           jd:
@@ -461,10 +476,11 @@ export async function tailorResume(opts: {
           email: opts.email,
           masterProfileJson: opts.masterProfileJson,
           chainBudget: opts.chainBudget,
-          // Production chain latency: one LLM wave unless explicitly opted into multi-tier
-          enableSoftRegen: fast ? false : process.env.RESUME_SOFT_REGEN === "1",
-          enableBon: fast ? false : process.env.RESUME_BON === "1",
+          enableSoftRegen:
+            !fast || process.env.RESUME_SOFT_REGEN === "1",
+          enableBon: !fast && process.env.RESUME_BON === "1",
           enableRetrieve: process.env.RESUME_RETRIEVE !== "0",
+          enableFitRepair,
           onPhase: async (phase, status) => {
             await opts.onStep?.(phase, status);
           },
@@ -483,7 +499,7 @@ export async function tailorResume(opts: {
               ...packResult,
               generationMeta: packResult.generationMeta,
             },
-            `resume-v2-runPack-${packResult.generationMeta.path}`
+            `resume-v2-runPack-${packResult.generationMeta.path}-fit${packResult.generationMeta.fitLoops ?? 0}`
           );
         }
       } else {
