@@ -372,6 +372,22 @@ export function ChainPacksTable({
                             {typeof cost === "number" && cost > 0 ? (
                               <CostChip costUsd={cost} />
                             ) : null}
+                            {typeof genMeta?.fitConfidence === "number" ? (
+                              <span
+                                className={
+                                  genMeta.fitConfidence >= 80
+                                    ? "inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-emerald-900 ring-1 ring-inset ring-emerald-500/20"
+                                    : "inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-amber-900 ring-1 ring-inset ring-amber-500/25"
+                                }
+                                title={`Fit craft gate after auto-repair loops=${genMeta.fitLoops ?? 0}`}
+                              >
+                                Fit {genMeta.fitConfidence}
+                                {typeof genMeta.fitLoops === "number" &&
+                                genMeta.fitLoops > 0
+                                  ? ` · L${genMeta.fitLoops}`
+                                  : ""}
+                              </span>
+                            ) : null}
                             {genMeta?.retrieveUsed ? (
                               <span
                                 className="inline-flex items-center rounded-full bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-900 ring-1 ring-inset ring-indigo-500/20"

@@ -66,4 +66,5 @@ export {
 export {
   accumulatePackCraft,
   buildFitAccumulateFeedback,
+  injectMissingPhrasesIntoPack,
 } from "./pack-accumulate";

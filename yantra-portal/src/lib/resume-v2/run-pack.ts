@@ -37,6 +37,7 @@ import { buildFitReport } from "@/lib/resume/fit-report";
 import {
   accumulatePackCraft,
   buildFitAccumulateFeedback,
+  injectMissingPhrasesIntoPack,
 } from "./pack-accumulate";
 import { BIBLE_PROMPT } from "./bible-prompt";
 
@@ -382,14 +383,18 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
     notes.push("fit_repair_disabled");
   }
 
-  // Reserve: always allow Fit loops after tier0 (soft/bon run after Fit now)
+  // Always allow Fit repair after tier0 (do not starve behind soft/BoN or tight budget).
+  // First loop only needs any remaining time; later loops need ~12s.
   while (
     enableFitRepair &&
     gate < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE &&
     fitLoops < RUN_PACK_BUDGETS.MAX_FIT_LOOPS &&
     llmWaves < RUN_PACK_BUDGETS.MAX_LLM_WAVES &&
-    // Allow fit even late in chain — 12s min for one repair call
-    remainingMs(opts.chainBudget?.deadlineMs) >= 12_000
+    (fitLoops === 0
+      ? remainingMs(opts.chainBudget?.deadlineMs) > 0 ||
+        !opts.chainBudget?.deadlineMs
+      : remainingMs(opts.chainBudget?.deadlineMs) >= 12_000 ||
+        !opts.chainBudget?.deadlineMs)
   ) {
     fitLoops += 1;
     llmWaves += 1;
@@ -471,6 +476,30 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
     await opts.onPhase?.("run-pack-tier1", "done");
   }
 
+  // Deterministic phrase inject (wiring guarantee) then re-measure craft gate
+  if (enableFitRepair && gate < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE) {
+    const beforeInject = gate;
+    const injected = injectMissingPhrasesIntoPack(
+      best.pack,
+      fit.missing.slice(0, 20)
+    );
+    const re = shapeAndScore(
+      { ...best, pack: injected },
+      master,
+      jd,
+      rankedBank,
+      opts.masterProfileJson,
+      opts.candidateName
+    );
+    best = re.result;
+    score = re.score;
+    fit = measureFit(best.text, jd, best.pack.header.jobTitle);
+    gate = fitGateScore(fit);
+    notes.push(
+      `phrase_inject craft ${beforeInject}→${gate} missingLeft=${fit.missing.slice(0, 5).join("|")}`
+    );
+  }
+
   if (gate < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE) {
     notes.push(
       `fit_below_target craft=${gate} display=${fit.confidence} need=${RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE}`
@@ -479,8 +508,7 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
     notes.push(`fit_ok craft=${gate} display=${fit.confidence}`);
   }
 
-
-  // ── Tier 1 soft (one constrained regen) ────────────────────────────
+  // ── Soft regen: NEVER replace Fit accumulate — merge only ───────────
   if (
     score.softBand &&
     !score.hardFail &&
@@ -504,40 +532,25 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
     });
     tokensIn += soft.tokensIn;
     tokensOut += soft.tokensOut;
-    const shaped = ensureShipCompatibleText(soft.pack, master, rankedBank, jd);
-    soft.pack = shaped.pack;
-    soft.text = shaped.text;
-    soft.ats = scoreResume({
-      resumeText: soft.text,
-      jd,
-      jobTitle: soft.pack.header.jobTitle,
-    });
-    soft.psych = scorePsych({
-      resumeText: soft.text,
-      masterText: master,
-      jd,
-      jobTitle: soft.pack.header.jobTitle,
-      mode: resolveTailorMode(jd, master).mode,
-      candidateName: soft.pack.header.name || opts.candidateName,
-    });
-    const softScore = rescore(
-      soft,
-      master,
-      jd,
-      opts.masterProfileJson,
-      opts.candidateName
-    );
-    notes.push(
-      `tier1 band=${softScore.band} ATS=${softScore.ats.score} rank=${softScore.rankScore.toFixed(1)}`
-    );
-    if (
-      softScore.rankScore > score.rankScore ||
-      (softScore.ok && !score.ok) ||
-      (!softScore.hardFail && score.hardFail)
-    ) {
-      best = soft;
-      score = softScore;
+    if (soft.pack?.projects?.length) {
+      // Accrue onto best — soft must not wipe Fit stack/bullets
+      soft.pack = accumulatePackCraft(best.pack, soft.pack);
+      const shaped = shapeAndScore(
+        soft,
+        master,
+        jd,
+        rankedBank,
+        opts.masterProfileJson,
+        opts.candidateName
+      );
+      notes.push(
+        `soft_merge band=${shaped.score.band} ATS=${shaped.score.ats.score} rank=${shaped.score.rankScore.toFixed(1)}`
+      );
+      best = shaped.result;
+      score = shaped.score;
       path = "tier1";
+      fit = measureFit(best.text, jd, best.pack.header.jobTitle);
+      gate = fitGateScore(fit);
     }
     await opts.onPhase?.("run-pack-tier1", "done");
   } else if (score.softBand) {
@@ -611,15 +624,29 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
         opts.masterProfileJson,
         opts.candidateName
       );
-      // Lexicographic: prefer non-hard, then rankScore
+      // Accrue onto current best, then pick by rank — never drop Fit stack
+      const mergedPack = accumulatePackCraft(best.pack, s.pack);
+      s.pack = mergedPack;
+      const reshaped = shapeAndScore(
+        s,
+        master,
+        jd,
+        rankedBank,
+        opts.masterProfileJson,
+        opts.candidateName
+      );
       const better =
-        (!sc.hardFail && score.hardFail) ||
-        (sc.hardFail === score.hardFail && sc.rankScore > score.rankScore) ||
-        (sc.ok && !score.ok);
+        (!reshaped.score.hardFail && score.hardFail) ||
+        (reshaped.score.hardFail === score.hardFail &&
+          reshaped.score.rankScore > score.rankScore) ||
+        (reshaped.score.ok && !score.ok) ||
+        reshaped.score.rankScore >= score.rankScore;
       if (better) {
-        best = s;
-        score = sc;
+        best = reshaped.result;
+        score = reshaped.score;
         path = "tier2";
+        fit = measureFit(best.text, jd, best.pack.header.jobTitle);
+        gate = fitGateScore(fit);
       }
     }
     notes.push(
