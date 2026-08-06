@@ -89,20 +89,24 @@ Return ONE JSON object only (no markdown fences, no commentary).
 - Maximum ~48 project bullets total across all projects
 - No duplicates, no filler, no engagement-goals (N/M) lines
 - Each project MUST include non-empty techStack and environment
-- techStack / environment = NOUN tools only (e.g. SAP IBP, S/4HANA, CPI, Jira, ServiceNow, Public Cloud)
-- FORBIDDEN in techStack/environment: requirement phrases, "hands-on", "expertise", "candidate must", "strong experience", multi-clause prose
+- techStack / environment = NOUN tools only (e.g. SQL, Azure, Synapse, ETL, Databricks, Jira, ServiceNow)
+- techStack = products/modules/languages you delivered (min 3–4 nouns on projects[0..2])
+- environment = platforms/cloud/collab only (min 2–3 nouns) — NEVER a copy of techStack
+- ZERO OVERLAP: no token may appear in both techStack and environment on the same project
+- FORBIDDEN in techStack/environment: C2C, CTC, W2, 1099, rates, "NOTE", "engineering", "consultant", "management", "CT", requirement phrases, hands-on, expertise, multi-clause prose
 - Capability phrases belong in summary and bullets only, never in Tech Stack
-- techStack and environment must list DIFFERENT technical nouns (no identical lists)
+- BAD: techStack "CT, C2C, NOTE, engineering, DSS" + environment same list + ETL
+- GOOD: techStack "SQL, ETL, ELT, DSS, Spark" · environment "Azure, Synapse, Databricks, Jira"
 
 ## CRAFT
 - JD terms in summary, skills, and projects[0..2] role/stack/env/bullets (not on frozen i ≥ 3)
 - Consulting voice: Delivered/Architected/… — no I/me, no third-person bio, no name in summary
 - Primacy: strongest JD proof first (recent roles)
 - Peak-end: close recent roles with impact/go-live/KT
-- No rates, no CTC, ROLE::, JD MATCH, AI provenance, or engine footers
-- Technical Skills, Tech Stack, Environment: nouns only — not regular English phrases
+- No rates, no CTC, no C2C, ROLE::, JD MATCH, AI provenance, or engine footers
+- Technical Skills, Tech Stack, Environment: product/platform nouns only — not English job words
 - Only technical terms allowed in techStack and environment
-- environment and techStack must use different technical terms
+- environment and techStack must use different technical terms with zero shared tokens
 
 ## JSON shape
 {

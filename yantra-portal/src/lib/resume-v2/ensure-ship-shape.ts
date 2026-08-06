@@ -23,6 +23,7 @@ import {
   scrubToToolNouns,
   scrubEnvironment,
   toolsFromJd,
+  normalizeStackEnvPair,
 } from "./tools-nouns";
 
 const EC = "Employer / Client:";
@@ -135,18 +136,25 @@ export function ensurePackShipShape(
       // Ship law: every project ≥ MIN_BULLETS_PER_PROJECT
       void n;
       const minB = MIN_BULLETS_PER_PROJECT;
-      // Scrub phrase pollution; noun tools only; stack ≠ environment lists
-      let stack =
-        scrubToToolNouns(p.techStack || "", 14) || stackFallback;
-      let env =
-        scrubEnvironment(p.environment || "", jd, 10) || envFallback;
-      if (stack && env && stack.toLowerCase() === env.toLowerCase()) {
-        const parts = stack.split(", ").filter(Boolean);
-        stack = parts.slice(0, Math.ceil(parts.length / 2) || 1).join(", ");
-        env =
-          parts.slice(Math.ceil(parts.length / 2)).join(", ") ||
-          scrubEnvironment("", jd, 8) ||
-          env;
+      // Scrub junk (C2C, engineering, NOTE…); noun tools only; zero stack/env overlap
+      const pair = normalizeStackEnvPair(
+        p.techStack || "",
+        p.environment || "",
+        jd,
+        { minStack: 3, minEnv: 2 }
+      );
+      let stack = pair.techStack || stackFallback;
+      let env = pair.environment || envFallback;
+      // Final zero-overlap pass
+      if (stack && env) {
+        const sSet = new Set(
+          stack.split(", ").map((x) => x.toLowerCase().trim())
+        );
+        env = env
+          .split(", ")
+          .filter((x) => x && !sSet.has(x.toLowerCase().trim()))
+          .join(", ");
+        if (!env) env = envFallback || scrubEnvironment("", jd, 6) || "Azure, Jira";
       }
       return {
         ...p,
