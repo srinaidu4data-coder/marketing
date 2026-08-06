@@ -499,6 +499,8 @@ export async function generateChainResumes(
               best: tailored.best,
               generationMeta: tailored.generationMeta || null,
               costUsd: tailored.costUsd ?? tailored.generationMeta?.costUsd ?? null,
+              fitConfidence: tailored.generationMeta?.fitConfidence ?? null,
+              fitLoops: tailored.generationMeta?.fitLoops ?? null,
               compliance,
               packValidation: tailored.packValidation
                 ? {

@@ -63,3 +63,7 @@ export {
   type PackComplianceReport,
   type ComplianceItem,
 } from "./pack-compliance";
+export {
+  accumulatePackCraft,
+  buildFitAccumulateFeedback,
+} from "./pack-accumulate";

@@ -29,15 +29,20 @@ import {
   type GenerationPath,
   type GenerationQuality,
 } from "./generation-meta";
-import { renderPackText } from "./render-pack";
+import { renderPackText, packToStructuredResume } from "./render-pack";
 import { scoreResume } from "@/lib/resume/ats-scorer";
 import { scorePsych } from "@/lib/resume/psych-scorer";
 import { resolveTailorMode } from "@/lib/resume/tailor-mode";
+import { buildFitReport } from "@/lib/resume/fit-report";
+import {
+  accumulatePackCraft,
+  buildFitAccumulateFeedback,
+} from "./pack-accumulate";
 
 /** C3 hard budgets */
 export const RUN_PACK_BUDGETS = {
-  /** Primary + at most one soft regen OR one BoN wave (parallel counts as one wave) */
-  MAX_LLM_WAVES: 3,
+  /** Primary + soft/fit/surge waves (Fit loops consume budget) */
+  MAX_LLM_WAVES: 5,
   /** Soft-band fire rate cap per chain (fraction of packs) */
   SOFT_FIRE_CAP: 0.25,
   /** Best-of-N samples on hard fail */
@@ -46,6 +51,10 @@ export const RUN_PACK_BUDGETS = {
   CAND_SOFT_MS: 45_000,
   /** Absolute wall for one pack extras */
   CAND_HARD_MS: 75_000,
+  /** Auto Fit repair until confidence ≥ this */
+  FIT_MIN_CONFIDENCE: 80,
+  /** Extra Bible-only accumulate loops when Fit < 80 */
+  MAX_FIT_LOOPS: 3,
 } as const;
 
 export type RunPackChainBudget = {
@@ -128,6 +137,8 @@ function buildMeta(opts: {
   retrieveMode: GenerationMeta["retrieveMode"];
   bonN: number;
   notes: string[];
+  fitConfidence?: number;
+  fitLoops?: number;
 }): GenerationMeta {
   const costUsd = estimateLlmCostUsd(
     opts.tokensIn,
@@ -151,6 +162,47 @@ function buildMeta(opts: {
     residueFail: opts.score.residueFail,
     notes: opts.notes,
     at: new Date().toISOString(),
+    fitConfidence: opts.fitConfidence,
+    fitLoops: opts.fitLoops,
+  };
+}
+
+function measureFit(text: string, jd: string, jobTitle?: string) {
+  return buildFitReport({
+    resumeText: text,
+    jd,
+    jobTitle,
+    layoutId: "ats_classic",
+  });
+}
+
+function shapeAndScore(
+  r: GenerateV2Result,
+  master: string,
+  jd: string,
+  rankedBank: string[],
+  masterProfileJson?: string | null,
+  candidateName?: string
+): { result: GenerateV2Result; score: PackScoreReport } {
+  const shaped = ensureShipCompatibleText(r.pack, master, rankedBank, jd);
+  r.pack = shaped.pack;
+  r.text = shaped.text;
+  r.ats = scoreResume({
+    resumeText: r.text,
+    jd,
+    jobTitle: r.pack.header.jobTitle,
+  });
+  r.psych = scorePsych({
+    resumeText: r.text,
+    masterText: master,
+    jd,
+    jobTitle: r.pack.header.jobTitle,
+    mode: resolveTailorMode(jd, master).mode,
+    candidateName: r.pack.header.name || candidateName,
+  });
+  return {
+    result: r,
+    score: rescore(r, master, jd, masterProfileJson, candidateName),
   };
 }
 
@@ -434,6 +486,118 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
     notes.push("tier2_skipped_budget_or_disabled");
   }
 
+  // ── Fit confidence ≥ 80: accumulate loops (Bible-only, accrue stack/bullets) ──
+  let fit = measureFit(best.text, jd, best.pack.header.jobTitle);
+  let fitLoops = 0;
+  notes.push(
+    `fit0 confidence=${fit.confidence} coverage=${fit.coveragePct} missing=${fit.missing.slice(0, 6).join("|")}`
+  );
+
+  while (
+    fit.confidence < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE &&
+    fitLoops < RUN_PACK_BUDGETS.MAX_FIT_LOOPS &&
+    llmWaves < RUN_PACK_BUDGETS.MAX_LLM_WAVES &&
+    remainingMs(opts.chainBudget?.deadlineMs) >= RUN_PACK_BUDGETS.CAND_SOFT_MS
+  ) {
+    fitLoops += 1;
+    llmWaves += 1;
+    await opts.onPhase?.("run-pack-tier1", "active");
+    const missingReqs = fit.requirements
+      .filter((r) => !r.present)
+      .map((r) => ({ kind: r.kind, label: r.label }));
+    const feedback = buildFitAccumulateFeedback({
+      fitConfidence: fit.confidence,
+      missing: fit.missing,
+      missingRequirements: missingReqs,
+      loop: fitLoops,
+      maxLoops: RUN_PACK_BUDGETS.MAX_FIT_LOOPS,
+    });
+    // Prefer stronger model on fit repair when available (same Bible)
+    let fitProvider = opts.llmProvider;
+    try {
+      const { getActiveLlmConfig } = await import("@/lib/system-settings");
+      const cfg = await getActiveLlmConfig(opts.llmProvider || null);
+      if (cfg.anthropic?.configured && cfg.provider === "openai") {
+        fitProvider = "anthropic";
+      }
+    } catch {
+      /* keep */
+    }
+
+    const prior = JSON.stringify(best.pack).slice(0, 16000);
+    const loopGen = await generateResumeV2({
+      ...genBase,
+      llmProvider: fitProvider,
+      feedback,
+      priorJson: prior,
+      temperature: 0.35 + fitLoops * 0.05,
+      onPhase: async (phase, status) => {
+        await opts.onPhase?.(phase, status);
+      },
+    });
+    tokensIn += loopGen.tokensIn || 0;
+    tokensOut += loopGen.tokensOut || 0;
+
+    if (loopGen.pack?.projects?.length) {
+      // Accrue: merge new craft onto existing (stack/bullets/skills grow)
+      const merged = accumulatePackCraft(best.pack, loopGen.pack);
+      loopGen.pack = merged;
+      const shaped = shapeAndScore(
+        loopGen,
+        master,
+        jd,
+        rankedBank,
+        opts.masterProfileJson,
+        opts.candidateName
+      );
+      const nextFit = measureFit(
+        shaped.result.text,
+        jd,
+        shaped.result.pack.header.jobTitle
+      );
+      notes.push(
+        `fit${fitLoops} conf ${fit.confidence}→${nextFit.confidence} stackGrow loops=${fitLoops}`
+      );
+      // Keep merge if confidence improved OR coverage improved OR not worse with more tools
+      if (
+        nextFit.confidence >= fit.confidence ||
+        nextFit.coveragePct >= fit.coveragePct ||
+        nextFit.presentCount >= fit.presentCount
+      ) {
+        best = shaped.result;
+        score = shaped.score;
+        fit = nextFit;
+        path = "tier1";
+      } else {
+        // Still take accumulate merge if stack/bullets grew (points accrued)
+        best.pack = merged;
+        const re = shapeAndScore(
+          { ...best, pack: merged },
+          master,
+          jd,
+          rankedBank,
+          opts.masterProfileJson,
+          opts.candidateName
+        );
+        best = re.result;
+        score = re.score;
+        fit = measureFit(best.text, jd, best.pack.header.jobTitle);
+        notes.push(`fit${fitLoops}_kept_accumulate conf=${fit.confidence}`);
+      }
+    } else {
+      notes.push(`fit${fitLoops}_empty_response`);
+    }
+    await opts.onPhase?.("run-pack-tier1", "done");
+  }
+
+  if (fit.confidence < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE) {
+    notes.push(
+      `fit_below_target final=${fit.confidence} need=${RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE}`
+    );
+  } else {
+    notes.push(`fit_ok final=${fit.confidence}`);
+  }
+
   // ── Force if still unusable (mutually exclusive with more BoN) ──────
   let quality: GenerationQuality = score.hardFail || !best.text || best.text.length < 200
     ? "weak"
@@ -481,7 +645,10 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
   }
 
   if (score.hardFail) quality = "weak";
-  if (score.ok && path !== "force") quality = "ok";
+  if (fit.confidence < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE) quality = "weak";
+  if (score.ok && path !== "force" && fit.confidence >= RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE) {
+    quality = "ok";
+  }
 
   // Stamp scores onto result
   best.ats = score.ats;
@@ -491,7 +658,7 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
   best.ok = !!(best.text && best.text.length > 200 && best.pack.projects.length);
   best.pack.meta = {
     ...(best.pack.meta || {}),
-    notes: [...(best.pack.meta?.notes || []), ...notes].slice(0, 20),
+    notes: [...(best.pack.meta?.notes || []), ...notes].slice(0, 24),
   };
 
   const generationMeta = buildMeta({
@@ -507,16 +674,18 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
     retrieveMode: light.retrieveMode,
     bonN,
     notes,
+    fitConfidence: fit.confidence,
+    fitLoops,
   });
 
   // progressive notes for UI
   try {
-    const { packToStructuredResume } = await import("./render-pack");
     best.structured = packToStructuredResume(best.pack);
     best.structured.meta.atsScore = score.ats.score;
     best.structured.meta.psychScore = score.psych.score;
     best.structured.meta.progressiveNotes = [
       `runPack path=${generationMeta.pathLabel} cost=${generationMeta.costUsd.toFixed(4)} waves=${llmWaves}`,
+      `Fit confidence=${fit.confidence} loops=${fitLoops} (target ≥${RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE})`,
       `retrieve=${light.retrieveMode} slots=${light.slotCount}`,
       `band=${score.band} quality=${quality}`,
       ...notes.slice(0, 8),

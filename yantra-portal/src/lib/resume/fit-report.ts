@@ -305,35 +305,7 @@ export function buildFitReport(opts: {
         }`,
   });
 
-  // Keywords — skip if fully covered by a longer checklist phrase (same proof)
-  const phraseKeys = ngrams.map((p) => p.toLowerCase());
-  const keywordSeen = new Set<string>();
-  for (const k of keywords.slice(0, 18)) {
-    const key = k.toLowerCase();
-    if (keywordSeen.has(key)) continue;
-    // Covered by a longer n-gram → drop from checklist (avoids duplicate ticks)
-    if (
-      phraseKeys.some(
-        (ph) =>
-          ph === key ||
-          ph.split(/\s+/).includes(key) ||
-          (key.length >= 4 && ph.includes(key))
-      )
-    ) {
-      continue;
-    }
-    keywordSeen.add(key);
-    const present = has(text, k);
-    requirements.push({
-      id: `kw-${k}`,
-      label: k,
-      kind: "keyword",
-      present,
-      proof: present ? findProof(text, k) : undefined,
-    });
-  }
-
-  // Phrases / n-grams (deduped — longest wins, substring fragments dropped)
+  // Phrases first (multi-word JD proof — never "ignored"; missing ones must go to AI)
   const phraseSeen = new Set<string>();
   for (const p of ngrams) {
     const key = p.toLowerCase();
@@ -346,6 +318,35 @@ export function buildFitReport(opts: {
       kind: "phrase",
       present,
       proof: present ? findProof(text, p) : undefined,
+    });
+  }
+
+  // Keywords — still list if not already present via an exact phrase match
+  const keywordSeen = new Set<string>();
+  for (const k of keywords.slice(0, 18)) {
+    const key = k.toLowerCase();
+    if (keywordSeen.has(key)) continue;
+    // Only skip keyword row if a longer phrase that CONTAINS this keyword is already present
+    const coveringPhrase = ngrams.find((ph) => {
+      const pl = ph.toLowerCase();
+      return (
+        pl !== key &&
+        (pl.split(/\s+/).includes(key) || (key.length >= 4 && pl.includes(key)))
+      );
+    });
+    if (coveringPhrase && has(text, coveringPhrase)) {
+      // Phrase already proves this keyword — avoid double-count present
+      continue;
+    }
+    // If covering phrase is MISSING, still show keyword so AI weaves either form
+    keywordSeen.add(key);
+    const present = has(text, k);
+    requirements.push({
+      id: `kw-${k}`,
+      label: k,
+      kind: "keyword",
+      present,
+      proof: present ? findProof(text, k) : undefined,
     });
   }
 
@@ -386,7 +387,14 @@ export function buildFitReport(opts: {
           : "low";
 
   const scanLoadOk = summaryLines <= 12 && summaryChars <= 2200;
-  const missing = requirements.filter((r) => !r.present).map((r) => r.label);
+  const missingReqs = requirements.filter((r) => !r.present);
+  const missing = missingReqs.map((r) => r.label);
+  // Phrases first in missing list (AI must weave multi-word JD items)
+  const missingOrdered = [
+    ...missingReqs.filter((r) => r.kind === "phrase"),
+    ...missingReqs.filter((r) => r.kind === "keyword"),
+    ...missingReqs.filter((r) => r.kind !== "phrase" && r.kind !== "keyword"),
+  ].map((r) => r.label);
 
   return {
     jobTitle,
@@ -394,7 +402,7 @@ export function buildFitReport(opts: {
     confidence,
     confidenceLabel,
     requirements,
-    missing: missing.slice(0, 16),
+    missing: missingOrdered.slice(0, 28),
     presentCount,
     totalCount,
     scanLoad: {

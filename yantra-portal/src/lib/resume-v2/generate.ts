@@ -79,6 +79,7 @@ function buildUserMessage(opts: {
     "FORBIDDEN: keep master FICO/RTR/module titles on any project when JD is BRIM/data/other domain.",
     "FORBIDDEN: only rewrite recent project; mid/early must also show JD face on role, stack, env, bullets.",
     "FORBIDDEN: empty techStack/environment; copy-paste master stack when JD domain differs.",
+    "ACCUMULATE: if PRIOR JSON present, KEEP prior techStack tools, skills, bullets; ADD missing JD phrases/keywords — never shrink stack.",
     "Budget: summary 6–8; EVERY project 8–12 bullets (min 8). No engagement-goals (N/M) filler. JSON only.",
   ];
   if (opts.evidenceBlock) {

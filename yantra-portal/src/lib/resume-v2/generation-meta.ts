@@ -32,6 +32,10 @@ export type GenerationMeta = {
   notes: string[];
   /** ISO timestamp */
   at: string;
+  /** Fit dashboard confidence after auto loops */
+  fitConfidence?: number;
+  /** Number of Fit accumulate repair loops run */
+  fitLoops?: number;
 };
 
 export type HumanRejectRecord = {

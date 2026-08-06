@@ -160,10 +160,25 @@ export function FitReportPanel({
                         ? "font-semibold text-sky-600"
                         : r.kind === "quality"
                           ? "font-semibold text-violet-600"
-                          : "text-[#c7c7cc]"
+                          : r.kind === "phrase"
+                            ? "font-semibold text-amber-700"
+                            : r.kind === "keyword"
+                              ? "font-semibold text-indigo-600"
+                              : "text-[#c7c7cc]"
                     )}
+                    title={
+                      r.kind === "phrase"
+                        ? "JD multi-word phrase — must be woven into stack/env/bullets if missing"
+                        : r.kind === "keyword"
+                          ? "JD keyword — weave into skills/stack/bullets if missing"
+                          : undefined
+                    }
                   >
-                    {r.kind}
+                    {r.kind === "phrase"
+                      ? "must weave"
+                      : r.kind === "keyword"
+                        ? "keyword"
+                        : r.kind}
                   </span>
                 </li>
               ))}
@@ -173,10 +188,10 @@ export function FitReportPanel({
           {report.missing.length ? (
             <div>
               <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
-                Gaps to beef up
+                Gaps auto-sent to AI if Fit &lt; 80
               </p>
               <p className="text-[12px] leading-relaxed text-[#6e6e73]">
-                {report.missing.slice(0, 10).join(" · ")}
+                {report.missing.slice(0, 14).join(" · ")}
               </p>
             </div>
           ) : (

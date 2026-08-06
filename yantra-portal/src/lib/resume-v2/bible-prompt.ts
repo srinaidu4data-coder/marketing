@@ -24,6 +24,11 @@ Return ONE JSON object only (no markdown fences, no commentary).
 - **FORBIDDEN:** only rewrite projects[0] / recent and leave mid/early as master copy.
 - header.jobTitle and **every** project.role must read as the target JD role family (same domain).
 
+## ACCUMULATE (multi-pass Fit repair)
+- When PRIOR JSON / repair feedback is present: **keep** prior techStack tools, skills, environment tokens, and strong bullets.
+- **Add** missing JD keywords and **phrases** (multi-word Fit items) — do not wipe a 5-tool stack down to 2.
+- Weave every listed missing PHRASE into stack, environment, summary, or bullets (exact phrasing when honest).
+
 ## BUDGET (latency + quality)
 - professionalSummary.bullets: 6–8
 - **Every** project: **8–12** bullets (never fewer than 8 — ship gate)
