@@ -2,6 +2,8 @@ export {
   BIBLE_PROMPT,
   JSON_SHAPE_REMINDER,
   JD_REWRITE_MAX_INDEX,
+  isPureProductLawPrompt,
+  resolveSystemPrompt,
 } from "./bible-prompt";
 export {
   BULLETS_PER_BLOCK,

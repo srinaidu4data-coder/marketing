@@ -6,6 +6,44 @@
 /** Full JD rewrite only for these indices (0 = most recent). */
 export const JD_REWRITE_MAX_INDEX = 2;
 
+/**
+ * True when text embeds the pure product law (recency rewrite + freeze).
+ * Do NOT match bare "Every project" density lines — that false-positive
+ * let the old EVERY-PROJECT ACTIVE Bible override the code SOT.
+ */
+export function isPureProductLawPrompt(body: string): boolean {
+  const t = (body || "").trim();
+  if (t.length < 400) return false;
+  const hasRecency =
+    /RECENCY JD REWRITE/i.test(t) ||
+    /JD REWRITE ONLY projects/i.test(t) ||
+    /projects\[0\]\.\.2|projects\[0\],\s*projects\[1\],\s*projects\[2\]/i.test(t) ||
+    (/i\s*<\s*3/.test(t) && /rewrite/i.test(t));
+  const hasFreeze =
+    /EARLY CAREER FREEZE/i.test(t) ||
+    /i\s*≥\s*3|i\s*>=\s*3/.test(t) ||
+    (/FREEZE/i.test(t) && /neutral/i.test(t));
+  const hasNounBudget =
+    /techStack/i.test(t) &&
+    (/ACCUMULATE/i.test(t) || /NOUN tools only/i.test(t));
+  // Reject legacy clash law even if long
+  const legacyClash =
+    /ALL PROJECTS MUST BE REWRITTEN/i.test(t) ||
+    /through projects\[N-1\]/i.test(t) ||
+    (/entire pack.*mid and early/i.test(t) &&
+      !/EARLY CAREER FREEZE/i.test(t));
+  if (legacyClash) return false;
+  return hasRecency && hasFreeze && hasNounBudget;
+}
+
+/** Prefer code Bible; only accept caller/ACTIVE if it is pure product law. */
+export function resolveSystemPrompt(candidate?: string | null): string {
+  const bible = (BIBLE_PROMPT || "").trim();
+  const p = (candidate || "").trim();
+  if (p.length > 400 && isPureProductLawPrompt(p)) return p;
+  return bible.length > 80 ? bible : p || bible;
+}
+
 export const BIBLE_PROMPT = `# RoleForge resume generator
 
 Return ONE JSON object only (no markdown fences, no commentary).
@@ -29,7 +67,7 @@ Return ONE JSON object only (no markdown fences, no commentary).
 - For projects[i] with i = 0, 1, or 2: rewrite role, techStack, environment, and ALL bullets into the JD domain language
 - header.jobTitle and projects[0..2].role must read as the target JD role family (same domain)
 - FORBIDDEN on projects[0..2]: keep master module titles (e.g. FICO/RTR Architect) when JD is another domain (e.g. BRIM / data migration)
-- ERA HONESTY on every projects[i] with i < 3: only tools/titles mainstream by that project's end year (no Data Science in 1999; no S/4HANA before it existed)
+- ERA HONESTY on projects[i] with i < 3: only tools/titles mainstream by that project's end year (no Data Science in 1999; no S/4HANA before it existed)
 
 ## EARLY CAREER FREEZE (projects[i] with i ≥ 3)
 - FORBIDDEN: rewrite projects[i] with i ≥ 3 toward the JD — keep them neutral / master-faithful
@@ -46,11 +84,11 @@ Return ONE JSON object only (no markdown fences, no commentary).
 
 ## BUDGET (latency + quality)
 - professionalSummary.bullets: 6–8
-- Every project: 8–12 bullets (never fewer than 8 — ship gate)
+- Each project: 8–12 bullets (never fewer than 8 — ship gate)
 - Prefer recent slightly denser; still min 8 on mid/early
 - Maximum ~48 project bullets total across all projects
 - No duplicates, no filler, no engagement-goals (N/M) lines
-- Every project MUST include non-empty techStack and environment
+- Each project MUST include non-empty techStack and environment
 - techStack / environment = NOUN tools only (e.g. SAP IBP, S/4HANA, CPI, Jira, ServiceNow, Public Cloud)
 - FORBIDDEN in techStack/environment: requirement phrases, "hands-on", "expertise", "candidate must", "strong experience", multi-clause prose
 - Capability phrases belong in summary and bullets only, never in Tech Stack

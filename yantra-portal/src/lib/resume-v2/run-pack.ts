@@ -39,7 +39,7 @@ import {
   buildFitAccumulateFeedback,
   injectMissingPhrasesIntoPack,
 } from "./pack-accumulate";
-import { BIBLE_PROMPT } from "./bible-prompt";
+import { BIBLE_PROMPT, resolveSystemPrompt } from "./bible-prompt";
 
 /** C3 hard budgets */
 export const RUN_PACK_BUDGETS = {
@@ -287,23 +287,12 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
   let llmWaves = 0;
   const notes: string[] = [];
 
-  // OpenAI/Karpathy: system = code Bible SOT (caller prompt only if it embeds product law)
-  const systemPrompt = (() => {
-    const p = (opts.prompt || "").trim();
-    const bible = (BIBLE_PROMPT || "").trim();
-    if (
-      p.length > 400 &&
-      /EVERY PROJECT/i.test(p) &&
-      /techStack|ACCUMULATE/i.test(p)
-    ) {
-      return p;
-    }
-    return bible.length > 400 ? bible : p || bible;
-  })();
+  // Pure SOT: code Bible unless caller embeds pure recency law (rejects legacy EVERY-PROJECT)
+  const systemPrompt = resolveSystemPrompt(opts.prompt);
   notes.push(
     systemPrompt === (BIBLE_PROMPT || "").trim()
       ? "system=code_BIBLE"
-      : "system=caller_or_ACTIVE"
+      : "system=caller_pure_law"
   );
 
   const genBase = {

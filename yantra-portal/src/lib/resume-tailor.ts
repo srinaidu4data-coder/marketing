@@ -20,6 +20,8 @@ import {
   generateResumeV2WithRegen,
   forceGenerateUnrestricted,
   BIBLE_PROMPT,
+  resolveSystemPrompt,
+  isPureProductLawPrompt,
   runPack,
   type RunPackChainBudget,
   type GenerationMeta,
@@ -282,30 +284,25 @@ export async function tailorResume(opts: {
   fastMode?: boolean;
 }): Promise<TailorResumeResult> {
   let promptId = "default";
-  // Karpathy: single source of truth — code BIBLE_PROMPT wins unless ACTIVE has full product law
-  let promptTemplate = BIBLE_PROMPT || DEFAULT_PROMPT;
+  // Pure SOT: code BIBLE_PROMPT always. ACTIVE may only replace if it is pure recency law
+  // (rejects legacy "EVERY PROJECT rewrite all" ACTIVE that reintroduces clashes).
+  let promptTemplate = resolveSystemPrompt(null);
   try {
     const active = await prisma.promptVersion.findFirst({
       where: { status: "ACTIVE" },
       orderBy: { createdAt: "desc" },
     });
     const activeBody = (active?.content || "").trim();
-    const hasProductLaw =
-      /EVERY PROJECT/i.test(activeBody) &&
-      (/ACCUMULATE|techStack|JD REWRITE/i.test(activeBody) ||
-        activeBody.length > 2000);
-    if (active && activeBody.length > 400 && hasProductLaw) {
-      promptTemplate = activeBody;
-      promptId = active.id;
-    } else if (active) {
-      promptId = active.id;
-      // Keep code Bible; log drift for ops
+    if (active) promptId = active.id;
+    if (active && isPureProductLawPrompt(activeBody)) {
+      promptTemplate = resolveSystemPrompt(activeBody);
+    } else if (active && activeBody.length > 400) {
       console.warn(
-        "[tailorResume] ACTIVE prompt lacks product law (EVERY PROJECT/ACCUMULATE) — using code BIBLE_PROMPT"
+        "[tailorResume] ACTIVE is legacy/clash or incomplete — using code BIBLE_PROMPT (pure recency law)"
       );
     }
   } catch {
-    promptTemplate = BIBLE_PROMPT || DEFAULT_PROMPT;
+    promptTemplate = resolveSystemPrompt(null);
   }
 
   // ── Prompt-only v2 path (default) ─────────────────────────────────
@@ -463,8 +460,8 @@ export async function tailorResume(opts: {
             (opts.chainBudget.packsStarted || 0) + 1;
         }
         const packResult = await runPack({
-          // Prefer code Bible; runPack also enforces BIBLE SOT internally
-          prompt: BIBLE_PROMPT || promptTemplate,
+          // Pure SOT only (resolveSystemPrompt rejects legacy ACTIVE clash)
+          prompt: resolveSystemPrompt(promptTemplate),
           master: masterHydrated || opts.master || "Professional experience.",
           jd:
             jdHydrated ||
