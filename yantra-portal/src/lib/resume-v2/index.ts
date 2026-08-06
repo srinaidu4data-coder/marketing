@@ -32,3 +32,27 @@ export {
   type PromptSection,
   type PromptSectionId,
 } from "./prompt-sections";
+export {
+  runPack,
+  RUN_PACK_BUDGETS,
+  type RunPackResult,
+  type RunPackOptions,
+  type RunPackChainBudget,
+} from "./run-pack";
+export { scorePack, feedbackFromScore, type PackScoreReport } from "./score-pack";
+export {
+  buildLightContext,
+  rankBankLexical,
+  type LightRetrieveResult,
+} from "./light-retrieve";
+export {
+  pathLabel,
+  formatCostUsd,
+  parseGenerationMeta,
+  parseHumanReject,
+  PACK_REJECT_REASONS,
+  type GenerationMeta,
+  type GenerationPath,
+  type PackRejectReason,
+  type HumanRejectRecord,
+} from "./generation-meta";

@@ -20,6 +20,9 @@ import {
   generateResumeV2WithRegen,
   forceGenerateUnrestricted,
   BIBLE_PROMPT,
+  runPack,
+  type RunPackChainBudget,
+  type GenerationMeta,
 } from "./resume-v2";
 import type { AtsResult } from "./resume/ats-scorer";
 import type { PsychResult } from "./resume/psych-scorer";
@@ -58,6 +61,10 @@ export type TailorResumeResult = {
   packValidation?: PackValidationReport;
   /** Dual 100 = best pack */
   best?: boolean;
+  /** Adaptive-cost path + estimated $ (C0–C6) */
+  generationMeta?: GenerationMeta;
+  /** Estimated LLM cost USD for this pack */
+  costUsd?: number;
 };
 
 async function attachPackValidation(
@@ -261,6 +268,13 @@ export async function tailorResume(opts: {
   engineSequence?: ResumeEngineId[];
   /** Force OpenAI or Claude for tests (prompt matrix tabs) */
   llmProvider?: import("./resume/llm-config").LlmProvider | null;
+  /**
+   * Shared chain budget for soft-band fire caps + deadline (C3).
+   * Mutated by runPack when soft/surge fire.
+   */
+  chainBudget?: RunPackChainBudget;
+  /** Disable adaptive runPack (tests) — falls back to WithRegen */
+  useRunPack?: boolean;
 }): Promise<TailorResumeResult> {
   let promptId = "default";
   let promptTemplate = DEFAULT_PROMPT;
@@ -292,10 +306,23 @@ export async function tailorResume(opts: {
   }
 
   // Product law: NEVER surface generation errors to the user.
-  // Prefer structured prompt path; if anything fails after retries → unrestricted AI finish.
+  // Adaptive single entry: runPack (C0–C4) unless disabled.
   if (shouldUseResumeV2(opts)) {
     const finishV2 = async (
-      v2: Awaited<ReturnType<typeof generateResumeV2WithRegen>>,
+      v2: {
+        pack: import("./resume-v2/pack-schema").ResumePackV2;
+        text: string;
+        ats: AtsResult;
+        psych: PsychResult;
+        provider?: string;
+        model?: string;
+        tokensIn: number;
+        tokensOut: number;
+        attempts?: number;
+        precheckWarnings?: string[];
+        structured?: StructuredResume;
+        generationMeta?: GenerationMeta;
+      },
       tag: string
     ): Promise<TailorResumeResult> => {
       if (opts.candidateName && !v2.pack.header.name) {
@@ -323,15 +350,33 @@ export async function tailorResume(opts: {
       structured.meta.atsScore = v2.ats.score;
       structured.meta.psychScore = v2.psych.score;
       structured.meta.jobTitle = v2.pack.header.jobTitle || structured.meta.jobTitle;
-      structured.meta.tailorMode =
-        tag.includes("force") ? "prompt-v2-force" : "prompt-v2";
+      const meta = v2.generationMeta;
+      const isForce = tag.includes("force") || meta?.path === "force";
+      structured.meta.tailorMode = isForce
+        ? "prompt-v2-force"
+        : meta?.path
+          ? `prompt-v2-${meta.path}`
+          : "prompt-v2";
+      const costUsd =
+        meta?.costUsd ??
+        estimateLlmCostUsd(
+          v2.tokensIn,
+          v2.tokensOut,
+          v2.model || "",
+          (v2.provider as "openai" | "anthropic") || undefined
+        );
       structured.meta.progressiveNotes = [
         `ENGINE=${tag}`,
-        `Provider=${v2.provider || "?"} Model=${v2.model || "?"}`,
+        meta
+          ? `PATH=${meta.pathLabel} · COST=${costUsd < 0.01 ? costUsd.toFixed(4) : costUsd.toFixed(3)} · waves=${meta.llmCalls} · quality=${meta.quality}`
+          : `Provider=${v2.provider || "?"} Model=${v2.model || "?"}`,
+        meta
+          ? `retrieve=${meta.retrieveMode}${meta.retrieveUsed ? " · used" : ""} · residue=${meta.residueFail ? "fail" : "ok"}`
+          : "",
         `Projects=${v2.pack.projects.length} · ATS ${v2.ats.score} · Psych ${v2.psych.score}`,
         ...(v2.precheckWarnings || []).slice(0, 4),
         ...(v2.structured?.meta?.progressiveNotes || []).slice(0, 6),
-      ];
+      ].filter(Boolean);
       try {
         const llm = await getActiveLlmConfig(opts.llmProvider || null);
         await prisma.apiUsageLog.create({
@@ -340,12 +385,7 @@ export async function tailorResume(opts: {
             operation: opts.isTestMode ? "prompt_test_v2" : "resume_tailor_v2",
             tokensIn: v2.tokensIn,
             tokensOut: v2.tokensOut,
-            costUsd: estimateLlmCostUsd(
-              v2.tokensIn,
-              v2.tokensOut,
-              v2.model,
-              (v2.provider as "openai" | "anthropic") || llm.provider
-            ),
+            costUsd,
             isTestMode: !!opts.isTestMode,
           },
         });
@@ -368,7 +408,7 @@ export async function tailorResume(opts: {
             error: tag,
           },
         ],
-        passes: v2.attempts,
+        passes: v2.attempts ?? meta?.llmCalls,
         tokensIn: v2.tokensIn,
         tokensOut: v2.tokensOut,
         best: v2.ats.score === 100 && v2.psych.score === 100,
@@ -381,6 +421,8 @@ export async function tailorResume(opts: {
           minBullets: 12,
           label: tag,
         },
+        generationMeta: meta,
+        costUsd,
       };
     };
 
@@ -391,35 +433,76 @@ export async function tailorResume(opts: {
       await opts.onStep?.("resume-v2-prompt", "done");
       await opts.onStep?.("resume-v2-llm", "active");
 
-      const v2 = await generateResumeV2WithRegen({
-        prompt: promptTemplate,
-        master: masterHydrated || opts.master || "Professional experience.",
-        jd:
-          jdHydrated ||
-          opts.jd ||
-          "Professional consulting role tailored from master experience.",
-        promptVersionId: promptId,
-        llmProvider: opts.llmProvider || null,
-        targetAts: 95,
-        maxAttempts: 3,
-        candidateName: opts.candidateName,
-        email: opts.email,
-        onPhase: async (phase, status) => {
-          await opts.onStep?.(phase, status);
-        },
-      });
+      const useRunPack = opts.useRunPack !== false && process.env.RESUME_RUN_PACK !== "0";
 
-      if (v2.text && v2.text.length > 200 && v2.pack.projects.length > 0) {
-        await opts.onStep?.("resume-v2-llm", "done");
-        await opts.onStep?.("resume-v2-schema", "done");
-        await opts.onStep?.("resume-v2-score", "done");
-        return await finishV2(v2, "resume-v2-prompt-only");
+      if (useRunPack) {
+        if (opts.chainBudget) {
+          opts.chainBudget.packsStarted = (opts.chainBudget.packsStarted || 0) + 1;
+        }
+        const packResult = await runPack({
+          prompt: promptTemplate,
+          master: masterHydrated || opts.master || "Professional experience.",
+          jd:
+            jdHydrated ||
+            opts.jd ||
+            "Professional consulting role tailored from master experience.",
+          promptVersionId: promptId,
+          llmProvider: opts.llmProvider || null,
+          candidateName: opts.candidateName,
+          email: opts.email,
+          masterProfileJson: opts.masterProfileJson,
+          chainBudget: opts.chainBudget,
+          onPhase: async (phase, status) => {
+            await opts.onStep?.(phase, status);
+          },
+        });
+
+        if (
+          packResult.text &&
+          packResult.text.length > 200 &&
+          packResult.pack.projects.length > 0
+        ) {
+          await opts.onStep?.("resume-v2-llm", "done");
+          await opts.onStep?.("resume-v2-schema", "done");
+          await opts.onStep?.("resume-v2-score", "done");
+          return await finishV2(
+            {
+              ...packResult,
+              generationMeta: packResult.generationMeta,
+            },
+            `resume-v2-runPack-${packResult.generationMeta.path}`
+          );
+        }
+      } else {
+        const v2 = await generateResumeV2WithRegen({
+          prompt: promptTemplate,
+          master: masterHydrated || opts.master || "Professional experience.",
+          jd:
+            jdHydrated ||
+            opts.jd ||
+            "Professional consulting role tailored from master experience.",
+          promptVersionId: promptId,
+          llmProvider: opts.llmProvider || null,
+          targetAts: 95,
+          maxAttempts: 2,
+          candidateName: opts.candidateName,
+          email: opts.email,
+          onPhase: async (phase, status) => {
+            await opts.onStep?.(phase, status);
+          },
+        });
+
+        if (v2.text && v2.text.length > 200 && v2.pack.projects.length > 0) {
+          await opts.onStep?.("resume-v2-llm", "done");
+          await opts.onStep?.("resume-v2-schema", "done");
+          await opts.onStep?.("resume-v2-score", "done");
+          return await finishV2(v2, "resume-v2-prompt-only");
+        }
       }
 
       // Unrestricted AI finish — no precheck walls, get it done
       console.warn(
-        "[tailorResume] structured v2 incomplete — unrestricted force finish",
-        v2.error || v2.precheckWarnings?.join("; ")
+        "[tailorResume] structured v2 incomplete — unrestricted force finish"
       );
       await opts.onStep?.("resume-v2-repair", "active");
       const forced = await forceGenerateUnrestricted({

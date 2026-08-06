@@ -248,8 +248,34 @@ export async function generateChainResumes(
       candidateNames: candidates.map((x) => x.name),
     });
 
+    /** Shared adaptive-cost budget across packs (C3 soft fire cap + deadline) */
+    const chainBudget = {
+      deadlineMs: deadline,
+      packsStarted: 0,
+      softFires: 0,
+      surgeFires: 0,
+    };
+
     for (let ci = 0; ci < candidates.length; ci++) {
       const c = candidates[ci];
+      // C3: stop starting candidates with <45s headroom
+      if (Date.now() > deadline - 45_000 && ci > 0) {
+        timedOut = true;
+        errors.push({
+          candidateId: c.id,
+          name: c.name,
+          message:
+            "Skipped: less than 45s remaining in generation budget for this chain.",
+        });
+        for (const r of candidates.slice(ci + 1)) {
+          errors.push({
+            candidateId: r.id,
+            name: r.name,
+            message: "Skipped: generation time budget already reached.",
+          });
+        }
+        break;
+      }
       if (Date.now() > deadline) {
         timedOut = true;
         errors.push({
@@ -366,6 +392,7 @@ export async function generateChainResumes(
           employeeId: userId,
           layoutId: c.layoutId,
           email: c.email,
+          chainBudget,
           onStep: async (stepId, status) => {
             const { stepWaitingOn, engagementTip } = await import(
               "@/lib/resume/generation-progress"
@@ -531,6 +558,8 @@ export async function generateChainResumes(
               psych: tailored.psych,
               mode: tailored.modeResult,
               best: tailored.best,
+              generationMeta: tailored.generationMeta || null,
+              costUsd: tailored.costUsd ?? tailored.generationMeta?.costUsd ?? null,
               packValidation: tailored.packValidation
                 ? {
                     ok: tailored.packValidation.ok,

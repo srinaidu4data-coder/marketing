@@ -1,6 +1,7 @@
 /**
  * Chain pack review — Fortune-100 style candidate cards.
  * Scan quality → preview → download → send. Shared by employee + admin.
+ * Shows adaptive path + estimated cost chips when generationMeta is present.
  */
 
 import Link from "next/link";
@@ -24,6 +25,14 @@ import type { PackShipReport } from "@/lib/resume/pack-ship-ready";
 import { cn } from "@/lib/utils";
 import { ResumePreviewModal } from "@/components/resume-preview-modal";
 import { FitReportPanel } from "@/components/fit-report-panel";
+import {
+  formatCostUsd,
+  parseGenerationMeta,
+  parseHumanReject,
+  PACK_REJECT_REASONS,
+  type GenerationMeta,
+} from "@/lib/resume-v2/generation-meta";
+import { rejectChainPackAction } from "@/app/actions/pack-reject";
 
 export type ChainPackRow = {
   id: string;
@@ -36,6 +45,7 @@ export type ChainPackRow = {
   sendStatus: string;
   pdfPath?: string | null;
   skillFingerprint?: string | null;
+  atsBreakdownJson?: string | null;
   candidate: {
     name: string;
     email: string;
@@ -44,6 +54,55 @@ export type ChainPackRow = {
     masterProfileJson?: string | null;
   };
 };
+
+function GenPathChip({ meta }: { meta: GenerationMeta }) {
+  const pathColors: Record<string, string> = {
+    tier0:
+      "bg-sky-500/10 text-sky-900 ring-sky-500/25",
+    tier1:
+      "bg-amber-500/10 text-amber-900 ring-amber-500/25",
+    tier2:
+      "bg-violet-500/10 text-violet-900 ring-violet-500/25",
+    force:
+      "bg-red-500/10 text-red-900 ring-red-500/25",
+    legacy:
+      "bg-stone-500/10 text-stone-800 ring-stone-500/25",
+  };
+  const cls = pathColors[meta.path] || pathColors.tier0;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset",
+        cls
+      )}
+      title={[
+        `Path: ${meta.pathLabel}`,
+        `LLM waves: ${meta.llmCalls}`,
+        meta.retrieveUsed ? `Retrieve: ${meta.retrieveMode}` : "Retrieve: full master",
+        meta.residueFail ? "Residue: fail" : "Residue: ok",
+        meta.notes?.slice(0, 3).join(" · ") || "",
+      ]
+        .filter(Boolean)
+        .join("\n")}
+    >
+      {meta.pathLabel}
+      {meta.quality === "weak" ? (
+        <span className="opacity-80">· weak</span>
+      ) : null}
+    </span>
+  );
+}
+
+function CostChip({ costUsd }: { costUsd: number }) {
+  return (
+    <span
+      className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-emerald-900 ring-1 ring-inset ring-emerald-500/20"
+      title="Estimated LLM cost for this pack"
+    >
+      {formatCostUsd(costUsd)}
+    </span>
+  );
+}
 
 function resolvePsychScore(cc: ChainPackRow, rawJobText: string): number {
   const stored = cc.psychScore ?? 0;
@@ -239,6 +298,37 @@ export function ChainPacksTable({
                           Best match
                         </span>
                       ) : null}
+                      {(() => {
+                        const genMeta = parseGenerationMeta(cc.atsBreakdownJson);
+                        const cost =
+                          genMeta?.costUsd ??
+                          (() => {
+                            try {
+                              const o = JSON.parse(cc.atsBreakdownJson || "{}") as {
+                                costUsd?: number;
+                              };
+                              return o.costUsd;
+                            } catch {
+                              return undefined;
+                            }
+                          })();
+                        return (
+                          <>
+                            {genMeta ? <GenPathChip meta={genMeta} /> : null}
+                            {typeof cost === "number" && cost > 0 ? (
+                              <CostChip costUsd={cost} />
+                            ) : null}
+                            {genMeta?.retrieveUsed ? (
+                              <span
+                                className="inline-flex items-center rounded-full bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-900 ring-1 ring-inset ring-indigo-500/20"
+                                title={`Light retrieve: ${genMeta.retrieveMode}`}
+                              >
+                                IR
+                              </span>
+                            ) : null}
+                          </>
+                        );
+                      })()}
                       {cc.tailorMode === "prompt-v2" ||
                       (cc.tailorMode || "").includes("prompt-v2") ? (
                         <span
@@ -253,6 +343,17 @@ export function ChainPacksTable({
                           title={cc.tailorMode || "legacy"}
                         >
                           Legacy engine
+                        </span>
+                      ) : null}
+                      {parseHumanReject(cc.atsBreakdownJson) ? (
+                        <span
+                          className="inline-flex items-center rounded-full bg-rose-500/10 px-2 py-0.5 text-[11px] font-semibold text-rose-900 ring-1 ring-inset ring-rose-500/25"
+                          title={
+                            parseHumanReject(cc.atsBreakdownJson)?.reason ||
+                            "rejected"
+                          }
+                        >
+                          Rejected
                         </span>
                       ) : null}
                       <span className="text-[11px] font-medium tabular-nums text-[#c7c7cc]">
@@ -363,6 +464,44 @@ export function ChainPacksTable({
                   </div>
                 )}
               </div>
+
+              {/* C6 — reject after green (telemetry) */}
+              {hasText && !parseHumanReject(cc.atsBreakdownJson) ? (
+                <div className="border-t border-black/[0.04] px-5 py-3 sm:px-6">
+                  <form
+                    action={rejectChainPackAction}
+                    className="flex flex-wrap items-center gap-2"
+                  >
+                    <input type="hidden" name="chainCandidateId" value={cc.id} />
+                    <input type="hidden" name="chainId" value={chainId} />
+                    <label className="sr-only" htmlFor={`reject-${cc.id}`}>
+                      Reject reason
+                    </label>
+                    <select
+                      id={`reject-${cc.id}`}
+                      name="reason"
+                      required
+                      className="h-8 rounded-full border border-black/[0.08] bg-white px-3 text-[12px] text-[#1d1d1f]"
+                      defaultValue=""
+                    >
+                      <option value="" disabled>
+                        Reject after review…
+                      </option>
+                      {PACK_REJECT_REASONS.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="submit"
+                      className="h-8 rounded-full border border-rose-200 bg-rose-50 px-3 text-[12px] font-semibold text-rose-900 hover:bg-rose-100"
+                    >
+                      Log reject
+                    </button>
+                  </form>
+                </div>
+              ) : null}
             </li>
           );
         })}

@@ -59,6 +59,11 @@ function buildUserMessage(opts: {
   priorJson?: string;
   /** Admin skill-neutral bank block for thin bullet lookup */
   bulletBankBlock?: string;
+  /**
+   * C1 project-complete skeleton + per-slot evidence.
+   * When set, still keep master for locks but evidence drives rewrite.
+   */
+  evidenceBlock?: string;
 }): string {
   const parts = [
     "=== MASTER RESUME (locks: name · employers · project set · dates) ===",
@@ -82,6 +87,9 @@ function buildUserMessage(opts: {
     "- If bullets are thin: use the ADMIN SKILL-NEUTRAL BULLET BANK below (pick distinct lines) or invent equal-quality JD-domain bullets",
     "- Return JSON only per Bible contract",
   ];
+  if (opts.evidenceBlock) {
+    parts.push("", opts.evidenceBlock);
+  }
   if (opts.bulletBankBlock) {
     parts.push("", opts.bulletBankBlock);
   }
@@ -163,6 +171,11 @@ export async function generateResumeV2(opts: {
   candidateName?: string;
   email?: string;
   phone?: string;
+  /** C1 evidence / skeleton block */
+  evidenceBlock?: string;
+  /** Pre-formatted bank block (skip default load when set) */
+  bulletBankBlock?: string;
+  temperature?: number;
   onPhase?: (
     phase:
       | "resume-v2-llm"
@@ -224,16 +237,18 @@ export async function generateResumeV2(opts: {
   if (opts.dryPack) {
     pack = opts.dryPack;
   } else {
-    let bulletBankBlock = "";
-    try {
-      const {
-        getSkillNeutralBulletBank,
-        formatBulletBankForPrompt,
-      } = await import("@/lib/resume/skill-neutral-bullet-bank");
-      const bank = await getSkillNeutralBulletBank();
-      bulletBankBlock = formatBulletBankForPrompt(bank, 50);
-    } catch {
-      /* bank optional */
+    let bulletBankBlock = opts.bulletBankBlock || "";
+    if (!bulletBankBlock) {
+      try {
+        const {
+          getSkillNeutralBulletBank,
+          formatBulletBankForPrompt,
+        } = await import("@/lib/resume/skill-neutral-bullet-bank");
+        const bank = await getSkillNeutralBulletBank();
+        bulletBankBlock = formatBulletBankForPrompt(bank, 50);
+      } catch {
+        /* bank optional */
+      }
     }
     const user = buildUserMessage({
       master: masterForLlm,
@@ -242,6 +257,7 @@ export async function generateResumeV2(opts: {
       feedback: opts.feedback,
       priorJson: opts.priorJson,
       bulletBankBlock,
+      evidenceBlock: opts.evidenceBlock,
     });
 
     try {
@@ -251,6 +267,7 @@ export async function generateResumeV2(opts: {
         prompt: promptForRun,
         user,
         provider: opts.llmProvider,
+        temperature: opts.temperature,
       });
       tokensIn += first.tokensIn;
       tokensOut += first.tokensOut;
