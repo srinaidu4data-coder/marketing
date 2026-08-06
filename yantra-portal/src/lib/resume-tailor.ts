@@ -344,7 +344,8 @@ export async function tailorResume(opts: {
       );
       const shaped = await ensureShipCompatibleTextAsync(
         v2.pack,
-        masterHydrated || opts.master
+        masterHydrated || opts.master,
+        jdHydrated || opts.jd
       );
       v2.pack = shaped.pack;
       const text = shaped.text;

@@ -50,9 +50,16 @@ export {
   formatCostUsd,
   parseGenerationMeta,
   parseHumanReject,
+  sumChainApiCostUsd,
   PACK_REJECT_REASONS,
   type GenerationMeta,
   type GenerationPath,
   type PackRejectReason,
   type HumanRejectRecord,
 } from "./generation-meta";
+export {
+  buildPackCompliance,
+  complianceFromBreakdown,
+  type PackComplianceReport,
+  type ComplianceItem,
+} from "./pack-compliance";

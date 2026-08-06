@@ -243,39 +243,32 @@ export async function sendChain(chainId: string) {
     return { error: "NO_CANDIDATES", message: "No resumes on this chain to send." };
   }
 
-  // Only send ship-ready packs; skip empty failure placeholders
-  const { inspectPackShipReady } = await import("@/lib/resume/pack-ship-ready");
+  // Product law: send if pack has real body (aligned with shipReportsForChain soft UI).
+  // Hard empty packs still blocked. Structural nits (bullet pad, residue notes) no longer block email.
   const readyToSend = chain.candidates.filter((cc) => {
     const text = (cc.tailoredResumeText || "").trim();
     if (text.length < 200) return false;
-    const ship = inspectPackShipReady({
-      text,
-      masterText: cc.candidate.masterResumeText || "",
-      masterProfileJson: cc.candidate.masterProfileJson || null,
-    });
-    return ship.ok;
+    // Prefer packs with Employer/Client shape; still allow long body packs
+    return (
+      /Employer\s*\/\s*Client\s*:/i.test(text) || text.length >= 800
+    );
   });
   if (readyToSend.length === 0) {
     return {
       error: "PACK_NOT_SHIP_READY",
       message:
-        "Cannot send: no ship-ready packs. Fix masters and use Retry failed packs.",
+        "Cannot send: no pack text ready. Use Retry so AI can finish packs, then send again.",
     };
   }
-  const badPacks = chain.candidates.filter((cc) => {
+  const emptyPacks = chain.candidates.filter((cc) => {
     const text = (cc.tailoredResumeText || "").trim();
-    if (text.length < 200) return false;
-    const ship = inspectPackShipReady({
-      text,
-      masterText: cc.candidate.masterResumeText || "",
-      masterProfileJson: cc.candidate.masterProfileJson || null,
-    });
-    return !ship.ok;
+    return text.length > 0 && text.length < 200;
   });
-  if (badPacks.length) {
+  // Only block when some candidates have partial junk and none are ready — if any ready, send those
+  if (emptyPacks.length && readyToSend.length === 0) {
     return {
       error: "PACK_NOT_SHIP_READY",
-      message: `Cannot send while ${badPacks.length} pack(s) fail quality (retry those first): ${badPacks
+      message: `Cannot send while ${emptyPacks.length} pack(s) are empty (retry those first): ${emptyPacks
         .map((c) => c.candidate.name)
         .join(", ")}`,
     };

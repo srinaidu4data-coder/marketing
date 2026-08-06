@@ -464,6 +464,16 @@ export async function generateChainResumes(
         let pdfPath: string | null = null;
 
         // Early DB persist: text ready for instant download rebuild (no LLM on download)
+        const { buildPackCompliance } = await import(
+          "@/lib/resume-v2/pack-compliance"
+        );
+        const compliance = buildPackCompliance({
+          pack: null,
+          text: tailored.text || "",
+          jd: effectiveJd,
+          masterText: c.masterResumeText || "",
+          masterProfileJson,
+        });
         const packDataCore = {
           tailoredResumeText: sanitizePostgresText(tailored.text || ""),
           tailoredResumePath: textRel,
@@ -489,6 +499,7 @@ export async function generateChainResumes(
               best: tailored.best,
               generationMeta: tailored.generationMeta || null,
               costUsd: tailored.costUsd ?? tailored.generationMeta?.costUsd ?? null,
+              compliance,
               packValidation: tailored.packValidation
                 ? {
                     ok: tailored.packValidation.ok,

@@ -7,11 +7,15 @@
 
 import type { ResumePackV2 } from "./pack-schema";
 import { renderPackText } from "./render-pack";
-/** Soft floors by era — not forced 10–12 everywhere (latency + honesty). */
+import {
+  MIN_BULLETS_PER_PROJECT,
+  TARGET_BULLETS_PER_PROJECT,
+} from "@/lib/resume/bullet-density";
+/** Ship law: every employer ≥ MIN_BULLETS (8). Latency-era 3/4 floors blocked Send. */
 const MIN_SUMMARY = 6;
-const MIN_RECENT = 6;
-const MIN_MID = 4;
-const MIN_EARLY = 3;
+const MIN_RECENT = MIN_BULLETS_PER_PROJECT;
+const MIN_MID = MIN_BULLETS_PER_PROJECT;
+const MIN_EARLY = MIN_BULLETS_PER_PROJECT;
 import {
   DEFAULT_SKILL_NEUTRAL_BULLETS,
   getSkillNeutralBulletBank,
@@ -90,10 +94,29 @@ export function guessEmployersFromMaster(master: string, max = 6): string[] {
  * Mutate pack so every project has employer + dense bullets.
  * Uses Admin skill-neutral bank when short — never engagement-goals (N/M).
  */
+/** Pull tool-like tokens from JD for empty techStack pad (never fake employers). */
+function jdToolHints(jd?: string, limit = 10): string {
+  if (!jd?.trim()) return "";
+  const found: string[] = [];
+  const re =
+    /\b(SAP|BRIM|FI-CA|FICA|S\/4HANA|S4HANA|HANA|RAR|SOM|OTC|PTP|FICO|RTR|BW|BPC|MDG|EWM|Ariba|OpenText|ServiceNow|Jira|Concur|SuccessFactors|DataSphere|SAC)\b/gi;
+  const seen = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(jd)) && found.length < limit) {
+    const t = m[0];
+    const key = t.toUpperCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    found.push(t);
+  }
+  return found.join(", ");
+}
+
 export function ensurePackShipShape(
   pack: ResumePackV2,
   masterText?: string,
-  bulletBank?: string[]
+  bulletBank?: string[],
+  jd?: string
 ): ResumePackV2 {
   stripFillerBullets(pack);
   const bank =
@@ -102,6 +125,7 @@ export function ensurePackShipShape(
       : DEFAULT_SKILL_NEUTRAL_BULLETS;
   const used = new Set<string>();
   const employers = guessEmployersFromMaster(masterText || "");
+  const stackFallback = jdToolHints(jd);
   let projects = [...(pack.projects || [])];
 
   if (!projects.length) {
@@ -110,8 +134,8 @@ export function ensurePackShipShape(
       employerOrClient: emp,
       location: "",
       duration: "",
-      techStack: "",
-      environment: "",
+      techStack: stackFallback,
+      environment: "Client delivery environment",
       bullets: padBulletsFromBank([], bank, used, MIN_RECENT),
     }));
   } else {
@@ -122,18 +146,29 @@ export function ensurePackShipShape(
         employers[i] ||
         employers[0] ||
         `Client ${i + 1}`;
-      // Reverse-chron: index 0 = recent
-      const minB =
-        i === 0
-          ? MIN_RECENT
-          : i < Math.ceil(n / 2)
-            ? MIN_MID
-            : MIN_EARLY;
+      // Ship law: every project ≥ MIN_BULLETS_PER_PROJECT
+      void n;
+      const minB = MIN_BULLETS_PER_PROJECT;
+      const stack = (p.techStack || "").trim() || stackFallback;
+      const env = (p.environment || "").trim();
       return {
         ...p,
         role: (p.role || "").trim() || pack.header.jobTitle || "Consultant",
         employerOrClient: emp,
-        bullets: padBulletsFromBank(p.bullets || [], bank, used, minB),
+        techStack: stack,
+        environment: env || "Client delivery environment",
+        bullets: padBulletsFromBank(
+          p.bullets || [],
+          bank,
+          used,
+          Math.max(
+            minB,
+            Math.min(
+              TARGET_BULLETS_PER_PROJECT,
+              (p.bullets || []).length || minB
+            )
+          )
+        ),
       };
     });
   }
@@ -154,19 +189,21 @@ export function ensurePackShipShape(
 
 export async function ensurePackShipShapeAsync(
   pack: ResumePackV2,
-  masterText?: string
+  masterText?: string,
+  jd?: string
 ): Promise<ResumePackV2> {
   const bank = await getSkillNeutralBulletBank();
-  return ensurePackShipShape(pack, masterText, bank);
+  return ensurePackShipShape(pack, masterText, bank, jd);
 }
 
 /** Re-render text after ensuring shape */
 export function ensureShipCompatibleText(
   pack: ResumePackV2,
   masterText?: string,
-  bulletBank?: string[]
+  bulletBank?: string[],
+  jd?: string
 ): { pack: ResumePackV2; text: string } {
-  const shaped = ensurePackShipShape(pack, masterText, bulletBank);
+  const shaped = ensurePackShipShape(pack, masterText, bulletBank, jd);
   let text = renderPackText(shaped);
   if (!/Employer\s*\/\s*Client\s*:/i.test(text)) {
     text +=
@@ -189,8 +226,9 @@ export function ensureShipCompatibleText(
 
 export async function ensureShipCompatibleTextAsync(
   pack: ResumePackV2,
-  masterText?: string
+  masterText?: string,
+  jd?: string
 ): Promise<{ pack: ResumePackV2; text: string }> {
   const bank = await getSkillNeutralBulletBank();
-  return ensureShipCompatibleText(pack, masterText, bank);
+  return ensureShipCompatibleText(pack, masterText, bank, jd);
 }

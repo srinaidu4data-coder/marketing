@@ -74,10 +74,12 @@ function buildUserMessage(opts: {
     "",
     "LOCKS: name + every employerOrClient + duration exact. Same project count/order.",
     "FREE but JD-DOMAIN: header.jobTitle, EVERY projects[i].role, techStack, environment, bullets, summary, skills.",
-    "EVERY PROJECT JD REWRITE (mandatory): regenerate role + stack + env + ALL bullets for projects[0], [1], [2], … ALL indices.",
+    "EVERY PROJECT JD REWRITE (mandatory): regenerate role + techStack + environment + ALL bullets for projects[0], [1], [2], … ALL indices.",
+    "REQUIRED on every project: non-empty techStack (JD tools) and environment (delivery context).",
     "FORBIDDEN: keep master FICO/RTR/module titles on any project when JD is BRIM/data/other domain.",
-    "FORBIDDEN: only rewrite recent project; mid/early must also show JD face on role title and bullets.",
-    "Budget: summary 6–8; bullets by recency 6–8/4–6/3–4. No engagement-goals (N/M) filler. JSON only.",
+    "FORBIDDEN: only rewrite recent project; mid/early must also show JD face on role, stack, env, bullets.",
+    "FORBIDDEN: empty techStack/environment; copy-paste master stack when JD domain differs.",
+    "Budget: summary 6–8; EVERY project 8–12 bullets (min 8). No engagement-goals (N/M) filler. JSON only.",
   ];
   if (opts.evidenceBlock) {
     parts.push("", opts.evidenceBlock);

@@ -246,12 +246,13 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
 
   // Ship-shape with ranked bank
   {
-    const shaped = await ensureShipCompatibleTextAsync(best.pack, master);
+    const shaped = await ensureShipCompatibleTextAsync(best.pack, master, jd);
     // Prefer ranked bank pad: re-run sync with ranked order
     const rankedShaped = ensureShipCompatibleText(
       shaped.pack,
       master,
-      rankedBank
+      rankedBank,
+      jd
     );
     best.pack = rankedShaped.pack;
     best.text = rankedShaped.text;
@@ -307,7 +308,7 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
     });
     tokensIn += soft.tokensIn;
     tokensOut += soft.tokensOut;
-    const shaped = ensureShipCompatibleText(soft.pack, master, rankedBank);
+    const shaped = ensureShipCompatibleText(soft.pack, master, rankedBank, jd);
     soft.pack = shaped.pack;
     soft.text = shaped.text;
     soft.ats = scoreResume({
@@ -391,7 +392,7 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
       tokensIn += s.tokensIn || 0;
       tokensOut += s.tokensOut || 0;
       if (!(s.text || "").trim() || !s.pack?.projects?.length) continue;
-      const shaped = ensureShipCompatibleText(s.pack, master, rankedBank);
+      const shaped = ensureShipCompatibleText(s.pack, master, rankedBank, jd);
       s.pack = shaped.pack;
       s.text = shaped.text;
       s.ats = scoreResume({
@@ -456,7 +457,7 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
       });
       tokensIn += forced.tokensIn || 0;
       tokensOut += forced.tokensOut || 0;
-      const shaped = ensureShipCompatibleText(forced.pack, master, rankedBank);
+      const shaped = ensureShipCompatibleText(forced.pack, master, rankedBank, jd);
       forced.pack = shaped.pack;
       forced.text = shaped.text;
       best = forced;

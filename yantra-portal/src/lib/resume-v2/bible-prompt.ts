@@ -26,10 +26,11 @@ Return ONE JSON object only (no markdown fences, no commentary).
 
 ## BUDGET (latency + quality)
 - professionalSummary.bullets: 6–8
-- Project bullets by recency: recent 6–8, middle 4–6, early 3–4
-- Maximum ~40 project bullets total across all projects
+- **Every** project: **8–12** bullets (never fewer than 8 — ship gate)
+- Prefer recent slightly denser; still min 8 on mid/early
+- Maximum ~48 project bullets total across all projects
 - No duplicates, no filler, no engagement-goals (N/M) lines
-- techStack/environment: tools/platforms only (not soft skills or job-title fragments)
+- **Every** project MUST include non-empty **techStack** and **environment** lines with JD tools/platforms (not soft skills)
 
 ## CRAFT
 - JD terms in summary, skills, **every** project role/stack/env/bullets

@@ -31,6 +31,10 @@ import {
   PACK_REJECT_REASONS,
   type GenerationMeta,
 } from "@/lib/resume-v2/generation-meta";
+import {
+  complianceFromBreakdown,
+  type PackComplianceReport,
+} from "@/lib/resume-v2/pack-compliance";
 import { rejectChainPackAction } from "@/app/actions/pack-reject";
 
 export type ChainPackRow = {
@@ -100,6 +104,51 @@ function CostChip({ costUsd }: { costUsd: number }) {
     >
       {formatCostUsd(costUsd)}
     </span>
+  );
+}
+
+function PromptCompliancePanel({ report }: { report: PackComplianceReport }) {
+  return (
+    <div className="border-t border-black/[0.04] bg-slate-50/80 px-5 py-3 sm:px-6">
+      <p className="text-[12px] font-semibold text-[#1d1d1f]">
+        Prompt compliance{" "}
+        <span
+          className={
+            report.manufactured
+              ? "text-emerald-700"
+              : "text-amber-800"
+          }
+        >
+          {report.score}% · {report.manufactured ? "JD craft signals OK" : "gaps"}
+        </span>
+      </p>
+      <p className="mt-0.5 text-[11.5px] text-[#6e6e73]">{report.summary}</p>
+      <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+        {report.items.map((item) => (
+          <li
+            key={item.id}
+            className="flex items-start gap-1.5 text-[11.5px] leading-snug"
+            title={item.detail}
+          >
+            <span
+              className={
+                item.ok
+                  ? "font-semibold text-emerald-700"
+                  : "font-semibold text-rose-700"
+              }
+            >
+              {item.ok ? "✓" : "✗"}
+            </span>
+            <span className="text-[#3a3a3c]">
+              {item.label}
+              <span className="block text-[10.5px] text-[#86868b]">
+                {item.detail}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -413,6 +462,19 @@ export function ChainPacksTable({
                   />
                 </div>
               </div>
+
+              {/* Prompt compliance — solid confirmation of AI craft vs gaps */}
+              {hasText ? (
+                <PromptCompliancePanel
+                  report={complianceFromBreakdown(
+                    cc.atsBreakdownJson,
+                    cc.tailoredResumeText,
+                    rawJobText,
+                    cc.candidate.masterResumeText || undefined,
+                    cc.candidate.masterProfileJson
+                  )}
+                />
+              ) : null}
 
               {/* Research lab: JD fit checklist + confidence (localhost) */}
               {hasText ? (
