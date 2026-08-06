@@ -376,9 +376,9 @@ export async function generateChainResumes(
           layoutId: c.layoutId,
           email: c.email,
           chainBudget,
-          // Quality default: Fit accumulate ON. Opt into one-wave-only with CHAIN_FAST_MODE=1
-          // (fast still runs Fit repair — only soft/BoN trim unless RESUME_FIT_REPAIR=0)
+          // Fit repair is product law (runPack). fastMode only trims soft/BoN.
           fastMode: process.env.CHAIN_FAST_MODE === "1",
+          useRunPack: process.env.RESUME_RUN_PACK !== "0",
           onStep: async (stepId, status) => {
             const { stepWaitingOn, engagementTip } = await import(
               "@/lib/resume/generation-progress"

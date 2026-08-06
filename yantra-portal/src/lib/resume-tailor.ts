@@ -463,8 +463,8 @@ export async function tailorResume(opts: {
             (opts.chainBudget.packsStarted || 0) + 1;
         }
         const packResult = await runPack({
-          // Always pass resolved Bible (code or ACTIVE with product law)
-          prompt: promptTemplate,
+          // Prefer code Bible; runPack also enforces BIBLE SOT internally
+          prompt: BIBLE_PROMPT || promptTemplate,
           master: masterHydrated || opts.master || "Professional experience.",
           jd:
             jdHydrated ||
@@ -476,11 +476,11 @@ export async function tailorResume(opts: {
           email: opts.email,
           masterProfileJson: opts.masterProfileJson,
           chainBudget: opts.chainBudget,
-          enableSoftRegen:
-            !fast || process.env.RESUME_SOFT_REGEN === "1",
+          enableSoftRegen: !fast || process.env.RESUME_SOFT_REGEN === "1",
           enableBon: !fast && process.env.RESUME_BON === "1",
           enableRetrieve: process.env.RESUME_RETRIEVE !== "0",
-          enableFitRepair,
+          // Explicit always-on unless RESUME_FIT_REPAIR=0
+          enableFitRepair: enableFitRepair !== false,
           onPhase: async (phase, status) => {
             await opts.onStep?.(phase, status);
           },

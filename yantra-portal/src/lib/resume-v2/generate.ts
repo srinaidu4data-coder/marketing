@@ -65,13 +65,46 @@ function buildUserMessage(opts: {
    */
   evidenceBlock?: string;
 }): string {
-  const parts = [
-    "=== MASTER (locks: name, employers, dates, order) ===",
-    opts.master.trim().slice(0, 28000),
-    "",
-    "=== JD (target role language — all free fields follow this) ===",
-    opts.jd.trim().slice(0, 12000),
-    "",
+  const isFitAccumulate = /FIT ACCUMULATE|MUST WEAVE/i.test(opts.feedback || "");
+  const parts: string[] = [];
+
+  // OpenAI-style: instructions + prior first on repair (model attends to front)
+  if (isFitAccumulate && opts.feedback) {
+    parts.push(
+      "=== HIGHEST PRIORITY: FIT ACCUMULATE REPAIR (read first) ===",
+      opts.feedback,
+      "",
+      "ACCUMULATE LAW: KEEP every prior techStack tool, skill, environment token, and strong bullet.",
+      "ADD missing phrases/keywords into stack/env/bullets — never shrink a 5-tool stack to fewer tools.",
+      ""
+    );
+    if (opts.priorJson) {
+      parts.push(
+        "=== PRIOR PACK JSON (baseline — accrue onto this) ===",
+        opts.priorJson.slice(0, 16000),
+        ""
+      );
+    }
+    parts.push(
+      "=== JD (weave missing phrases into free fields) ===",
+      opts.jd.trim().slice(0, 8000),
+      "",
+      "=== MASTER LOCKS ONLY (do not invent employers/dates; free craft may JD-rewrite roles/stack/env/bullets) ===",
+      opts.master.trim().slice(0, 12000),
+      ""
+    );
+  } else {
+    parts.push(
+      "=== MASTER (locks: name, employers, dates, order) ===",
+      opts.master.trim().slice(0, 28000),
+      "",
+      "=== JD (target role language — all free fields follow this) ===",
+      opts.jd.trim().slice(0, 12000),
+      ""
+    );
+  }
+
+  parts.push(
     "LOCKS: name + every employerOrClient + duration exact. Same project count/order.",
     "FREE but JD-DOMAIN: header.jobTitle, EVERY projects[i].role, techStack, environment, bullets, summary, skills.",
     "EVERY PROJECT JD REWRITE (mandatory): regenerate role + techStack + environment + ALL bullets for projects[0], [1], [2], … ALL indices.",
@@ -80,9 +113,10 @@ function buildUserMessage(opts: {
     "FORBIDDEN: only rewrite recent project; mid/early must also show JD face on role, stack, env, bullets.",
     "FORBIDDEN: empty techStack/environment; copy-paste master stack when JD domain differs.",
     "ACCUMULATE: if PRIOR JSON present, KEEP prior techStack tools, skills, bullets; ADD missing JD phrases/keywords — never shrink stack.",
-    "Budget: summary 6–8; EVERY project 8–12 bullets (min 8). No engagement-goals (N/M) filler. JSON only.",
-  ];
-  if (opts.evidenceBlock) {
+    "Budget: summary 6–8; EVERY project 8–12 bullets (min 8). No engagement-goals (N/M) filler. JSON only."
+  );
+
+  if (opts.evidenceBlock && !isFitAccumulate) {
     parts.push("", opts.evidenceBlock);
   }
   if (opts.bulletBankBlock) {
@@ -99,15 +133,19 @@ function buildUserMessage(opts: {
       `linkedin: ${opts.contactHint.linkedin || ""}`
     );
   }
-  if (opts.feedback) {
+  if (opts.feedback && !isFitAccumulate) {
     parts.push(
       "",
       "=== REGENERATION FEEDBACK (keep locks; free craft elsewhere) ===",
       opts.feedback
     );
   }
-  if (opts.priorJson) {
-    parts.push("", "=== PRIOR JSON (revise; do not copy integrity failures) ===", opts.priorJson.slice(0, 14000));
+  if (opts.priorJson && !isFitAccumulate) {
+    parts.push(
+      "",
+      "=== PRIOR JSON (revise; do not copy integrity failures) ===",
+      opts.priorJson.slice(0, 14000)
+    );
   }
   parts.push(
     "",

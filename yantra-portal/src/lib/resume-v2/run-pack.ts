@@ -38,6 +38,7 @@ import {
   accumulatePackCraft,
   buildFitAccumulateFeedback,
 } from "./pack-accumulate";
+import { BIBLE_PROMPT } from "./bible-prompt";
 
 /** C3 hard budgets */
 export const RUN_PACK_BUDGETS = {
@@ -285,8 +286,27 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
   let llmWaves = 0;
   const notes: string[] = [];
 
+  // OpenAI/Karpathy: system = code Bible SOT (caller prompt only if it embeds product law)
+  const systemPrompt = (() => {
+    const p = (opts.prompt || "").trim();
+    const bible = (BIBLE_PROMPT || "").trim();
+    if (
+      p.length > 400 &&
+      /EVERY PROJECT/i.test(p) &&
+      /techStack|ACCUMULATE/i.test(p)
+    ) {
+      return p;
+    }
+    return bible.length > 400 ? bible : p || bible;
+  })();
+  notes.push(
+    systemPrompt === (BIBLE_PROMPT || "").trim()
+      ? "system=code_BIBLE"
+      : "system=caller_or_ACTIVE"
+  );
+
   const genBase = {
-    prompt: opts.prompt,
+    prompt: systemPrompt,
     master,
     jd,
     promptVersionId: opts.promptVersionId,
@@ -349,6 +369,116 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
 
   let path: GenerationPath = "tier0";
   let bonN = 0;
+
+  // ── Fit craft gate ≥ 80: accumulate loops (Bible-only; independent of fastMode soft/BoN) ──
+  let fit = measureFit(best.text, jd, best.pack.header.jobTitle);
+  let fitLoops = 0;
+  let gate = fitGateScore(fit);
+  notes.push(
+    `fit0 craft=${gate} display=${fit.confidence} coverage=${fit.coveragePct} missing=${fit.missing.slice(0, 8).join("|")}`
+  );
+
+  if (!enableFitRepair) {
+    notes.push("fit_repair_disabled");
+  }
+
+  // Reserve: always allow Fit loops after tier0 (soft/bon run after Fit now)
+  while (
+    enableFitRepair &&
+    gate < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE &&
+    fitLoops < RUN_PACK_BUDGETS.MAX_FIT_LOOPS &&
+    llmWaves < RUN_PACK_BUDGETS.MAX_LLM_WAVES &&
+    // Allow fit even late in chain — 12s min for one repair call
+    remainingMs(opts.chainBudget?.deadlineMs) >= 12_000
+  ) {
+    fitLoops += 1;
+    llmWaves += 1;
+    await opts.onPhase?.("run-pack-tier1", "active");
+    const missingReqs = fit.requirements
+      .filter(
+        (r) =>
+          !r.present &&
+          (r.kind === "phrase" ||
+            r.kind === "keyword" ||
+            r.kind === "title" ||
+            r.kind === "structure")
+      )
+      .map((r) => ({ kind: r.kind, label: r.label }));
+    const feedback = buildFitAccumulateFeedback({
+      fitConfidence: gate,
+      missing: fit.missing,
+      missingRequirements: missingReqs,
+      loop: fitLoops,
+      maxLoops: RUN_PACK_BUDGETS.MAX_FIT_LOOPS,
+    });
+    // Prefer stronger model on fit repair when available (same Bible)
+    let fitProvider = opts.llmProvider;
+    try {
+      const { getActiveLlmConfig } = await import("@/lib/system-settings");
+      const cfg = await getActiveLlmConfig(opts.llmProvider || null);
+      if (cfg.anthropic?.configured && (cfg.provider === "openai" || !opts.llmProvider)) {
+        fitProvider = "anthropic";
+      }
+    } catch {
+      /* keep */
+    }
+
+    const prior = JSON.stringify(best.pack).slice(0, 16000);
+    const loopGen = await generateResumeV2({
+      ...genBase,
+      llmProvider: fitProvider,
+      // Always Bible system from genBase.prompt (caller must pass code Bible)
+      feedback,
+      priorJson: prior,
+      temperature: 0.35 + fitLoops * 0.05,
+      onPhase: async (phase, status) => {
+        await opts.onPhase?.(phase, status);
+      },
+    });
+    tokensIn += loopGen.tokensIn || 0;
+    tokensOut += loopGen.tokensOut || 0;
+
+    if (loopGen.pack?.projects?.length) {
+      // Accrue: merge new craft onto existing (stack/bullets/skills grow)
+      const merged = accumulatePackCraft(best.pack, loopGen.pack);
+      loopGen.pack = merged;
+      const shaped = shapeAndScore(
+        loopGen,
+        master,
+        jd,
+        rankedBank,
+        opts.masterProfileJson,
+        opts.candidateName
+      );
+      const nextFit = measureFit(
+        shaped.result.text,
+        jd,
+        shaped.result.pack.header.jobTitle
+      );
+      const nextGate = fitGateScore(nextFit);
+      notes.push(
+        `fit${fitLoops} craft ${gate}→${nextGate} display=${nextFit.confidence} phrasesMissing=${nextFit.missing.slice(0, 4).join("|")}`
+      );
+      // Always keep accumulate merge (points accrue); adopt if gate improved or equal
+      best = shaped.result;
+      score = shaped.score;
+      fit = nextFit;
+      gate = nextGate;
+      path = "tier1";
+    } else {
+      notes.push(`fit${fitLoops}_empty_response`);
+    }
+    await opts.onPhase?.("run-pack-tier1", "done");
+  }
+
+  if (gate < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE) {
+    notes.push(
+      `fit_below_target craft=${gate} display=${fit.confidence} need=${RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE}`
+    );
+  } else {
+    notes.push(`fit_ok craft=${gate} display=${fit.confidence}`);
+  }
+
 
   // ── Tier 1 soft (one constrained regen) ────────────────────────────
   if (
@@ -498,113 +628,6 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
     await opts.onPhase?.("run-pack-tier2", "done");
   } else if (score.hardFail) {
     notes.push("tier2_skipped_budget_or_disabled");
-  }
-
-  // ── Fit craft gate ≥ 80: accumulate loops (Bible-only; independent of fastMode soft/BoN) ──
-  let fit = measureFit(best.text, jd, best.pack.header.jobTitle);
-  let fitLoops = 0;
-  let gate = fitGateScore(fit);
-  notes.push(
-    `fit0 craft=${gate} display=${fit.confidence} coverage=${fit.coveragePct} missing=${fit.missing.slice(0, 8).join("|")}`
-  );
-
-  if (!enableFitRepair) {
-    notes.push("fit_repair_disabled");
-  }
-
-  while (
-    enableFitRepair &&
-    gate < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE &&
-    fitLoops < RUN_PACK_BUDGETS.MAX_FIT_LOOPS &&
-    llmWaves < RUN_PACK_BUDGETS.MAX_LLM_WAVES &&
-    remainingMs(opts.chainBudget?.deadlineMs) >= 25_000
-  ) {
-    fitLoops += 1;
-    llmWaves += 1;
-    await opts.onPhase?.("run-pack-tier1", "active");
-    const missingReqs = fit.requirements
-      .filter(
-        (r) =>
-          !r.present &&
-          (r.kind === "phrase" ||
-            r.kind === "keyword" ||
-            r.kind === "title" ||
-            r.kind === "structure")
-      )
-      .map((r) => ({ kind: r.kind, label: r.label }));
-    const feedback = buildFitAccumulateFeedback({
-      fitConfidence: gate,
-      missing: fit.missing,
-      missingRequirements: missingReqs,
-      loop: fitLoops,
-      maxLoops: RUN_PACK_BUDGETS.MAX_FIT_LOOPS,
-    });
-    // Prefer stronger model on fit repair when available (same Bible)
-    let fitProvider = opts.llmProvider;
-    try {
-      const { getActiveLlmConfig } = await import("@/lib/system-settings");
-      const cfg = await getActiveLlmConfig(opts.llmProvider || null);
-      if (cfg.anthropic?.configured && (cfg.provider === "openai" || !opts.llmProvider)) {
-        fitProvider = "anthropic";
-      }
-    } catch {
-      /* keep */
-    }
-
-    const prior = JSON.stringify(best.pack).slice(0, 16000);
-    const loopGen = await generateResumeV2({
-      ...genBase,
-      llmProvider: fitProvider,
-      // Always Bible system from genBase.prompt (caller must pass code Bible)
-      feedback,
-      priorJson: prior,
-      temperature: 0.35 + fitLoops * 0.05,
-      onPhase: async (phase, status) => {
-        await opts.onPhase?.(phase, status);
-      },
-    });
-    tokensIn += loopGen.tokensIn || 0;
-    tokensOut += loopGen.tokensOut || 0;
-
-    if (loopGen.pack?.projects?.length) {
-      // Accrue: merge new craft onto existing (stack/bullets/skills grow)
-      const merged = accumulatePackCraft(best.pack, loopGen.pack);
-      loopGen.pack = merged;
-      const shaped = shapeAndScore(
-        loopGen,
-        master,
-        jd,
-        rankedBank,
-        opts.masterProfileJson,
-        opts.candidateName
-      );
-      const nextFit = measureFit(
-        shaped.result.text,
-        jd,
-        shaped.result.pack.header.jobTitle
-      );
-      const nextGate = fitGateScore(nextFit);
-      notes.push(
-        `fit${fitLoops} craft ${gate}→${nextGate} display=${nextFit.confidence} phrasesMissing=${nextFit.missing.slice(0, 4).join("|")}`
-      );
-      // Always keep accumulate merge (points accrue); adopt if gate improved or equal
-      best = shaped.result;
-      score = shaped.score;
-      fit = nextFit;
-      gate = nextGate;
-      path = "tier1";
-    } else {
-      notes.push(`fit${fitLoops}_empty_response`);
-    }
-    await opts.onPhase?.("run-pack-tier1", "done");
-  }
-
-  if (gate < RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE) {
-    notes.push(
-      `fit_below_target craft=${gate} display=${fit.confidence} need=${RUN_PACK_BUDGETS.FIT_MIN_CONFIDENCE}`
-    );
-  } else {
-    notes.push(`fit_ok craft=${gate} display=${fit.confidence}`);
   }
 
   // ── Force if still unusable (mutually exclusive with more BoN) ──────
