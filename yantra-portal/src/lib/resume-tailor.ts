@@ -378,7 +378,6 @@ export async function tailorResume(opts: {
         ...(v2.structured?.meta?.progressiveNotes || []).slice(0, 6),
       ].filter(Boolean);
       try {
-        const llm = await getActiveLlmConfig(opts.llmProvider || null);
         await prisma.apiUsageLog.create({
           data: {
             employeeId: opts.employeeId || null,
