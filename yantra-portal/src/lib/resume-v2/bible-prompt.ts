@@ -120,6 +120,18 @@ If MASTER domain ≠ JD domain (e.g. master FICO, JD BRIM):
 6. No rates, ROLE::, JD MATCH, AI footers in body.
 7. Email-to-client ready.
 
+## FORBIDDEN FILLER BULLETS (never output — strip if present)
+NEVER write padding or numbered filler like:
+- "Delivered measurable outcomes for [Company] aligned to engagement goals (9/10)."
+- "Delivered measurable outcomes for [Company] aligned to engagement goals (10/12)."
+- Any "…aligned to engagement goals (N/M)." pattern
+- "Delivered engagement outcomes aligned to role expectations (N/12)."
+- Generic "Supported X outcomes with quality delivery (N/12)."
+
+Every bullet must be a **specific, JD-domain technical achievement** (module/tool + action + outcome).
+If you need more bullets: invent additional distinct JD work — do not pad with company-name + (N/M) templates.
+If a prior draft contains those filler lines: **delete them** and replace with real JD bullets.
+
 ---
 
 # PART 4 — SELF-CHECK
