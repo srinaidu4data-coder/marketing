@@ -68,8 +68,10 @@ function formatEngagementSkeleton(e: MasterEngagement, index: number): string {
     `[SLOT ${index}] employerOrClient: ${e.client}`,
     `  duration: ${e.startYear} – ${end}`,
     `  location: ${e.location || ""}`,
-    `  masterTitle: ${e.title || ""}`,
+    // Historical title is lock-context only — never paste when JD domain differs
+    `  historical_master_title_DO_NOT_COPY_IF_WRONG_DOMAIN: ${e.title || ""}`,
     `  project: ${e.project || ""}`,
+    `  REQUIRED: invent projects[${index}].role from the JD domain (not the historical title above).`,
   ];
   return lines.join("\n");
 }
@@ -143,8 +145,10 @@ function buildFromProfile(
 ): LightRetrieveResult {
   const parts: string[] = [
     "=== PROJECT-COMPLETE SKELETON (ALL employers — never drop a slot) ===",
-    "For EACH slot below: output a projects[] entry with the SAME employerOrClient, duration, and location.",
-    "Rewrite role, techStack, environment, and ALL bullets in JD language. Use evidence bullets as facts only — do not invent employers/metrics.",
+    "For EACH slot: same employerOrClient, duration, location (LOCKS).",
+    "Rewrite role, techStack, environment, and ALL bullets in **JD domain language** for EVERY slot.",
+    "Do NOT paste historical_master_title when it is a different module/domain than the JD (e.g. FICO title on a BRIM JD).",
+    "Evidence bullets are facts only — do not invent employers/metrics.",
     "",
   ];
 

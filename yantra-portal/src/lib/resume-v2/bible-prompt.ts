@@ -14,9 +14,15 @@ Return ONE JSON object only (no markdown fences, no commentary).
 - duration: exact master dates
 - education: only what master states (normalize format OK)
 
-## FREE (maximize JD fit)
-- jobTitle, summary bullets, skills, project roles, techStack, environment, bullets
-- Prefer master metrics; use qualitative impact if no numbers. Never invent employers/dates/degrees/certs.
+## FREE (maximize JD fit — still must match JD domain)
+- jobTitle, summary bullets, skills, **project roles**, techStack, environment, bullets
+- Prefer master metrics; qualitative impact if no numbers. Never invent employers/dates/degrees/certs.
+
+## EVERY PROJECT JD REWRITE (mandatory — not only recent)
+- For **every** projects[i] (0..n-1): rewrite **role**, techStack, environment, and **all** bullets into the **JD domain language**.
+- **FORBIDDEN:** keep master role titles (e.g. FICO/RTR Architect) when JD is another domain (e.g. BRIM / data migration).
+- **FORBIDDEN:** only rewrite projects[0] / recent and leave mid/early as master copy.
+- header.jobTitle and **every** project.role must read as the target JD role family (same domain).
 
 ## BUDGET (latency + quality)
 - professionalSummary.bullets: 6–8
@@ -26,7 +32,7 @@ Return ONE JSON object only (no markdown fences, no commentary).
 - techStack/environment: tools/platforms only (not soft skills or job-title fragments)
 
 ## CRAFT
-- JD terms naturally in summary, skills, recent stack/env/bullets
+- JD terms in summary, skills, **every** project role/stack/env/bullets
 - Consulting voice: Delivered/Architected/… — no I/me, no third-person bio, no name in summary
 - Primacy: strongest JD proof first
 - Peak-end: close recent roles with impact/go-live/KT

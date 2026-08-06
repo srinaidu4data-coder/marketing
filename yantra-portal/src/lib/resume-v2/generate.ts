@@ -69,12 +69,15 @@ function buildUserMessage(opts: {
     "=== MASTER (locks: name, employers, dates, order) ===",
     opts.master.trim().slice(0, 28000),
     "",
-    "=== JD ===",
+    "=== JD (target role language — all free fields follow this) ===",
     opts.jd.trim().slice(0, 12000),
     "",
     "LOCKS: name + every employerOrClient + duration exact. Same project count/order.",
-    "FREE: titles, summary 6–8 bullets, skills, stack/env (tools only), bullets by recency 6–8/4–6/3–4.",
-    "Rewrite ALL projects for this JD (not only recent). No engagement-goals (N/M) filler. JSON only.",
+    "FREE but JD-DOMAIN: header.jobTitle, EVERY projects[i].role, techStack, environment, bullets, summary, skills.",
+    "EVERY PROJECT JD REWRITE (mandatory): regenerate role + stack + env + ALL bullets for projects[0], [1], [2], … ALL indices.",
+    "FORBIDDEN: keep master FICO/RTR/module titles on any project when JD is BRIM/data/other domain.",
+    "FORBIDDEN: only rewrite recent project; mid/early must also show JD face on role title and bullets.",
+    "Budget: summary 6–8; bullets by recency 6–8/4–6/3–4. No engagement-goals (N/M) filler. JSON only.",
   ];
   if (opts.evidenceBlock) {
     parts.push("", opts.evidenceBlock);

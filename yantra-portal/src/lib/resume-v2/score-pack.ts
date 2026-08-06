@@ -95,6 +95,26 @@ export function detectProjectResidue(opts: {
     for (const t of jdOnly.slice(0, 40)) {
       if (blob.includes(t)) jdHits++;
     }
+
+    // Role-title residue: "FICO/RTR Architect" under BRIM JD even if bullets/JD-shared HANA words exist
+    const role = (p.role || "").toLowerCase();
+    if (role.length >= 4) {
+      const roleMasterMods = MODULE_MARKERS.filter(
+        (m) => masterOnly.includes(m) && role.includes(m)
+      );
+      const roleJdMods = MODULE_MARKERS.filter(
+        (m) => jdOnly.includes(m) && role.includes(m)
+      );
+      const jdHasMods = MODULE_MARKERS.some((m) => jdOnly.includes(m) || jd.includes(m));
+      if (roleMasterMods.length > 0 && roleJdMods.length === 0 && jdHasMods) {
+        hits.push({
+          index: i,
+          employer: p.employerOrClient || `project ${i}`,
+          detail: `role_title_master_face role="${(p.role || "").slice(0, 60)}" mods=${roleMasterMods.join(",")}`,
+        });
+      }
+    }
+
     // Residue: strong master face, weak JD-specific face on this project
     if (masterHits >= 2 && jdHits <= 1 && i > 0) {
       hits.push({
@@ -129,6 +149,37 @@ export function detectProjectResidue(opts: {
   }
   return hits;
 }
+
+/** Module/domain markers that must not appear on roles when JD is another module */
+const MODULE_MARKERS = [
+  "fico",
+  "rtr",
+  "brim",
+  "fica",
+  "fi-ca",
+  "ewm",
+  "tm",
+  "wm",
+  "pp",
+  "qm",
+  "mm",
+  "sd",
+  "hcm",
+  "successfactors",
+  "ariba",
+  "concur",
+  "hybris",
+  "c4c",
+  "crm",
+  "bw",
+  "bpc",
+  "mdg",
+  "mdm",
+  "otc",
+  "ptp",
+  "p2p",
+  "o2c",
+] as const;
 
 function extractDomainTokens(text: string): Set<string> {
   const set = new Set<string>();
@@ -227,7 +278,14 @@ export function scorePack(opts: {
   const residueHits = opts.pack
     ? detectProjectResidue({ pack: opts.pack, jd, masterText: master })
     : [];
-  const residueFail = residueHits.length >= 2 || residueHits.some((h) => h.index === 0);
+  // Any wrong-domain role title is hard fail; also multi-slot residue or recent residue
+  const roleTitleHits = residueHits.filter((h) =>
+    h.detail.startsWith("role_title_master_face")
+  );
+  const residueFail =
+    roleTitleHits.length > 0 ||
+    residueHits.length >= 2 ||
+    residueHits.some((h) => h.index === 0);
 
   const fillerPresent = textHasFiller(text);
   const freeMetricHits = packHasFreeMetrics(text, master);
@@ -342,8 +400,10 @@ export function scorePack(opts: {
 export function feedbackFromScore(score: PackScoreReport): string {
   const parts = [
     "REGEN: keep name/employers/dates/education locks.",
-    "Rewrite EVERY project index (0..n-1) role, techStack, environment, all bullets to the JD domain.",
+    "Rewrite EVERY project index (0..n-1) **role title**, techStack, environment, all bullets to the JD domain.",
+    "FORBIDDEN: leave FICO/RTR/master module titles on any project when JD is BRIM/data/other domain.",
     "FORBIDDEN: master domain face on mid/early projects; Company+(N/M) filler; invent free metrics.",
+    "header.jobTitle and every projects[i].role must match the JD role family.",
   ];
   if (score.ats.missingKeywords?.length) {
     parts.push(
