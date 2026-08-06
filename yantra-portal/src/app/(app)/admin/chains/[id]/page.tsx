@@ -53,14 +53,6 @@ export default async function AdminChainDetailPage({
   const notShipReady = shipReports.filter((r) => !r.ship.ok);
   const stuck = chain.status === "GENERATING" || chain.status === "SENDING";
   const emptyFailed = chain.status === "FAILED" && chain.candidates.length === 0;
-  const canSend =
-    goodPacks.length > 0 &&
-    badPacks.length === 0 &&
-    !stuck &&
-    (chain.status === "READY" ||
-      chain.status === "PARTIAL" ||
-      chain.status === "FAILED" ||
-      chain.status === "SENT");
   const allEmailed =
     goodPacks.length > 0 &&
     goodPacks.every((r) => {
@@ -68,13 +60,15 @@ export default async function AdminChainDetailPage({
       return row?.sendStatus === "SENT";
     });
 
-  const showRetry =
+  const showRetry = !stuck && chain.candidates.length > 0;
+  // Body packs can send — don't hide Send on soft quality nits
+  const canSend =
+    goodPacks.length > 0 &&
     !stuck &&
-    (emptyFailed ||
-      chain.status === "FAILED" ||
+    (chain.status === "READY" ||
       chain.status === "PARTIAL" ||
-      missingPacks.length > 0 ||
-      badPacks.length > 0);
+      chain.status === "FAILED" ||
+      chain.status === "SENT");
 
   async function sendAction() {
     "use server";
@@ -107,9 +101,12 @@ export default async function AdminChainDetailPage({
     await recoverStuckChainAction(params.id);
   }
 
-  async function retryAction() {
+  async function retryAction(formData: FormData) {
     "use server";
-    await retryGenerateChainAction(params.id);
+    formData.set("chainId", params.id);
+    formData.set("forceAll", "1");
+    formData.set("next", `/admin/chains/${params.id}`);
+    await retryGenerateChainAction(formData);
   }
 
   const banners = (

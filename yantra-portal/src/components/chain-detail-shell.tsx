@@ -56,7 +56,8 @@ export type ChainDetailShellProps = {
   apiCostUsd?: number | null;
   sendAction: () => Promise<void>;
   recoverAction: () => Promise<void>;
-  retryAction: () => Promise<void>;
+  /** Form action — receives FormData (chainId / forceAll) */
+  retryAction: (formData: FormData) => Promise<void>;
   banners?: React.ReactNode;
   children: React.ReactNode;
 };
@@ -186,9 +187,10 @@ export function ChainDetailShell({
               </form>
             ) : null}
             {showRetry ? (
-              <form action={retryAction}>
-                <Button type="submit" variant="outline">
-                  Retry failed
+              <form action={retryAction} className="inline-flex">
+                <input type="hidden" name="forceAll" value="1" />
+                <Button type="submit" variant="outline" title="Rebuild all packs with the latest AI prompt">
+                  Regenerate packs
                 </Button>
               </form>
             ) : null}
@@ -349,12 +351,13 @@ export function ChainDetailShell({
                 action={retryAction}
                 className={canSend || allEmailed ? "" : "flex-1"}
               >
+                <input type="hidden" name="forceAll" value="1" />
                 <Button
                   type="submit"
                   variant="outline"
                   className={canSend || allEmailed ? "" : "w-full"}
                 >
-                  Retry
+                  Regenerate
                 </Button>
               </form>
             ) : null}

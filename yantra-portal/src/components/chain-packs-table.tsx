@@ -434,7 +434,7 @@ export function ChainPacksTable({
                   ) : (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11.5px] font-semibold text-amber-900 ring-1 ring-inset ring-amber-500/15">
                       <XCircle className="h-3.5 w-3.5" strokeWidth={2.25} />
-                      Use Retry
+                      Need regenerate
                     </span>
                   )}
                   <Badge status={cc.sendStatus}>

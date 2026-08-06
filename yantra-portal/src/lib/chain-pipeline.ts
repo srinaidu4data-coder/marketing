@@ -946,13 +946,15 @@ export async function createAndGenerateChain(opts: {
 }
 
 /**
- * Re-run generation only for missing / failed / non-ship-ready packs.
- * Does not re-burn tokens on packs that already pass ship-ready.
+ * Re-run generation for packs that need it.
+ * - Default: empty / non-body packs, or strict ship fail
+ * - forceAll: re-run every candidate on the chain (quality refresh / prompt update)
  */
 export async function retryGenerateChain(
   chainId: string,
   userId: string,
-  candidateIds?: string[]
+  candidateIds?: string[],
+  opts?: { forceAll?: boolean }
 ): Promise<GenerateChainResult> {
   const chain = await prisma.chain.findUnique({
     where: { id: chainId },
@@ -1013,8 +1015,27 @@ export async function retryGenerateChain(
     }
   }
 
-  // Only regenerate missing/empty/non-ship-ready
+  // Explicit candidate list or forceAll → regenerate those / everyone
+  if (candidateIds?.length || opts?.forceAll) {
+    const target = candidateIds?.length ? candidateIds : ids;
+    await prisma.chain.update({
+      where: { id: chainId },
+      data: { status: "GENERATING" },
+    });
+    return generateChainResumes({
+      chainId,
+      userId,
+      rawJobText: chain.rawJobText,
+      vendorName: chain.vendorName,
+      candidateIds: target,
+    });
+  }
+
+  // Auto: empty, compliance gaps, or strict ship fail; if none → still all (user clicked Retry)
   const { inspectPackShipReady } = await import("@/lib/resume/pack-ship-ready");
+  const { complianceFromBreakdown } = await import(
+    "@/lib/resume-v2/pack-compliance"
+  );
   const needRetry: string[] = [];
   for (const id of ids) {
     const row = chain.candidates.find((c) => c.candidateId === id);
@@ -1022,6 +1043,21 @@ export async function retryGenerateChain(
     if (text.trim().length < 200) {
       needRetry.push(id);
       continue;
+    }
+    try {
+      const comp = complianceFromBreakdown(
+        row?.atsBreakdownJson,
+        text,
+        chain.rawJobText || "",
+        row?.candidate?.masterResumeText || "",
+        row?.candidate?.masterProfileJson
+      );
+      if (!comp.manufactured || comp.score < 70) {
+        needRetry.push(id);
+        continue;
+      }
+    } catch {
+      /* ignore */
     }
     const ship = inspectPackShipReady({
       text,
@@ -1031,22 +1067,8 @@ export async function retryGenerateChain(
     if (!ship.ok) needRetry.push(id);
   }
 
-  if (!needRetry.length) {
-    // Nothing to do — recompute terminal status
-    const good = chain.candidates.filter(
-      (c) => (c.tailoredResumeText || "").trim().length > 200
-    ).length;
-    const status: GenerateChainResult["status"] =
-      good === 0 ? "FAILED" : good >= ids.length ? "READY" : "PARTIAL";
-    await prisma.chain.update({ where: { id: chainId }, data: { status } });
-    return {
-      chainId,
-      status,
-      succeeded: good,
-      failed: 0,
-      errors: [],
-    };
-  }
+  // Never no-op: Retry always regenerates at least selected/needy packs, else everyone
+  const finalIds = needRetry.length ? needRetry : ids;
 
   await prisma.chain.update({
     where: { id: chainId },
@@ -1058,6 +1080,6 @@ export async function retryGenerateChain(
     userId,
     rawJobText: chain.rawJobText,
     vendorName: chain.vendorName,
-    candidateIds: needRetry,
+    candidateIds: finalIds,
   });
 }

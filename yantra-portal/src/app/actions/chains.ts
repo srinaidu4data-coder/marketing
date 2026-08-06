@@ -169,10 +169,26 @@ export async function recoverStuckChainAction(chainId: string) {
 }
 
 /**
- * Re-run resume generation for a failed/empty/partial chain.
+ * Re-run resume generation. Always regenerates (forceAll default true from UI).
+ * Optional form fields: chainId, forceAll=1, candidateId (single pack).
  */
-export async function retryGenerateChainAction(chainId: string) {
+export async function retryGenerateChainAction(formData?: FormData | string) {
   const user = await requireUser();
+  const chainId =
+    typeof formData === "string"
+      ? formData
+      : String(formData?.get("chainId") || "").trim();
+  const forceAll =
+    typeof formData === "string"
+      ? true
+      : formData?.get("forceAll") !== "0";
+  const oneCandidate =
+    typeof formData === "string"
+      ? ""
+      : String(formData?.get("candidateId") || "").trim();
+
+  if (!chainId) return { ok: false as const, error: "Missing chain" };
+
   const chain = await prisma.chain.findUnique({ where: { id: chainId } });
   if (!chain) return { ok: false as const, error: "Not found" };
   if (user.role === "EMPLOYEE" && chain.employeeId !== user.id) {
@@ -182,20 +198,32 @@ export async function retryGenerateChainAction(chainId: string) {
     return { ok: false as const, error: "Not found" };
   }
 
-  const result = await retryGenerateChain(chainId, user.id);
+  const nextPath =
+    typeof formData === "string"
+      ? ""
+      : String(formData?.get("next") || "").trim();
+
+  const result = await retryGenerateChain(
+    chainId,
+    user.id,
+    oneCandidate ? [oneCandidate] : undefined,
+    { forceAll: forceAll && !oneCandidate }
+  );
   revalidatePath(`/chains/${chainId}`);
   revalidatePath(`/admin/chains/${chainId}`);
   revalidatePath("/admin/queues");
   revalidatePath("/chains");
   revalidatePath("/admin/chains");
-  return {
-    ok: result.status === "READY" || result.status === "PARTIAL",
-    status: result.status,
-    succeeded: result.succeeded,
-    failed: result.failed,
-    errors: result.errors,
-    timedOut: result.timedOut,
-  };
+  const { redirect } = await import("next/navigation");
+  const dest =
+    nextPath.startsWith("/admin/chains/") || nextPath.startsWith("/chains/")
+      ? `${nextPath.split("?")[0]}?retry=1`
+      : user.role === "ADMIN"
+        ? `/admin/chains/${chainId}?retry=1`
+        : `/chains/${chainId}?retry=1`;
+  // result used for logging only — redirect always
+  void result;
+  redirect(dest);
 }
 
 export async function sendChain(chainId: string) {

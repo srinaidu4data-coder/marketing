@@ -30,6 +30,7 @@ export default async function ChainDetailPage({
     ship?: string;
     partial?: string;
     ready?: string;
+    retry?: string;
   };
 }) {
   const user = await requireUser();
@@ -103,9 +104,9 @@ export default async function ChainDetailPage({
   const notShipReady = shipReports.filter((r) => !r.ship.ok);
   const stuck = chain.status === "GENERATING" || chain.status === "SENDING";
   const emptyFailed = chain.status === "FAILED" && total === 0;
+  // Body packs can send (aligned with sendChain soft law) — don't hide Send on soft quality nits
   const canSend =
     goodPacks.length > 0 &&
-    badPacks.length === 0 &&
     !stuck &&
     (chain.status === "READY" ||
       chain.status === "PARTIAL" ||
@@ -119,13 +120,8 @@ export default async function ChainDetailPage({
       return row?.sendStatus === "SENT";
     });
   const shipErrorMsg = decodeShipErrorMessage(searchParams?.ship);
-  const showRetry =
-    !stuck &&
-    (emptyFailed ||
-      chain.status === "FAILED" ||
-      chain.status === "PARTIAL" ||
-      missingPacks.length > 0 ||
-      badPacks.length > 0);
+  // Always show Regenerate when not stuck — banners said "Retry" but button was hidden on READY
+  const showRetry = !stuck && total > 0;
 
   async function sendAction() {
     "use server";
@@ -158,9 +154,12 @@ export default async function ChainDetailPage({
     await recoverStuckChainAction(params.id);
   }
 
-  async function retryAction() {
+  async function retryAction(formData: FormData) {
     "use server";
-    await retryGenerateChainAction(params.id);
+    formData.set("chainId", params.id);
+    if (!formData.get("forceAll")) formData.set("forceAll", "1");
+    formData.set("next", `/chains/${params.id}`);
+    await retryGenerateChainAction(formData);
   }
 
   const banners = (
@@ -168,13 +167,21 @@ export default async function ChainDetailPage({
       {searchParams?.ready === "1" ? (
         <ChainBanner variant="success" title="Packs are ready">
           Review scores below, download Word or PDF, then send to the vendor.
+          Use <strong>Regenerate packs</strong> if roles/stack still look like the master.
+        </ChainBanner>
+      ) : null}
+
+      {searchParams?.retry === "1" ? (
+        <ChainBanner variant="success" title="Regeneration started">
+          Packs are rebuilding with the latest prompt. This page will show live
+          progress — wait until status is Ready, then Send.
         </ChainBanner>
       ) : null}
 
       {searchParams?.partial === "1" || chain.status === "PARTIAL" ? (
         <ChainBanner variant="warning" title="Partial generation">
-          Some candidates failed. Fix masters or use Retry — only ship-ready
-          packs can be emailed.
+          Some candidates failed. Use <strong>Regenerate packs</strong> below,
+          then Send when Ready.
         </ChainBanner>
       ) : null}
 
@@ -195,16 +202,31 @@ export default async function ChainDetailPage({
             emptyFailed
               ? "Resumes not ready yet"
               : shipErrorMsg
-                ? "Review packs before send"
+                ? "Could not send yet"
                 : "Some packs need a refresh"
           }
         >
-          <p>
-            Use <strong>Retry</strong> — the engine will finish packs with AI
-            (no technical errors shown). Prior engine messages are hidden on purpose.
+          {shipErrorMsg ? (
+            <p className="mb-2 text-[13px] text-[#3a3a3c]">{shipErrorMsg}</p>
+          ) : null}
+          <p className="mb-3">
+            Use <strong>Regenerate packs</strong> to rebuild with the latest
+            prompt (roles, tech stack, environment, bullets), then Send again.
           </p>
+          {showRetry ? (
+            <form action={retryAction} className="inline-flex">
+              <input type="hidden" name="chainId" value={chain.id} />
+              <input type="hidden" name="forceAll" value="1" />
+              <button
+                type="submit"
+                className="inline-flex h-9 items-center rounded-full bg-[#0071e3] px-4 text-[13px] font-semibold text-white hover:bg-[#0077ed]"
+              >
+                Regenerate packs now
+              </button>
+            </form>
+          ) : null}
           {uniqueHints.length > 0 ? (
-            <ul className="mt-1 list-disc pl-4">
+            <ul className="mt-2 list-disc pl-4">
               {uniqueHints.map((h) => (
                 <li key={h}>{h}</li>
               ))}
