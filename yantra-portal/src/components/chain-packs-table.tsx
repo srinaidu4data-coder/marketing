@@ -4,7 +4,6 @@
  * Shows adaptive path + estimated cost chips when generationMeta is present.
  */
 
-import Link from "next/link";
 import {
   CheckCircle2,
   Download,
@@ -187,16 +186,22 @@ function DownloadChip({
   label,
   primary,
   title,
+  downloadName,
 }: {
   href: string;
   label: string;
   primary?: boolean;
   title?: string;
+  /** Hint browser to download rather than navigate/preview */
+  downloadName?: string;
 }) {
   return (
-    <Link
+    <a
       href={href}
       title={title}
+      download={downloadName || true}
+      target="_blank"
+      rel="noopener noreferrer"
       className={cn(
         "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[12.5px] font-semibold tracking-tight transition-all duration-200",
         primary
@@ -206,7 +211,7 @@ function DownloadChip({
     >
       <Download className="h-3.5 w-3.5 opacity-90" strokeWidth={2.25} />
       {label}
-    </Link>
+    </a>
   );
 }
 
@@ -431,21 +436,25 @@ export function ChainPacksTable({
                         label="Word"
                         primary
                         title={`Download MS Word — ${fileLabel}`}
+                        downloadName={`${cc.candidate.name.replace(/\s+/g, "_")}.docx`}
                       />
                       <DownloadChip
                         href={`${base}?fmt=pdf`}
                         label="PDF"
                         title={`Download PDF — ${fileLabel}`}
+                        downloadName={`${cc.candidate.name.replace(/\s+/g, "_")}.pdf`}
                       />
                       <DownloadChip
                         href={`${base}?fmt=txt`}
                         label="TXT"
                         title={`Download plain text — ${fileLabel}`}
+                        downloadName={`${cc.candidate.name.replace(/\s+/g, "_")}.txt`}
                       />
                       <DownloadChip
                         href={`${base}?fmt=html`}
                         label="HTML"
                         title={`Download HTML — ${fileLabel}`}
+                        downloadName={`${cc.candidate.name.replace(/\s+/g, "_")}.html`}
                       />
                     </div>
 

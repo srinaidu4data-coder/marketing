@@ -49,12 +49,24 @@ export type ChainDetailShellProps = {
   emailMode?: "resend" | "simulated" | "dry_run" | string;
   /** Env fallback From only (used if employee email missing) */
   emailFromFallback?: string;
+  /**
+   * Estimated LLM API cost for this chain (sum of pack generationMeta.costUsd).
+   * Shown next to Send Email.
+   */
+  apiCostUsd?: number | null;
   sendAction: () => Promise<void>;
   recoverAction: () => Promise<void>;
   retryAction: () => Promise<void>;
   banners?: React.ReactNode;
   children: React.ReactNode;
 };
+
+function formatApiCost(cost: number): string {
+  if (!Number.isFinite(cost) || cost <= 0) return "$0.00";
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  if (cost < 1) return `$${cost.toFixed(3)}`;
+  return `$${cost.toFixed(2)}`;
+}
 
 export function ChainDetailShell({
   chain,
@@ -70,12 +82,17 @@ export function ChainDetailShell({
   showRetry,
   emailMode,
   emailFromFallback,
+  apiCostUsd,
   sendAction,
   recoverAction,
   retryAction,
   banners,
   children,
 }: ChainDetailShellProps) {
+  const costLabel =
+    typeof apiCostUsd === "number" && apiCostUsd > 0
+      ? formatApiCost(apiCostUsd)
+      : null;
   const jobTitle =
     extractJobTitle(chain.rawJobText) || "Open role";
   const jdPreview = chain.rawJobText.trim().slice(0, 160).replace(/\s+/g, " ");
@@ -174,6 +191,14 @@ export function ChainDetailShell({
                   Retry failed
                 </Button>
               </form>
+            ) : null}
+            {costLabel ? (
+              <span
+                className="inline-flex h-10 items-center rounded-full bg-emerald-500/10 px-3 text-[12.5px] font-semibold tabular-nums text-emerald-900 ring-1 ring-inset ring-emerald-500/20"
+                title="Estimated LLM API cost for generating packs on this chain"
+              >
+                API {costLabel}
+              </span>
             ) : null}
             {allEmailed ? (
               <>
@@ -332,6 +357,14 @@ export function ChainDetailShell({
                   Retry
                 </Button>
               </form>
+            ) : null}
+            {costLabel ? (
+              <span
+                className="inline-flex h-10 shrink-0 items-center rounded-full bg-emerald-500/10 px-2.5 text-[11.5px] font-semibold tabular-nums text-emerald-900 ring-1 ring-inset ring-emerald-500/20"
+                title="Estimated LLM API cost for this chain"
+              >
+                {costLabel}
+              </span>
             ) : null}
             {allEmailed && !stuck ? (
               <>

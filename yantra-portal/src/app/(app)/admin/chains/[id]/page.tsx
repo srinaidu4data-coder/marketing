@@ -207,6 +207,11 @@ export default async function AdminChainDetailPage({
       )
     ) : null;
 
+  const { sumChainApiCostUsd } = await import(
+    "@/lib/resume-v2/generation-meta"
+  );
+  const apiCostUsd = sumChainApiCostUsd(chain.candidates);
+
   return (
     <div className="p-2 lg:p-4">
       <ChainDetailShell
@@ -223,6 +228,7 @@ export default async function AdminChainDetailPage({
         showRetry={showRetry}
         emailMode={emailCfg.mode}
         emailFromFallback={emailCfg.from}
+        apiCostUsd={apiCostUsd}
         sendAction={sendAction}
         recoverAction={recoverAction}
         retryAction={retryAction}

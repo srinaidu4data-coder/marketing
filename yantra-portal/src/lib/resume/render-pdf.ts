@@ -373,6 +373,21 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
 }
 
 /**
+ * PDFKit WinAnsi-safe text (prevents blank/failed PDFs on fancy Unicode from Word/LLM).
+ */
+export function pdfSafeText(input: string): string {
+  return (input || "")
+    .replace(/\u0000/g, "")
+    .replace(/[\u2018\u2019\u201A]/g, "'")
+    .replace(/[\u201C\u201D\u201E]/g, '"')
+    .replace(/[\u2013\u2014\u2212]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/[\u2022\u25CF\u25E6\u2219▸→●○▪▫]/g, "-")
+    .replace(/\u00A0/g, " ")
+    .replace(/[^\t\n\r\x20-\x7E\xA0-\xFF]/g, "");
+}
+
+/**
  * Fast PDF rebuild from stored tailored plain text (no AI / no structured pack).
  * Used when /tmp PDF is gone on Vercel cold starts.
  */
@@ -383,122 +398,157 @@ export async function renderPdfFromPlainText(opts: {
 }): Promise<Buffer> {
   const lines = stripEngineFooter(opts.text || "")
     .replace(/\r\n/g, "\n")
-    .split("\n");
+    .split("\n")
+    .map((l) => pdfSafeText(l));
+  const name = pdfSafeText(opts.candidateName || "Candidate") || "Candidate";
+  const jobTitle = pdfSafeText(opts.jobTitle || "");
 
   return new Promise((resolve, reject) => {
-    const margin = 50;
-    const doc = new PDFDocument({
-      margin,
-      size: "LETTER",
-      bufferPages: true,
-      info: {
-        Title: `${opts.candidateName}${opts.jobTitle ? ` — ${opts.jobTitle}` : ""}`,
-        Author: opts.candidateName || "Resume",
-      },
-    });
-    const chunks: Buffer[] = [];
-    doc.on("data", (c) => chunks.push(c as Buffer));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", reject);
-
-    const pageW = doc.page.width;
-    const pageH = doc.page.height;
-    const contentWidth = pageW - margin * 2;
-
-    const ensureSpace = (need: number) => {
-      if (doc.y + need > pageH - margin) {
-        doc.addPage();
-        doc.x = margin;
-        doc.y = margin;
-      }
-    };
-
-    doc
-      .fillColor("#0f172a")
-      .fontSize(18)
-      .font("Helvetica-Bold")
-      .text((opts.candidateName || "Candidate").toUpperCase(), margin, margin, {
-        width: contentWidth,
+    try {
+      const margin = 50;
+      const doc = new PDFDocument({
+        margin,
+        size: "LETTER",
+        bufferPages: true,
+        autoFirstPage: true,
+        info: {
+          Title: `${name}${jobTitle ? ` - ${jobTitle}` : ""}`.slice(0, 200),
+          Author: name.slice(0, 100),
+        },
       });
-    if (opts.jobTitle) {
+      const chunks: Buffer[] = [];
+      doc.on("data", (c) => chunks.push(c as Buffer));
+      doc.on("end", () => {
+        const out = Buffer.concat(chunks);
+        if (out.length < 100) {
+          reject(new Error("PDF renderer produced empty output"));
+          return;
+        }
+        resolve(out);
+      });
+      doc.on("error", reject);
+
+      const pageW = doc.page.width;
+      const pageH = doc.page.height;
+      const contentWidth = pageW - margin * 2;
+
+      const ensureSpace = (need: number) => {
+        if (doc.y + need > pageH - margin) {
+          doc.addPage();
+          doc.x = margin;
+          doc.y = margin;
+        }
+      };
+
+      const safeText = (
+        str: string,
+        x: number,
+        y: number | undefined,
+        options: { width: number; lineGap?: number }
+      ) => {
+        const t = pdfSafeText(str);
+        if (!t.trim()) return;
+        try {
+          if (y === undefined) doc.text(t, x, doc.y, options);
+          else doc.text(t, x, y, options);
+        } catch {
+          try {
+            doc.text(t.replace(/[^\x20-\x7E]/g, " "), x, y ?? doc.y, options);
+          } catch {
+            /* skip line rather than fail whole PDF */
+          }
+        }
+      };
+
       doc
-        .fillColor("#334155")
-        .fontSize(11)
-        .font("Helvetica")
-        .text(opts.jobTitle, { width: contentWidth });
+        .fillColor("#0f172a")
+        .fontSize(18)
+        .font("Helvetica-Bold");
+      safeText(name.toUpperCase(), margin, margin, { width: contentWidth });
+      if (jobTitle) {
+        doc.fillColor("#334155").fontSize(11).font("Helvetica");
+        safeText(jobTitle, margin, undefined, { width: contentWidth });
+      }
+      doc.moveDown(0.3);
+      const lineY = doc.y;
+      doc
+        .strokeColor("#0f172a")
+        .lineWidth(1.5)
+        .moveTo(margin, lineY)
+        .lineTo(margin + contentWidth, lineY)
+        .stroke();
+      doc.y = lineY + 12;
+
+      for (const raw of lines) {
+        const line = raw.trimEnd();
+        if (!line.trim()) {
+          doc.moveDown(0.2);
+          continue;
+        }
+        if (name && line.toUpperCase() === name.toUpperCase()) continue;
+        if (jobTitle && line === jobTitle) continue;
+        if (/^-{3,}|^={3,}/.test(line.trim())) continue;
+
+        const isHeading =
+          line === line.toUpperCase() &&
+          line.length < 80 &&
+          !/^[•▸→–\-\*]/.test(line) &&
+          /[A-Z]/.test(line);
+
+        if (isHeading) {
+          ensureSpace(28);
+          doc.moveDown(0.35);
+          doc.fillColor("#0f172a").fontSize(11).font("Helvetica-Bold");
+          safeText(line, margin, undefined, { width: contentWidth });
+          doc.moveDown(0.15);
+          continue;
+        }
+
+        const bullet = /^[•▸→–\-\*]\s*/.test(line.trim());
+        const body = line.replace(/^[•▸→–\-\*]\s*/, "");
+        ensureSpace(18);
+        if (bullet) {
+          const textX = margin + 14;
+          const textW = contentWidth - 14;
+          let h = 12;
+          try {
+            h = doc.heightOfString(pdfSafeText(body), { width: textW });
+          } catch {
+            h = 14;
+          }
+          ensureSpace(h + 4);
+          const by = doc.y;
+          doc.save();
+          doc.circle(margin + 4, by + 4, 2).fill("#0f172a");
+          doc.restore();
+          doc.fillColor("#1e293b").fontSize(10).font("Helvetica");
+          safeText(body, textX, by, { width: textW, lineGap: 1.5 });
+          doc.y = Math.max(doc.y, by + h) + 3;
+        } else {
+          doc.fillColor("#1e293b").fontSize(10).font("Helvetica");
+          safeText(body, margin, undefined, {
+            width: contentWidth,
+            lineGap: 1.5,
+          });
+          doc.moveDown(0.12);
+        }
+      }
+
+      // Ensure at least some body content
+      if (lines.filter((l) => l.trim()).length === 0) {
+        doc.fillColor("#64748b").fontSize(10).font("Helvetica");
+        safeText(
+          "Resume content was empty. Re-generate the pack and download again.",
+          margin,
+          undefined,
+          { width: contentWidth }
+        );
+      }
+
+      doc.end();
+    } catch (e) {
+      reject(e instanceof Error ? e : new Error(String(e)));
     }
-    doc.moveDown(0.3);
-    const lineY = doc.y;
-    doc
-      .strokeColor("#0f172a")
-      .lineWidth(1.5)
-      .moveTo(margin, lineY)
-      .lineTo(margin + contentWidth, lineY)
-      .stroke();
-    doc.y = lineY + 12;
-
-    for (const raw of lines) {
-      const line = raw.trimEnd();
-      if (!line.trim()) {
-        doc.moveDown(0.2);
-        continue;
-      }
-      if (
-        opts.candidateName &&
-        line.toUpperCase() === opts.candidateName.toUpperCase()
-      ) {
-        continue;
-      }
-      if (opts.jobTitle && line === opts.jobTitle) continue;
-      if (/^-{3,}|^={3,}/.test(line.trim())) continue;
-
-      const isHeading =
-        line === line.toUpperCase() &&
-        line.length < 80 &&
-        !/^[•▸→–\-\*]/.test(line) &&
-        /[A-Z]/.test(line);
-
-      if (isHeading) {
-        ensureSpace(28);
-        doc.moveDown(0.35);
-        doc
-          .fillColor("#0f172a")
-          .fontSize(11)
-          .font("Helvetica-Bold")
-          .text(line, { width: contentWidth });
-        doc.moveDown(0.15);
-        continue;
-      }
-
-      const bullet = /^[•▸→–\-\*]\s*/.test(line.trim());
-      const body = line.replace(/^[•▸→–\-\*]\s*/, "");
-      ensureSpace(18);
-      if (bullet) {
-        const textX = margin + 14;
-        const textW = contentWidth - 14;
-        const h = doc.heightOfString(body, { width: textW });
-        ensureSpace(h + 4);
-        const by = doc.y;
-        doc.save();
-        doc.circle(margin + 4, by + 4, 2).fill("#0f172a");
-        doc.restore();
-        doc
-          .fillColor("#1e293b")
-          .fontSize(10)
-          .font("Helvetica")
-          .text(body, textX, by, { width: textW, lineGap: 1.5 });
-        doc.y = Math.max(doc.y, by + h) + 3;
-      } else {
-        doc
-          .fillColor("#1e293b")
-          .fontSize(10)
-          .font("Helvetica")
-          .text(body, margin, doc.y, { width: contentWidth, lineGap: 1.5 });
-        doc.moveDown(0.12);
-      }
-    }
-
-    doc.end();
   });
 }
 

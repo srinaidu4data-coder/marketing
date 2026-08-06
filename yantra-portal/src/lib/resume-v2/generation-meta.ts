@@ -120,3 +120,28 @@ export function parseHumanReject(
     return null;
   }
 }
+
+/** Sum estimated LLM $ from chain candidate atsBreakdownJson rows */
+export function sumChainApiCostUsd(
+  rows: { atsBreakdownJson?: string | null }[]
+): number {
+  let total = 0;
+  for (const row of rows) {
+    try {
+      const obj = JSON.parse(row.atsBreakdownJson || "{}") as {
+        costUsd?: number;
+        generationMeta?: { costUsd?: number };
+      };
+      const c =
+        typeof obj.generationMeta?.costUsd === "number"
+          ? obj.generationMeta.costUsd
+          : typeof obj.costUsd === "number"
+            ? obj.costUsd
+            : 0;
+      if (Number.isFinite(c) && c > 0) total += c;
+    } catch {
+      /* skip */
+    }
+  }
+  return total;
+}

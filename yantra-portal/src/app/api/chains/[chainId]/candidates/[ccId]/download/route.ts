@@ -114,11 +114,12 @@ export async function GET(
   };
   const fname = (ext: string) => packDownloadFilename(nameOpts, ext);
 
-  if (!master || master.length < 40) {
+  // Master only required for LLM regen — downloads rebuild from stored pack text
+  if (forceRegen && (!master || master.length < 40)) {
     return NextResponse.json(
       {
         error:
-          "No master resume text on candidate. Replace master .docx on the candidate before downloading a pack.",
+          "No master resume text on candidate. Replace master .docx on the candidate before regenerating a pack.",
       },
       { status: 400 }
     );
@@ -253,7 +254,8 @@ export async function GET(
   if (fmt === "pdf") {
     const type = "application/pdf";
     const fromDisk = await tryRead(row.pdfPath);
-    if (fromDisk) {
+    // Accept only real PDF magic bytes (avoid serving corrupt/empty disk files)
+    if (fromDisk && fromDisk.length > 200 && fromDisk.subarray(0, 4).toString() === "%PDF") {
       mark(trace, "cache_hit", "disk_pdf");
       flushPerfLog(trace, { fmt, path: "disk", bytes: fromDisk.length });
       return new NextResponse(new Uint8Array(fromDisk), {
@@ -273,16 +275,39 @@ export async function GET(
       mark(trace, "pdf_complete");
       flushPerfLog(trace, { fmt, path: "rebuild", bytes: buf.length });
       return new NextResponse(new Uint8Array(buf), {
-        headers: fileHeaders(fname("pdf"), type, {
-          "X-Artifact-Source": "rebuild",
-        }),
+        status: 200,
+        headers: {
+          ...fileHeaders(fname("pdf"), type, {
+            "X-Artifact-Source": "rebuild",
+          }),
+          "Content-Length": String(buf.length),
+        },
       });
     } catch (e) {
       console.error("pdf rebuild failed", e);
-      return NextResponse.json(
-        { error: "Could not build PDF from stored pack." },
-        { status: 500 }
-      );
+      // Last resort: minimal PDF so the button always yields a file
+      try {
+        const fallback = await renderPdfFromPlainText({
+          candidateName: row.candidate.name || "Candidate",
+          jobTitle: nameOpts.jobTitle || "Resume",
+          text: storedText.slice(0, 12000) || "Resume pack unavailable. Re-generate and try again.",
+        });
+        return new NextResponse(new Uint8Array(fallback), {
+          status: 200,
+          headers: fileHeaders(fname("pdf"), type, {
+            "X-Artifact-Source": "fallback",
+          }),
+        });
+      } catch (e2) {
+        console.error("pdf fallback failed", e2);
+        return NextResponse.json(
+          {
+            error: "Could not build PDF from stored pack.",
+            detail: e instanceof Error ? e.message : String(e),
+          },
+          { status: 500 }
+        );
+      }
     }
   }
 

@@ -542,7 +542,7 @@ export async function generateChainResumes(
           label: stepLabel("docx"),
           status: "active",
         });
-        const wantPdf = c.exportFormat === "DOCX_PDF";
+        // Always try Word + PDF so download buttons work (disk may be ephemeral on Vercel)
         await Promise.all([
           (async () => {
             try {
@@ -554,18 +554,17 @@ export async function generateChainResumes(
               console.error(`[chain ${chainId}] DOCX render failed for ${c.name}`, e);
             }
           })(),
-          wantPdf
-            ? (async () => {
-                try {
-                  const pdfBuf = await renderPdfBuffer(tailored.structured);
-                  const pdfName = `${base}.pdf`;
-                  const ok = await safeWriteFile(path.join(dir, pdfName), pdfBuf);
-                  if (ok) pdfPath = `uploads/chains/${chainId}/${pdfName}`;
-                } catch (e) {
-                  console.error(`[chain ${chainId}] PDF render failed for ${c.name}`, e);
-                }
-              })()
-            : Promise.resolve(),
+          (async () => {
+            try {
+              const pdfBuf = await renderPdfBuffer(tailored.structured);
+              const pdfName = `${base}.pdf`;
+              const ok = await safeWriteFile(path.join(dir, pdfName), pdfBuf);
+              if (ok) pdfPath = `uploads/chains/${chainId}/${pdfName}`;
+            } catch (e) {
+              console.error(`[chain ${chainId}] PDF render failed for ${c.name}`, e);
+              // Plain-text rebuild path still available on download
+            }
+          })(),
         ]);
         await emit({
           type: "step",
