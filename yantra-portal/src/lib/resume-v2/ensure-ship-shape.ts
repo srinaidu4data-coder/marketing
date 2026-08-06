@@ -11,11 +11,9 @@ import {
   MIN_BULLETS_PER_PROJECT,
   TARGET_BULLETS_PER_PROJECT,
 } from "@/lib/resume/bullet-density";
-/** Ship law: every employer ≥ MIN_BULLETS (8). Latency-era 3/4 floors blocked Send. */
+/** Ship law: every employer ≥ MIN_BULLETS (8). */
 const MIN_SUMMARY = 6;
 const MIN_RECENT = MIN_BULLETS_PER_PROJECT;
-const MIN_MID = MIN_BULLETS_PER_PROJECT;
-const MIN_EARLY = MIN_BULLETS_PER_PROJECT;
 import {
   DEFAULT_SKILL_NEUTRAL_BULLETS,
   getSkillNeutralBulletBank,

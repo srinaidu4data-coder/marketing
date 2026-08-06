@@ -617,13 +617,6 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
         mode: resolveTailorMode(jd, master).mode,
         candidateName: s.pack.header.name || opts.candidateName,
       });
-      const sc = rescore(
-        s,
-        master,
-        jd,
-        opts.masterProfileJson,
-        opts.candidateName
-      );
       // Accrue onto current best, then pick by rank — never drop Fit stack
       const mergedPack = accumulatePackCraft(best.pack, s.pack);
       s.pack = mergedPack;

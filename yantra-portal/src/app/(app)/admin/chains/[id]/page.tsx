@@ -47,12 +47,9 @@ export default async function AdminChainDetailPage({
   const emailCfg = getResendConfig();
   const sent = chain.candidates.filter((c) => c.sendStatus === "SENT").length;
   const shipReports = shipReportsForChain(chain.candidates);
-  const badPacks = shipReports.filter((r) => !r.missingPack && !r.ship.ok);
-  const missingPacks = shipReports.filter((r) => r.missingPack);
   const goodPacks = shipReports.filter((r) => !r.missingPack && r.ship.ok);
   const notShipReady = shipReports.filter((r) => !r.ship.ok);
   const stuck = chain.status === "GENERATING" || chain.status === "SENDING";
-  const emptyFailed = chain.status === "FAILED" && chain.candidates.length === 0;
   const allEmailed =
     goodPacks.length > 0 &&
     goodPacks.every((r) => {
