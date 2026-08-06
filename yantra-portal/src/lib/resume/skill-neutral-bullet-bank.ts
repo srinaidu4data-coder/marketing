@@ -175,7 +175,7 @@ export function pickBankBullets(
   );
   const out: string[] = [];
   // Rotate start so pads aren't always identical across projects
-  let start = Math.floor(Math.random() * Math.max(1, pool.length));
+  const start = Math.floor(Math.random() * Math.max(1, pool.length));
   for (let i = 0; i < pool.length && out.length < need; i++) {
     const b = pool[(start + i) % pool.length]!;
     const key = b.toLowerCase();
