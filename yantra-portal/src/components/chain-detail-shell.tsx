@@ -16,6 +16,7 @@ import { Badge, Button } from "@/components/ui";
 import { formatDateTime } from "@/lib/utils";
 import { extractJobTitle } from "@/lib/resume/jd-parse";
 import { formatEmployeeFrom } from "@/lib/email/resend";
+import { RegeneratePacksButton } from "@/components/regenerate-packs-button";
 
 export type ChainDetailShellProps = {
   chain: {
@@ -189,9 +190,7 @@ export function ChainDetailShell({
             {showRetry ? (
               <form action={retryAction} className="inline-flex">
                 <input type="hidden" name="forceAll" value="1" />
-                <Button type="submit" variant="outline" title="Rebuild all packs with the latest AI prompt">
-                  Regenerate packs
-                </Button>
+                <RegeneratePacksButton />
               </form>
             ) : null}
             {costLabel ? (
@@ -352,13 +351,7 @@ export function ChainDetailShell({
                 className={canSend || allEmailed ? "" : "flex-1"}
               >
                 <input type="hidden" name="forceAll" value="1" />
-                <Button
-                  type="submit"
-                  variant="outline"
-                  className={canSend || allEmailed ? "" : "w-full"}
-                >
-                  Regenerate
-                </Button>
+                <RegeneratePacksButton label="Regenerate" />
               </form>
             ) : null}
             {costLabel ? (

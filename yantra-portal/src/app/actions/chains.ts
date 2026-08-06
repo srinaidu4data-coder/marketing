@@ -14,7 +14,6 @@ import {
   createAndGenerateChain,
   failStuckChain,
   recoverStaleChains,
-  retryGenerateChain,
 } from "@/lib/chain-pipeline";
 import {
   formatEmployeeFrom,
@@ -169,8 +168,11 @@ export async function recoverStuckChainAction(chainId: string) {
 }
 
 /**
- * Re-run resume generation. Always regenerates (forceAll default true from UI).
- * Optional form fields: chainId, forceAll=1, candidateId (single pack).
+ * Re-run resume generation — FAST PATH for live UX.
+ * 1) Flip chain to GENERATING + seed progressJson immediately
+ * 2) Redirect so the detail page mounts the live panel
+ * 3) Live panel POSTs /api/chains/:id/regenerate to run the long job
+ *    (old path awaited LLM here → page stuck on Ready with fake banner)
  */
 export async function retryGenerateChainAction(formData?: FormData | string) {
   const user = await requireUser();
@@ -189,7 +191,14 @@ export async function retryGenerateChainAction(formData?: FormData | string) {
 
   if (!chainId) return { ok: false as const, error: "Missing chain" };
 
-  const chain = await prisma.chain.findUnique({ where: { id: chainId } });
+  const chain = await prisma.chain.findUnique({
+    where: { id: chainId },
+    include: {
+      candidates: {
+        include: { candidate: { select: { name: true } } },
+      },
+    },
+  });
   if (!chain) return { ok: false as const, error: "Not found" };
   if (user.role === "EMPLOYEE" && chain.employeeId !== user.id) {
     return { ok: false as const, error: "Forbidden" };
@@ -203,26 +212,46 @@ export async function retryGenerateChainAction(formData?: FormData | string) {
       ? ""
       : String(formData?.get("next") || "").trim();
 
-  const result = await retryGenerateChain(
-    chainId,
-    user.id,
-    oneCandidate ? [oneCandidate] : undefined,
-    { forceAll: forceAll && !oneCandidate }
+  // Already in flight — just send user back to live panel
+  if (chain.status === "GENERATING" || chain.status === "SENDING") {
+    const destBusy =
+      nextPath.startsWith("/admin/chains/") || nextPath.startsWith("/chains/")
+        ? `${nextPath.split("?")[0]}?retry=1`
+        : user.role === "ADMIN"
+          ? `/admin/chains/${chainId}?retry=1`
+          : `/chains/${chainId}?retry=1`;
+    redirect(destBusy);
+  }
+
+  const names = chain.candidates.map((c) => c.candidate?.name || "Candidate");
+  const { markChainGeneratingWithSeed } = await import(
+    "@/lib/resume/seed-generating"
   );
+  await markChainGeneratingWithSeed(chainId, {
+    candidateCount: oneCandidate ? 1 : chain.candidates.length || 1,
+    candidateNames: oneCandidate
+      ? names.slice(0, 1)
+      : names,
+  });
+
+  await audit("chain.regenerate_queued", user.id, {
+    chainId,
+    forceAll: forceAll && !oneCandidate,
+    candidateId: oneCandidate || null,
+  });
+
   revalidatePath(`/chains/${chainId}`);
   revalidatePath(`/admin/chains/${chainId}`);
   revalidatePath("/admin/queues");
   revalidatePath("/chains");
   revalidatePath("/admin/chains");
-  const { redirect } = await import("next/navigation");
+
   const dest =
     nextPath.startsWith("/admin/chains/") || nextPath.startsWith("/chains/")
       ? `${nextPath.split("?")[0]}?retry=1`
       : user.role === "ADMIN"
         ? `/admin/chains/${chainId}?retry=1`
         : `/chains/${chainId}?retry=1`;
-  // result used for logging only — redirect always
-  void result;
   redirect(dest);
 }
 

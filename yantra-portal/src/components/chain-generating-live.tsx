@@ -2,10 +2,12 @@
 
 /**
  * Live "what's it waiting on" panel while a chain is GENERATING / SENDING.
- * Polls /api/chains/:id/progress and rotates engagement tips.
+ * - Polls /api/chains/:id/progress every 1s
+ * - Kicks /api/chains/:id/regenerate once when status is GENERATING (queued)
+ *   so packs rebuild in the background while the user watches steps
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Circle, Loader2, Sparkles, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -23,15 +25,72 @@ type ProgressResponse = {
 export function ChainGeneratingLive({
   chainId,
   initialStatus,
+  /** When true, POST regenerate after mount (Regenerate packs flow) */
+  autoStart = true,
 }: {
   chainId: string;
   initialStatus: string;
+  autoStart?: boolean;
 }) {
   const router = useRouter();
   const [data, setData] = useState<ProgressResponse | null>(null);
   const [tipTick, setTipTick] = useState(0);
   const [elapsed, setElapsed] = useState(0);
+  const [kickError, setKickError] = useState<string | null>(null);
+  const [kickState, setKickState] = useState<"idle" | "starting" | "running" | "done">(
+    "idle"
+  );
+  const kickedRef = useRef(false);
+  const finishedRefreshRef = useRef(false);
 
+  // Kick long-running regenerate once (live panel holds the job open via fetch)
+  useEffect(() => {
+    if (!autoStart || kickedRef.current) return;
+    if (initialStatus !== "GENERATING" && initialStatus !== "SENDING") return;
+    if (initialStatus === "SENDING") return; // send path has its own pipeline
+    kickedRef.current = true;
+    setKickState("starting");
+
+    const ac = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(`/api/chains/${chainId}/regenerate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ forceAll: true }),
+          signal: ac.signal,
+          cache: "no-store",
+        });
+        const json = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+          skipped?: boolean;
+        };
+        if (!res.ok && !json.skipped) {
+          setKickError(json.error || `Regenerate failed (${res.status})`);
+          setKickState("idle");
+          kickedRef.current = false;
+          return;
+        }
+        setKickState("done");
+        if (!finishedRefreshRef.current) {
+          finishedRefreshRef.current = true;
+          router.refresh();
+        }
+      } catch (e) {
+        if ((e as Error)?.name === "AbortError") return;
+        setKickError(e instanceof Error ? e.message : "Could not start regeneration");
+        setKickState("idle");
+        kickedRef.current = false;
+      }
+    })();
+
+    return () => {
+      // Do not abort — let the job finish even if user navigates briefly
+    };
+  }, [autoStart, chainId, initialStatus, router]);
+
+  // Poll progress every 1s for live coverage
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -41,26 +100,31 @@ export function ChainGeneratingLive({
         const res = await fetch(`/api/chains/${chainId}/progress`, {
           cache: "no-store",
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (!cancelled) timer = setTimeout(poll, 1500);
+          return;
+        }
         const json = (await res.json()) as ProgressResponse;
         if (cancelled) return;
         setData(json);
+        if (json.status === "GENERATING" || json.status === "SENDING") {
+          setKickState((s) => (s === "starting" || s === "idle" ? "running" : s));
+        }
         if (
           json.status !== "GENERATING" &&
           json.status !== "SENDING" &&
-          json.progress?.finished
+          (json.progress?.finished || true)
         ) {
-          router.refresh();
-          return;
-        }
-        if (json.status !== "GENERATING" && json.status !== "SENDING") {
-          router.refresh();
+          if (!finishedRefreshRef.current) {
+            finishedRefreshRef.current = true;
+            router.refresh();
+          }
           return;
         }
       } catch {
         /* keep polling */
       }
-      if (!cancelled) timer = setTimeout(poll, 2000);
+      if (!cancelled) timer = setTimeout(poll, 1000);
     }
 
     poll();
@@ -70,7 +134,6 @@ export function ChainGeneratingLive({
     };
   }, [chainId, router]);
 
-  // Rotate tips every 3.5s so long LLM waits stay interesting
   useEffect(() => {
     const t = setInterval(() => setTipTick((n) => n + 1), 3500);
     return () => clearInterval(t);
@@ -88,28 +151,33 @@ export function ChainGeneratingLive({
   const serverTip = progress?.tip;
   const showTip = tipTick % 2 === 0 ? rotatingTip : serverTip || rotatingTip;
 
-  const steps = useMemo(
-    () => progress?.steps ?? [],
-    [progress?.steps]
-  );
-  const pct = progress?.pct ?? 5;
+  // Stabilize steps reference for hooks (avoid new [] every render)
+  const steps = progress?.steps;
+  const stepList = useMemo(() => steps ?? [], [steps]);
+  const pct = progress?.pct ?? (kickState === "starting" ? 4 : 5);
   const headline =
     progress?.headline ||
     (initialStatus === "SENDING"
       ? "Sending to vendor…"
-      : "Generating resumes…");
+      : kickState === "starting"
+        ? "Starting regeneration…"
+        : "Generating resumes…");
   const detail =
     progress?.detail ||
-    "The engine is working — we'll name each micro-step as it happens.";
+    (kickError
+      ? kickError
+      : "Live steps update as the engine writes title, stack, env, and bullets.");
 
   const mm = Math.floor(elapsed / 60);
   const ss = elapsed % 60;
   const timeLabel = `${mm}:${ss.toString().padStart(2, "0")}`;
 
   const activeStep = useMemo(
-    () => steps.find((s) => s.status === "active"),
-    [steps]
+    () => stepList.find((s) => s.status === "active"),
+    [stepList]
   );
+
+  const statusLabel = data?.status || initialStatus;
 
   return (
     <div
@@ -124,6 +192,9 @@ export function ChainGeneratingLive({
             <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-violet-700">
               <Sparkles className="h-3.5 w-3.5" strokeWidth={2.25} />
               Live generation
+              <span className="ml-1 rounded-full bg-violet-600/10 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-violet-800">
+                {statusLabel}
+              </span>
             </p>
             <h3 className="mt-1 text-[16px] font-semibold tracking-tight text-[#1d1d1f]">
               {headline}
@@ -137,6 +208,11 @@ export function ChainGeneratingLive({
                 {progress.candidateTotal
                   ? ` · ${(progress.candidateIndex ?? 0) + 1}/${progress.candidateTotal}`
                   : ""}
+              </p>
+            ) : null}
+            {kickError ? (
+              <p className="mt-2 text-[12.5px] font-medium text-red-700">
+                {kickError} — try Recover, then Regenerate again.
               </p>
             ) : null}
           </div>
@@ -163,7 +239,6 @@ export function ChainGeneratingLive({
         </div>
       </div>
 
-      {/* What we're waiting on right now */}
       <div className="border-b border-violet-100/70 bg-violet-600/[0.04] px-5 py-3 sm:px-6">
         <p className="text-[10px] font-bold uppercase tracking-wide text-violet-700/80">
           Right now
@@ -184,9 +259,9 @@ export function ChainGeneratingLive({
         </p>
       </div>
 
-      {steps.length > 0 ? (
-        <ul className="max-h-64 space-y-0.5 overflow-y-auto px-3 py-3 sm:px-4">
-          {steps.map((step) => (
+      {stepList.length > 0 ? (
+        <ul className="max-h-72 space-y-0.5 overflow-y-auto px-3 py-3 sm:px-4">
+          {stepList.map((step) => (
             <li
               key={step.id}
               className={cn(
@@ -227,14 +302,14 @@ export function ChainGeneratingLive({
         </ul>
       ) : (
         <div className="px-5 py-4 text-[12.5px] text-[#86868b] sm:px-6">
-          Connecting to live progress… tips will rotate while the model
-          writes 12×12 bullets, skills, and project wording.
+          Connecting to live progress… checklist appears as soon as the engine
+          starts writing.
         </div>
       )}
 
       <div className="border-t border-violet-100/80 bg-white/50 px-5 py-2.5 text-[11px] text-[#86868b] sm:px-6">
-        This page updates every few seconds. Recover is only needed if nothing
-        changes for several minutes.
+        Updates every second. Leave this tab open until status is Ready — then
+        review packs and Send.
       </div>
     </div>
   );

@@ -32,6 +32,7 @@ export default async function AdminChainDetailPage({
     ship?: string;
     partial?: string;
     ready?: string;
+    retry?: string;
   };
 }) {
   await requireAdmin();
@@ -132,15 +133,21 @@ export default async function AdminChainDetailPage({
           </p>
         </ChainBanner>
       ) : null}
-      {stuck ? (
+      {searchParams?.retry === "1" && !stuck ? (
+        <ChainBanner variant="success" title="Regeneration queued">
+          Live checklist should appear below (status Generating).
+        </ChainBanner>
+      ) : null}
+      {stuck || searchParams?.retry === "1" ? (
         <div className="space-y-3">
           <ChainGeneratingLive
             chainId={chain.id}
-            initialStatus={chain.status}
+            initialStatus={stuck ? chain.status : "GENERATING"}
+            autoStart
           />
-          <ChainBanner variant="warning" title={`In-flight: ${chain.status}`}>
-            Live panel shows what the engine is waiting on. Recover only if
-            abandoned for several minutes.
+          <ChainBanner variant="warning" title={`In-flight: ${stuck ? chain.status : "GENERATING"}`}>
+            Live panel updates every second. Recover only if abandoned for
+            several minutes.
           </ChainBanner>
         </div>
       ) : null}

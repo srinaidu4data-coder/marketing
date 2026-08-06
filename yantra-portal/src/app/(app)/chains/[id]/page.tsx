@@ -171,10 +171,10 @@ export default async function ChainDetailPage({
         </ChainBanner>
       ) : null}
 
-      {searchParams?.retry === "1" ? (
-        <ChainBanner variant="success" title="Regeneration started">
-          Packs are rebuilding with the latest prompt. This page will show live
-          progress — wait until status is Ready, then Send.
+      {searchParams?.retry === "1" && !stuck ? (
+        <ChainBanner variant="success" title="Regeneration queued">
+          Status should flip to Generating with a live checklist below. If you
+          only see this banner, refresh once.
         </ChainBanner>
       ) : null}
 
@@ -235,16 +235,19 @@ export default async function ChainDetailPage({
         </ChainBanner>
       ) : null}
 
-      {stuck ? (
+      {stuck || searchParams?.retry === "1" ? (
         <div className="space-y-3">
           <ChainGeneratingLive
             chainId={chain.id}
-            initialStatus={chain.status}
+            initialStatus={
+              stuck ? chain.status : "GENERATING"
+            }
+            autoStart
           />
-          <ChainBanner variant="warning" title="Still working">
-            Live steps above show what the engine is waiting on (12 bullets,
-            wording, ATS, DOCX…). Use Recover only if nothing moves for several
-            minutes.
+          <ChainBanner variant="warning" title="Live progress">
+            Checklist above updates every second (master → JD → AI write →
+            scores → Word). Leave this page open until Ready. Use Recover only
+            if nothing moves for several minutes.
           </ChainBanner>
         </div>
       ) : null}
