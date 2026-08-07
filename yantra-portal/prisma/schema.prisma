@@ -1,12 +1,15 @@
+// SINGLE DATABASE — Admin UI, local scripts, and Vercel share one Postgres.
+// Use the same DATABASE_URL as Vercel → Production. Never file:./dev.db.
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  // Local: sqlite  → DATABASE_URL="file:./dev.db"
-  // Vercel: postgres → DATABASE_URL=postgresql://... (Neon/Vercel Postgres)
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Optional direct (non-pooler) URL for migrations on Neon
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -16,7 +19,7 @@ model User {
   /// Optional work phone (E.164-ish free text)
   phone        String        @default("")
   passwordHash String
-  role         String        // ADMIN | EMPLOYEE
+  role         String
   deletedAt    DateTime?
   createdAt    DateTime      @default(now())
   allocations  Allocation[]
@@ -25,21 +28,19 @@ model User {
 }
 
 model Candidate {
-  id               String            @id @default(uuid())
-  name             String
-  email            String
-  masterResumeText String            @default("")
-  masterResumePath String?
-  /// Structured ground truth from master (engagements, dates, skills) — parse-on-upload
-  masterProfileJson String           @default("{}")
-  /// Resume layout template id (see RESUME_LAYOUTS)
-  layoutId         String            @default("ats_classic")
-  /// DOCX | DOCX_PDF
-  exportFormat     String            @default("DOCX")
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  allocations      Allocation[]
-  chainCandidates  ChainCandidate[]
+  id                String             @id @default(uuid())
+  name              String
+  email             String
+  masterResumeText  String             @default("") @db.Text
+  masterResumePath  String?
+  /// Structured ground truth from master — parse-on-upload
+  masterProfileJson String             @default("{}") @db.Text
+  layoutId          String             @default("ats_classic")
+  exportFormat      String             @default("DOCX")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  allocations       Allocation[]
+  chainCandidates   ChainCandidate[]
   vendorSubmissions VendorSubmission[]
 }
 
@@ -59,14 +60,13 @@ model Chain {
   employeeId   String
   vendorName   String
   vendorEmail  String
-  rawJobText   String
-  status       String           @default("READY") // DRAFT | GENERATING | READY | SENDING | SENT | FAILED
-  employeeNote String?
+  rawJobText   String           @db.Text
+  status       String           @default("READY")
+  employeeNote String?          @db.Text
   /// Live generation status for UI (JSON: phase, tips, steps, candidate…)
-  progressJson String?
-  /// When set, chain is hidden from the employee UI but still visible to admins (audit).
+  progressJson String?          @db.Text
+  /// Hidden from employee UI; still visible to admins
   employeeHiddenAt DateTime?
-  /// Admin user id who hid this chain from the employee
   employeeHiddenBy String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
@@ -78,7 +78,7 @@ model ChainCandidate {
   id                 String    @id @default(uuid())
   chainId            String
   candidateId        String
-  tailoredResumeText String    @default("")
+  tailoredResumeText String    @default("") @db.Text
   tailoredResumePath String?
   docxPath           String?
   pdfPath            String?
@@ -91,14 +91,13 @@ model ChainCandidate {
   /// same_domain | transfer (strict removed — maps to transfer)
   tailorMode         String    @default("")
   atsReady           Boolean   @default(false)
-  atsBreakdownJson   String    @default("{}")
-  sendStatus         String    @default("PENDING") // PENDING | SENT | FAILED
+  atsBreakdownJson   String    @default("{}") @db.Text
+  sendStatus         String    @default("PENDING")
   createdAt          DateTime  @default(now())
   chain              Chain     @relation(fields: [chainId], references: [id], onDelete: Cascade)
   candidate          Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 }
 
-/// Ledger of candidate→vendor submissions for hard-block rule
 model VendorSubmission {
   id               String    @id @default(uuid())
   candidateId      String
@@ -116,17 +115,17 @@ model VendorSubmission {
 
 model PromptVersion {
   id        String   @id @default(uuid())
-  content   String
-  status    String   @default("DRAFT") // DRAFT | ACTIVE | ARCHIVED
+  content   String   @db.Text
+  status    String   @default("DRAFT")
   tested    Boolean  @default(false)
   createdAt DateTime @default(now())
 }
 
 model EmailTemplateVersion {
   id        String   @id @default(uuid())
-  type      String   // SUBJECT | BODY
-  content   String
-  status    String   @default("DRAFT") // DRAFT | ACTIVE | ARCHIVED
+  type      String
+  content   String   @db.Text
+  status    String   @default("DRAFT")
   createdAt DateTime @default(now())
 }
 
@@ -134,7 +133,7 @@ model AuditLog {
   id        String   @id @default(uuid())
   action    String
   userId    String?
-  meta      String   @default("{}")
+  meta      String   @default("{}") @db.Text
   createdAt DateTime @default(now())
   user      User?    @relation(fields: [userId], references: [id])
 }
@@ -150,9 +149,8 @@ model ApiUsageLog {
   createdAt    DateTime @default(now())
 }
 
-/// Admin console key/value configuration (cost caps, defaults, branding)
 model SystemSetting {
   key       String   @id
-  value     String
+  value     String   @db.Text
   updatedAt DateTime @updatedAt
 }
