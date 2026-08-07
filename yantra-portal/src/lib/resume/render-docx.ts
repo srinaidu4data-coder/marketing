@@ -13,6 +13,7 @@ import {
 } from "docx";
 import { getLayout, hexNoHash, type LayoutDef, type StructuredResume } from "./templates";
 import { stripEngineFooter } from "./strip-engine-footer";
+import { getDocxFonts, type DocxFontSet } from "./docx-fonts";
 
 /**
  * Build DOCX from stored tailored plain text (when /tmp pack file is gone).
@@ -25,9 +26,11 @@ export async function renderDocxFromPlainText(opts: {
   layoutId?: string | null;
 }): Promise<Buffer> {
   const layout = getLayout(opts.layoutId);
+  const fonts = fontsFor(layout);
   const accent = hexNoHash(layout.style.accent);
-  const nameF = nameFont(layout);
-  const bodyF = bodyFont(layout);
+  const nameF = fonts.name;
+  const bodyF = fonts.body;
+  const headF = fonts.headline;
   const lines = stripEngineFooter(opts.text || "")
     .replace(/\r\n/g, "\n")
     .split("\n");
@@ -61,7 +64,7 @@ export async function renderDocxFromPlainText(opts: {
               text: opts.jobTitle,
               size: layout.style.headlineSize * 2,
               color: "E7E5E4",
-              font: bodyF,
+              font: headF,
             }),
           ],
         })
@@ -90,7 +93,7 @@ export async function renderDocxFromPlainText(opts: {
             new TextRun({
               text: opts.jobTitle,
               size: layout.style.headlineSize * 2,
-              font: bodyF,
+              font: headF,
               color: hexNoHash(layout.style.muted),
             }),
           ],
@@ -146,7 +149,7 @@ export async function renderDocxFromPlainText(opts: {
               text: headingText,
               bold: true,
               size: layout.style.headingSize * 2,
-              font: nameF,
+              font: fonts.heading,
               color: accent,
             }),
           ],
@@ -174,6 +177,9 @@ export async function renderDocxFromPlainText(opts: {
     const bullet = /^[•▸→–\-\*]\s*/.test(line.trim());
     const body = line.replace(/^[•▸→–\-\*]\s*/, "");
     const bulletGlyph = layout.style.bullet || "•";
+    const isStack =
+      /^(Environment|Stack|Modules|Tech Stack|Tools)\b/i.test(body) ||
+      /^Environment\s*:/i.test(body);
     children.push(
       new Paragraph({
         spacing: { after: 60 },
@@ -182,7 +188,7 @@ export async function renderDocxFromPlainText(opts: {
           new TextRun({
             text: bullet ? `${bulletGlyph} ${body}` : body,
             size: layout.style.bodySize * 2,
-            font: bodyF,
+            font: isStack ? fonts.mono : bodyF,
           }),
         ],
       })
@@ -190,6 +196,7 @@ export async function renderDocxFromPlainText(opts: {
   }
 
   const doc = new Document({
+    styles: docxDefaultStyles(fonts, layout.style.bodySize),
     sections: [
       {
         properties: {
@@ -219,14 +226,43 @@ import {
   stripBullet,
 } from "./line-class";
 
-function bodyFont(layout: LayoutDef) {
-  return layout.style.bodyFont === "serif" ? "Georgia" : "Calibri";
-}
-function nameFont(layout: LayoutDef) {
-  return layout.style.nameFont === "serif" ? "Georgia" : "Calibri";
+function fontsFor(layout: LayoutDef): DocxFontSet {
+  return getDocxFonts(layout.id, layout.style);
 }
 
-function sectionHeading(text: string, layout: LayoutDef, accent: string): Paragraph[] {
+function bodyFont(layout: LayoutDef) {
+  return fontsFor(layout).body;
+}
+function nameFont(layout: LayoutDef) {
+  return fontsFor(layout).name;
+}
+function headlineFont(layout: LayoutDef) {
+  return fontsFor(layout).headline;
+}
+function monoFont(layout: LayoutDef) {
+  return fontsFor(layout).mono;
+}
+
+function docxDefaultStyles(fonts: DocxFontSet, bodySizePt: number) {
+  return {
+    default: {
+      document: {
+        run: {
+          font: fonts.body,
+          size: Math.max(18, bodySizePt * 2),
+        },
+      },
+    },
+  };
+}
+
+function sectionHeading(
+  text: string,
+  layout: LayoutDef,
+  accent: string,
+  fonts?: DocxFontSet
+): Paragraph[] {
+  const f = fonts || fontsFor(layout);
   const headingText =
     layout.style.headingCase === "upper" ? text.toUpperCase() : text;
   const paras: Paragraph[] = [
@@ -238,7 +274,7 @@ function sectionHeading(text: string, layout: LayoutDef, accent: string): Paragr
           bold: true,
           size: layout.style.headingSize * 2,
           color: accent,
-          font: nameFont(layout),
+          font: f.heading,
           characterSpacing: layout.style.headingCase === "upper" ? 60 : 0,
         }),
       ],
@@ -260,6 +296,7 @@ function sectionHeading(text: string, layout: LayoutDef, accent: string): Paragr
 
 export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer> {
   const layout = getLayout(resume.layoutId);
+  const fonts = fontsFor(layout);
   const accent = hexNoHash(layout.style.accent);
   const muted = hexNoHash(layout.style.muted);
   const soft = hexNoHash(layout.style.soft);
@@ -278,7 +315,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
             bold: true,
             size: layout.style.nameSize * 2,
             color: "FFFFFF",
-            font: nameFont(layout),
+            font: fonts.name,
             characterSpacing: 80,
           }),
         ],
@@ -293,7 +330,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
             text: resume.headline,
             size: layout.style.headlineSize * 2,
             color: "E7E5E4",
-            font: bodyFont(layout),
+            font: fonts.headline,
           }),
         ],
       })
@@ -308,7 +345,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
                 text: resume.contactLine,
                 size: 18,
                 color: "D6D3D1",
-                font: bodyFont(layout),
+                font: fonts.body,
               }),
             ]
           : [],
@@ -345,7 +382,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
               text: "E X E C U T I V E   P R O F I L E",
               size: 14,
               color: "b8860b",
-              font: "Georgia",
+              font: fonts.headline,
               characterSpacing: 80,
             }),
           ],
@@ -361,7 +398,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
               text: "PORTFOLIO RESUME",
               size: 14,
               color: "a1a1aa",
-              font: "Calibri",
+              font: fonts.headline,
               characterSpacing: 160,
             }),
           ],
@@ -377,7 +414,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
               text: "GROWTH  →  MID  →  RECENT",
               size: 16,
               color: "059669",
-              font: "Calibri",
+              font: fonts.body,
               bold: true,
               characterSpacing: 40,
             }),
@@ -400,7 +437,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
               text: `  ${badge}  `,
               size: 16,
               color: "FFFFFF",
-              font: layout.id === "technical_dense" ? "Consolas" : bodyFont(layout),
+              font: fonts.mono,
               bold: true,
             }),
           ],
@@ -417,7 +454,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
             text: displayName,
             bold: true,
             size: nameSize,
-            font: nameFont(layout),
+            font: fonts.name,
             color: accent,
             characterSpacing: nameSpacing,
           }),
@@ -432,8 +469,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
           new TextRun({
             text: resume.headline,
             size: layout.style.headlineSize * 2,
-            font:
-              layout.id === "executive_serif" ? "Georgia" : bodyFont(layout),
+            font: fonts.headline,
             color: muted,
             italics: layout.id === "executive_serif",
           }),
@@ -450,7 +486,8 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
               text: resume.contactLine,
               size: layout.id === "technical_dense" ? 16 : 18,
               color: muted,
-              font: layout.id === "technical_dense" ? "Consolas" : bodyFont(layout),
+              font:
+                layout.id === "technical_dense" ? fonts.mono : fonts.body,
             }),
           ],
         })
@@ -501,7 +538,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
 
   for (const sec of resume.sections) {
     if (sec.heading === "Progressive Experience Notes") continue;
-    children.push(...sectionHeading(sec.heading, layout, accent));
+    children.push(...sectionHeading(sec.heading, layout, accent, fonts));
 
     for (const raw of sec.lines) {
       const line = raw.trimEnd();
@@ -520,7 +557,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
                 text: line,
                 bold: true,
                 size: (layout.style.bodySize + 1) * 2,
-                font: bodyFont(layout),
+                font: fonts.headline,
                 color: "0f172a",
               }),
             ],
@@ -538,7 +575,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
                 text: line,
                 bold: true,
                 size: layout.style.bodySize * 2,
-                font: bodyFont(layout),
+                font: fonts.body,
                 color: hexNoHash(accent),
               }),
             ],
@@ -555,7 +592,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
               new TextRun({
                 text: line,
                 size: (layout.style.bodySize - 1) * 2,
-                font: bodyFont(layout),
+                font: fonts.body,
                 color: muted,
                 italics: true,
               }),
@@ -575,7 +612,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
               new TextRun({
                 text: display,
                 size: layout.style.bodySize * 2,
-                font: bodyFont(layout),
+                font: fonts.mono,
                 color: "1e293b",
               }),
             ],
@@ -595,12 +632,12 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
                 text: `${layout.style.bullet === "▸" ? "•" : layout.style.bullet}  `,
                 size: layout.style.bodySize * 2,
                 color: accent,
-                font: bodyFont(layout),
+                font: fonts.body,
               }),
               new TextRun({
                 text: content,
                 size: layout.style.bodySize * 2,
-                font: bodyFont(layout),
+                font: fonts.body,
                 color: "1e293b",
               }),
             ],
@@ -619,7 +656,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
             new TextRun({
               text: line,
               size: layout.style.bodySize * 2,
-              font: bodyFont(layout),
+              font: fonts.body,
               color: "1e293b",
             }),
           ],
@@ -632,6 +669,7 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
 
   const margin = layout.id === "modern_minimal" ? 0.85 : 0.7;
   const doc = new Document({
+    styles: docxDefaultStyles(fonts, layout.style.bodySize),
     sections: [
       {
         properties: {
