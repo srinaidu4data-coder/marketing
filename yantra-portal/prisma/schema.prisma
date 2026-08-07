@@ -95,7 +95,7 @@ model ChainCandidate {
   sendStatus         String    @default("PENDING") // PENDING | SENT | FAILED
   createdAt          DateTime  @default(now())
   chain              Chain     @relation(fields: [chainId], references: [id], onDelete: Cascade)
-  candidate          Candidate @relation(fields: [candidateId], references: [id])
+  candidate          Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 }
 
 /// Ledger of candidate→vendor submissions for hard-block rule

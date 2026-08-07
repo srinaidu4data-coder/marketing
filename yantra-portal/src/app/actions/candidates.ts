@@ -278,13 +278,96 @@ export async function replaceMasterResume(
   }
 }
 
-export async function deleteCandidate(candidateId: string) {
+/**
+ * HARD DELETE only — no soft-delete, no archive, no restore.
+ * Removes candidate + all related rows + best-effort pack/master files.
+ * Returns ok/error so UI can surface failures (silent failures left ghost rows).
+ */
+export async function deleteCandidate(
+  candidateId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const admin = await requireAdmin();
-  await prisma.vendorSubmission.deleteMany({ where: { candidateId } });
-  await prisma.chainCandidate.deleteMany({ where: { candidateId } });
-  await prisma.allocation.deleteMany({ where: { candidateId } });
-  await prisma.candidate.delete({ where: { id: candidateId } });
-  await audit("candidate.delete", admin.id, { candidateId });
-  revalidatePath("/admin/candidates");
-  revalidatePath("/admin/allocations");
+  const id = (candidateId || "").trim();
+  if (!id) return { ok: false, error: "Missing candidate id." };
+
+  try {
+    const existing = await prisma.candidate.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        masterResumePath: true,
+        chainCandidates: {
+          select: {
+            id: true,
+            tailoredResumePath: true,
+            docxPath: true,
+            pdfPath: true,
+          },
+        },
+      },
+    });
+    if (!existing) {
+      // Already gone — treat as success (idempotent)
+      revalidatePath("/admin/candidates");
+      revalidatePath("/admin/allocations");
+      revalidatePath("/admin/chains");
+      return { ok: true };
+    }
+
+    // Collect files before rows disappear
+    const filePaths = new Set<string>();
+    if (existing.masterResumePath) filePaths.add(existing.masterResumePath);
+    for (const cc of existing.chainCandidates) {
+      if (cc.tailoredResumePath) filePaths.add(cc.tailoredResumePath);
+      if (cc.docxPath) filePaths.add(cc.docxPath);
+      if (cc.pdfPath) filePaths.add(cc.pdfPath);
+    }
+
+    // Single transaction — no orphan children, no soft tombstone
+    await prisma.$transaction(async (tx) => {
+      await tx.vendorSubmission.deleteMany({ where: { candidateId: id } });
+      await tx.chainCandidate.deleteMany({ where: { candidateId: id } });
+      await tx.allocation.deleteMany({ where: { candidateId: id } });
+      await tx.candidate.delete({ where: { id } });
+    });
+
+    // Best-effort disk cleanup (never block hard-delete on FS errors)
+    try {
+      const { unlink } = await import("fs/promises");
+      const { resolveUploadPath } = await import("@/lib/paths");
+      for (const stored of Array.from(filePaths)) {
+        try {
+          await unlink(resolveUploadPath(stored));
+        } catch {
+          /* missing file is fine */
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    // Audit: id only — no name/email/master retained
+    await audit("candidate.delete", admin.id, {
+      candidateId: id,
+      hard: true,
+    });
+
+    revalidatePath("/admin/candidates");
+    revalidatePath("/admin/allocations");
+    revalidatePath("/admin/chains");
+    revalidatePath("/chains");
+    revalidatePath("/");
+    return { ok: true };
+  } catch (e) {
+    console.error("[deleteCandidate] hard delete failed", id, e);
+    return {
+      ok: false,
+      error:
+        e instanceof Error
+          ? e.message
+          : "Hard delete failed — candidate may still exist.",
+    };
+  }
 }

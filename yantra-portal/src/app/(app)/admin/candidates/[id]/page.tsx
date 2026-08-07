@@ -104,8 +104,13 @@ export default async function CandidateDetailPage({
   }
   async function remove() {
     "use server";
-    await deleteCandidate(params.id);
-    redirect("/admin/candidates");
+    const res = await deleteCandidate(params.id);
+    if (res && "ok" in res && res.ok === false) {
+      redirect(
+        `/admin/candidates/${params.id}?error=${encodeURIComponent(res.error || "Delete failed")}`
+      );
+    }
+    redirect("/admin/candidates?deleted=1");
   }
 
   return (
@@ -467,14 +472,16 @@ export default async function CandidateDetailPage({
           </div>
           <div className="min-w-0 flex-1">
             <h2 className="text-[14px] font-semibold tracking-tight text-[#1d1d1f]">
-              Remove from roster
+              Hard delete
             </h2>
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-[#6e6e73]">
-              Deletes this candidate and master data. Cannot be undone.
+              Permanently removes this candidate, master resume, allocations,
+              chain packs, and vendor-submission ledger. No soft-delete and no
+              restore.
             </p>
             <form action={remove} className="mt-3">
               <Button type="submit" variant="destructive" size="sm">
-                Delete candidate
+                Delete forever
               </Button>
             </form>
           </div>

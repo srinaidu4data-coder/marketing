@@ -96,7 +96,7 @@ model ChainCandidate {
   sendStatus         String    @default("PENDING")
   createdAt          DateTime  @default(now())
   chain              Chain     @relation(fields: [chainId], references: [id], onDelete: Cascade)
-  candidate          Candidate @relation(fields: [candidateId], references: [id])
+  candidate          Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 }
 
 model VendorSubmission {

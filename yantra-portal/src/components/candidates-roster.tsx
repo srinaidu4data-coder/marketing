@@ -139,7 +139,9 @@ export function CandidatesRoster({
   const [filter, setFilter] = useState<FilterKey>("all");
   const [addOpen, setAddOpen] = useState(items.length === 0 || !!listError);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const bannerError = deleteError || listError || null;
 
   const counts = useMemo(() => {
     const ready = items.filter((i) => i.ready).length;
@@ -165,8 +167,13 @@ export function CandidatesRoster({
 
   function onDelete(id: string) {
     start(async () => {
-      await deleteCandidate(id);
+      setDeleteError(null);
+      const res = await deleteCandidate(id);
       setConfirmId(null);
+      if (res && "ok" in res && res.ok === false) {
+        setDeleteError(res.error || "Hard delete failed.");
+        return;
+      }
       router.refresh();
     });
   }
@@ -176,9 +183,9 @@ export function CandidatesRoster({
 
   return (
     <div className="space-y-4">
-      {listError ? (
+      {bannerError ? (
         <div className="rounded-xl border border-red-200/80 bg-red-50/90 px-3.5 py-2.5 text-[13px] text-red-800">
-          {listError}
+          {bannerError}
         </div>
       ) : null}
 
@@ -460,21 +467,22 @@ export function CandidatesRoster({
                     <ChevronRight className="h-3.5 w-3.5" />
                   </Link>
                   {confirmId === item.id ? (
-                    <div className="flex items-center gap-0.5 rounded-full border border-black/[0.08] bg-white p-0.5 shadow-soft">
+                    <div className="flex items-center gap-0.5 rounded-full border border-red-200 bg-red-50 p-0.5 shadow-soft">
                       <button
                         type="button"
                         disabled={pending}
                         onClick={() => onDelete(item.id)}
                         className="rounded-full bg-[#ff3b30] px-2 py-1 text-[11px] font-semibold text-white hover:bg-[#ff453a] disabled:opacity-50"
+                        title="Permanently remove from database — cannot restore"
                       >
-                        Yes
+                        {pending ? "…" : "Delete forever"}
                       </button>
                       <button
                         type="button"
                         onClick={() => setConfirmId(null)}
-                        className="rounded-full px-2 py-1 text-[11px] font-semibold text-[#6e6e73] hover:bg-black/[0.04]"
+                        className="rounded-full px-2 py-1 text-[11px] font-semibold text-[#6e6e73] hover:bg-white"
                       >
-                        No
+                        Cancel
                       </button>
                     </div>
                   ) : (
@@ -482,8 +490,8 @@ export function CandidatesRoster({
                       type="button"
                       onClick={() => setConfirmId(item.id)}
                       className="rounded-full p-1.5 text-[#c7c7cc] hover:bg-red-50 hover:text-[#ff3b30]"
-                      aria-label={`Delete ${item.name}`}
-                      title="Delete"
+                      aria-label={`Permanently delete ${item.name}`}
+                      title="Hard delete — permanently remove from database"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
