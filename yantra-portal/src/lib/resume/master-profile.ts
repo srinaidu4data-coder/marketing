@@ -3,11 +3,14 @@
  *
  * Philosophy:
  * 1. Parse ONCE at upload (create/replace master).
- * 2. Store a structured skeleton: employers, dates, titles, bullets, skills.
- * 3. Generation never invents employers; it only reframes this skeleton + JD.
+ * 2. Store a structured skeleton: employers, dates, titles, bullets, skills,
+ *    education, certifications.
+ * 3. Generation never invents employers/degrees; it only reframes this skeleton + JD.
  *
  * The AI path receives: MasterProfile (structured) + raw text (optional context) + JD.
  */
+
+import { extractEducationAndCertsFromMaster } from "./education-filter";
 
 export const MASTER_PROFILE_VERSION = 1 as const;
 
@@ -25,6 +28,18 @@ export type MasterEngagement = {
   environment?: string;
 };
 
+/** Academic credential from master only (never invent). */
+export type MasterEducation = {
+  /** Degree / program line (e.g. Bachelor's Degree – Financial Accounting) */
+  degree: string;
+  /** School if detected on the same or following line */
+  school: string;
+  /** Year if detected (e.g. 1999) */
+  year: string;
+  /** Original master line(s) */
+  raw: string;
+};
+
 export type MasterProfile = {
   version: typeof MASTER_PROFILE_VERSION;
   parsedAt: string;
@@ -33,11 +48,23 @@ export type MasterProfile = {
   skills: string[];
   summaryLines: string[];
   engagements: MasterEngagement[];
+  /**
+   * Degrees / academic lines from master Education (or combined Certifications & Education).
+   * Empty array = none found on master — packs must not invent.
+   */
+  education: MasterEducation[];
+  /**
+   * Certification / license lines from master (not degrees).
+   * Empty = none on master.
+   */
+  certifications: string[];
   /** Diagnostics for completeness gates */
   signals: {
     roleLineCount: number;
     clientLineCount: number;
     companyDateLineCount: number;
+    educationCount: number;
+    certificationCount: number;
   };
   warnings: string[];
 };
@@ -50,7 +77,15 @@ export function emptyMasterProfile(sourceChars = 0): MasterProfile {
     skills: [],
     summaryLines: [],
     engagements: [],
-    signals: { roleLineCount: 0, clientLineCount: 0, companyDateLineCount: 0 },
+    education: [],
+    certifications: [],
+    signals: {
+      roleLineCount: 0,
+      clientLineCount: 0,
+      companyDateLineCount: 0,
+      educationCount: 0,
+      certificationCount: 0,
+    },
     warnings: sourceChars < 40 ? ["Master text too short to parse."] : [],
   };
 }
@@ -66,10 +101,70 @@ export function parseStoredMasterProfile(
   try {
     const p = JSON.parse(raw) as MasterProfile;
     if (!p || !Array.isArray(p.engagements)) return null;
+    // Backward compatible: older profiles lack education/certs
+    if (!Array.isArray(p.education)) p.education = [];
+    if (!Array.isArray(p.certifications)) p.certifications = [];
+    if (!p.signals) {
+      p.signals = {
+        roleLineCount: 0,
+        clientLineCount: 0,
+        companyDateLineCount: 0,
+        educationCount: p.education.length,
+        certificationCount: p.certifications.length,
+      };
+    } else {
+      p.signals.educationCount =
+        typeof p.signals.educationCount === "number"
+          ? p.signals.educationCount
+          : p.education.length;
+      p.signals.certificationCount =
+        typeof p.signals.certificationCount === "number"
+          ? p.signals.certificationCount
+          : p.certifications.length;
+    }
     return p;
   } catch {
     return null;
   }
+}
+
+/** Split a degree line into degree / school / year when possible. */
+export function parseEducationLine(raw: string): MasterEducation {
+  const t = (raw || "").replace(/\s+/g, " ").trim();
+  let year = "";
+  const yearM = t.match(/\b((?:19|20)\d{2})\b/);
+  if (yearM) year = yearM[1]!;
+
+  let school = "";
+  let degree = t;
+
+  // "Bachelor of Science, University of X, 2010"
+  const uni = t.match(
+    /(?:,|\bat\b|\bfrom\b)\s*([A-Z][^,]{2,80}?(?:University|College|Institute|School|Academy)[^,]*)/i
+  );
+  if (uni) {
+    school = uni[1]!.trim();
+    degree = t
+      .replace(uni[0], " ")
+      .replace(/\b(19|20)\d{2}\b/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/^[,–—\-\s]+|[,–—\-\s]+$/g, "")
+      .trim();
+  } else {
+    // Strip trailing year from degree display
+    degree = t
+      .replace(/\b(19|20)\d{2}\b/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/^[,–—\-\s]+|[,–—\-\s]+$/g, "")
+      .trim();
+  }
+
+  return {
+    degree: degree || t,
+    school,
+    year,
+    raw: t,
+  };
 }
 
 // ─── Date parsing (tolerant of Word export quirks) ─────────────────────────
@@ -409,6 +504,24 @@ export function parseMasterProfile(masterText: string): MasterProfile {
     if (be !== ae) return be - ae;
     return b.startYear - a.startYear;
   });
+
+  // Education + certifications from master text (structured ground truth)
+  try {
+    const edu = extractEducationAndCertsFromMaster(masterText);
+    profile.education = (edu.degrees || []).map(parseEducationLine);
+    profile.certifications = edu.certs || [];
+    profile.signals.educationCount = profile.education.length;
+    profile.signals.certificationCount = profile.certifications.length;
+    if (!profile.education.length && !profile.certifications.length) {
+      profile.warnings.push(
+        "No education/certification block detected on master."
+      );
+    }
+  } catch (e) {
+    profile.warnings.push(
+      `Education parse skipped: ${e instanceof Error ? e.message : String(e)}`
+    );
+  }
 
   // Harvest skills from Environment: lines when no Skills section (common consultant format)
   if (profile.skills.length === 0) {

@@ -56,7 +56,14 @@ export function classifyEducationLine(line: string): EducationLineKind {
 
 function sectionStart(line: string): "education" | "certs" | "stop" | null {
   const t = line.trim();
-  if (t.length >= 60) return null;
+  if (t.length >= 80) return null;
+  // Combined headers (common on masters): "Certifications & Education"
+  if (
+    /certifications?\s*&\s*education|education\s*&\s*certifications?/i.test(t) &&
+    t.length < 64
+  ) {
+    return "education"; // mixed block — classify line-by-line
+  }
   if (/^(education|academic(\s+background)?|degrees?)\b/i.test(t)) {
     return "education";
   }
@@ -321,13 +328,21 @@ export function extractEducationAndCertsFromMaster(master: string): {
     }
     if (mode === "none") continue;
 
-    const kind = classifyEducationLine(line);
-    if (mode === "education") {
-      if (kind === "cert") push("cert", line);
-      else if (kind === "degree" || kind === "other") push("degree", line);
-    } else if (mode === "certs") {
-      if (kind === "degree") push("degree", line);
-      else push("cert", line);
+    // Split "Cert A · Cert B" style combined lines
+    const pieces =
+      line.includes("·") || line.includes(" • ")
+        ? line.split(/\s*[·•]\s*/).map((x) => x.trim()).filter(Boolean)
+        : [line];
+
+    for (const piece of pieces) {
+      const kind = classifyEducationLine(piece);
+      if (mode === "education") {
+        if (kind === "cert") push("cert", piece);
+        else if (kind === "degree" || kind === "other") push("degree", piece);
+      } else if (mode === "certs") {
+        if (kind === "degree") push("degree", piece);
+        else push("cert", piece);
+      }
     }
     if (degrees.length + certs.length >= 16) break;
   }
