@@ -9,7 +9,7 @@
  * - Layout spines + single QA/rules pass
  */
 
-import { DEFAULT_PROMPT } from "@/lib/constants";
+import { NO_ACTIVE_PROMPT_MESSAGE } from "@/lib/resume-v2/bible-prompt";
 import {
   extractJobTitle,
   skillFingerprint,
@@ -487,7 +487,10 @@ export async function generateResumeWithOpenAi(
     : honest.masterOnly.slice(0, 20);
   const lowOverlap = isLowOverlap(input.jd, input.master);
   const modeResult = resolveTailorMode(input.jd, input.master);
-  const template = (input.promptTemplate || "").trim() || DEFAULT_PROMPT;
+  const template = (input.promptTemplate || "").trim();
+  if (template.length < 80) {
+    throw new Error(NO_ACTIVE_PROMPT_MESSAGE);
+  }
   await report("parse_master", "done");
   await report("parse_jd", "done");
   await report("title", "active");

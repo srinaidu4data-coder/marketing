@@ -8,6 +8,7 @@ import { MAX_BULLETS_PER_PROJECT } from "@/lib/resume/bullet-density";
 import { FILLER_BULLET } from "./ensure-ship-shape";
 import { scrubToToolNouns, scrubEnvironment } from "./tools-nouns";
 import { JD_REWRITE_MAX_INDEX } from "./bible-prompt";
+import { skillsToLines } from "./render-pack";
 
 function splitTools(s: string): string[] {
   return (s || "")
@@ -58,21 +59,12 @@ function mergeSkills(
   a: ResumePackV2["techSkills"],
   b: ResumePackV2["techSkills"]
 ): ResumePackV2["techSkills"] {
-  const toStr = (s: ResumePackV2["techSkills"]): string => {
-    if (typeof s === "string") return s;
-    if (Array.isArray(s)) return s.join(", ");
-    if (s && typeof s === "object") {
-      return Object.entries(s)
-        .map(([k, v]) => {
-          const vals = Array.isArray(v) ? v.join(", ") : String(v || "");
-          return vals ? `${k}: ${vals}` : "";
-        })
-        .filter(Boolean)
-        .join("\n");
-    }
-    return "";
-  };
-  const merged = joinTools([...splitTools(toStr(a).replace(/\n/g, ",")), ...splitTools(toStr(b).replace(/\n/g, ","))]);
+  const toStr = (s: ResumePackV2["techSkills"]): string =>
+    skillsToLines(s).replace(/\n/g, ",");
+  const merged = joinTools([
+    ...splitTools(toStr(a)),
+    ...splitTools(toStr(b)),
+  ]);
   return merged;
 }
 

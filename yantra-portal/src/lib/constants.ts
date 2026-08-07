@@ -1,14 +1,14 @@
 /**
  * Role Forge system constants.
  * Writing SOT = Admin ACTIVE PromptVersion (DB). See getActiveSystemPrompt().
- * ADMIN_PROMPT_SEED is bootstrap only when no ACTIVE row exists.
+ * ADMIN_PROMPT_SEED / DEFAULT_PROMPT: explicit install + prisma seed only — never auto-reseed at runtime.
  */
 
 import { ADMIN_PROMPT_SEED } from "./resume-v2/admin-prompt-seed";
 
 /**
- * Sync fallback for legacy callers that cannot await DB.
- * Prefer getActiveSystemPrompt() / resolveSystemPrompt() in generation paths.
+ * Same body as ADMIN_PROMPT_SEED. Prefer DB ACTIVE via getActiveSystemPrompt().
+ * Do not use as a silent generation fallback when ACTIVE is missing.
  */
 export const DEFAULT_PROMPT = ADMIN_PROMPT_SEED;
 

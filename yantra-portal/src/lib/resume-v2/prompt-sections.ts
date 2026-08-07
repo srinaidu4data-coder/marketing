@@ -79,11 +79,12 @@ Jargon-rich, JD-aligned; primacy: strongest fit first 3. Free count — quality 
     emoji: "🛠️",
     blurb: "You choose format — maximize JD token coverage.",
     color: "bg-sky-50 border-sky-300",
-    expectHint: "JSON techSkills (string | array | groups)",
+    expectHint: "JSON techSkills (string | string[] | groups of string[])",
     microPrompt: `Produce techSkills JSON only:
-{ "techSkills": /* string OR string[] OR { "Core": [], "Platforms": [], "Methods": [] } */ }
+{ "techSkills": /* string OR string[] OR { "Core": string[], "Platforms": string[], "Methods": string[] } */ }
+HARD RULE: every skill token is a plain string (tool/product noun). NEVER array of objects like { "name": "SAP" }. NEVER objects inside group arrays.
 JD-first ordering, expand critical acronyms once, dense high-signal items.
-No "JD keywords:" labels. Full freedom on format.`,
+No "JD keywords:" labels.`,
   },
   {
     id: "projects",

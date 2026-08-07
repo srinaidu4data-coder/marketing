@@ -34,6 +34,44 @@ export async function savePromptVersion(formData: FormData) {
   revalidatePath("/admin/prompt-lab");
 }
 
+/**
+ * Explicit only: install ADMIN_PROMPT_SEED as ACTIVE.
+ * Does not run on page load or generation — admin must click this (or run prisma seed).
+ */
+export async function installDefaultPrompt() {
+  const admin = await requireAdmin();
+  const { installDefaultActivePrompt } = await import(
+    "@/lib/resume-v2/bible-prompt"
+  );
+  const installed = await installDefaultActivePrompt();
+  await audit("PROMPT_SAVE", admin.id, {
+    versionId: installed.versionId,
+    installedDefault: true,
+  });
+  revalidatePath("/admin/prompt");
+  revalidatePath("/admin/prompt-lab");
+}
+
+/** Archive the current ACTIVE prompt (leaves no ACTIVE until Save & make ACTIVE). */
+export async function archiveActivePrompt() {
+  const admin = await requireAdmin();
+  const active = await prisma.promptVersion.findFirst({
+    where: { status: "ACTIVE" },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!active) return;
+  await prisma.promptVersion.update({
+    where: { id: active.id },
+    data: { status: "ARCHIVED" },
+  });
+  await audit("PROMPT_SAVE", admin.id, {
+    versionId: active.id,
+    archivedActive: true,
+  });
+  revalidatePath("/admin/prompt");
+  revalidatePath("/admin/prompt-lab");
+}
+
 export async function promotePrompt(versionId: string) {
   const admin = await requireAdmin();
   await prisma.promptVersion.updateMany({

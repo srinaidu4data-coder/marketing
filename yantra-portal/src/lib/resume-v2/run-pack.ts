@@ -40,6 +40,7 @@ import {
   injectMissingPhrasesIntoPack,
 } from "./pack-accumulate";
 import { resolveSystemPrompt } from "./bible-prompt";
+import { toolsFromJd } from "./tools-nouns";
 
 /** C3 hard budgets */
 export const RUN_PACK_BUDGETS = {
@@ -721,7 +722,15 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
 
   // progressive notes for UI
   try {
-    best.structured = packToStructuredResume(best.pack);
+    const skillFallback = {
+      toolNouns:
+        toolsFromJd(jd, 12) || toolsFromJd(master, 12) || "",
+    };
+    best.structured = packToStructuredResume(
+      best.pack,
+      "ats_classic",
+      skillFallback
+    );
     best.structured.meta.atsScore = score.ats.score;
     best.structured.meta.psychScore = score.psych.score;
     best.structured.meta.progressiveNotes = [
@@ -732,7 +741,7 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
       ...notes.slice(0, 10),
       ...score.reasons.slice(0, 4),
     ];
-    best.text = best.text || renderPackText(best.pack);
+    best.text = best.text || renderPackText(best.pack, skillFallback);
   } catch {
     /* keep */
   }

@@ -4,25 +4,37 @@ import {
   promotePrompt,
   rollbackPrompt,
   savePromptVersion,
+  installDefaultPrompt,
+  archiveActivePrompt,
 } from "@/app/actions/templates";
 import { Badge, Button, PageHeader, Textarea } from "@/components/ui";
 import { SYSTEM_PREAMBLE, PROMPT_PLACEHOLDERS } from "@/lib/constants";
 import { formatDateTime } from "@/lib/utils";
 import { PromptTestForm } from "@/components/prompt-test-form";
+import { MIN_ACTIVE_PROMPT_CHARS } from "@/lib/resume-v2/bible-prompt";
 
 export default async function PromptPage() {
   await requireAdmin();
-  const versions = await prisma.promptVersion.findMany({ orderBy: { createdAt: "desc" } });
-  const active = versions.find((v) => v.status === "ACTIVE") || versions[0];
+  const versions = await prisma.promptVersion.findMany({
+    orderBy: { createdAt: "desc" },
+  });
+  const active = versions.find((v) => v.status === "ACTIVE");
+  const activeUsable =
+    !!active && (active.content || "").trim().length >= MIN_ACTIVE_PROMPT_CHARS;
+  const editorDefault = active?.content || "";
 
   return (
     <div className="space-y-8 p-2 lg:p-4">
       <PageHeader
         title="Prompt Template"
-        description="ACTIVE prompt is the ONLY system-message source for generation (no separate code Bible). Master + JD are the user message. Edit → Save → Promote to ACTIVE. Test under Admin → Prompt Lab."
+        description="ACTIVE prompt is the ONLY system-message source for generation (no separate code Bible). Master + JD are the user message. Edit → Save → Promote to ACTIVE. Test under Admin → Prompt Lab. The code default seed is never auto-reinserted — only via Install default seed or prisma seed."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {active ? <Badge status="ACTIVE">Active</Badge> : null}
+            {activeUsable ? (
+              <Badge status="ACTIVE">Active</Badge>
+            ) : (
+              <Badge status="DRAFT">No usable ACTIVE</Badge>
+            )}
             <a
               href="/admin/prompt-lab"
               className="text-sm font-medium text-sky-700 underline underline-offset-2"
@@ -38,6 +50,20 @@ export default async function PromptPage() {
           </div>
         }
       />
+
+      {!activeUsable ? (
+        <section className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <h2 className="font-medium text-amber-950">No usable ACTIVE prompt</h2>
+          <p className="text-sm text-amber-900">
+            Generation will fail closed until you Save &amp; make ACTIVE a prompt
+            (or install the code default). Empty/short ACTIVE rows are{" "}
+            <strong>not</strong> auto-filled from the seed anymore.
+          </p>
+          <form action={installDefaultPrompt}>
+            <Button type="submit">Install default seed as ACTIVE</Button>
+          </form>
+        </section>
+      ) : null}
 
       <section className="space-y-2 rounded-lg border p-4">
         <h2 className="font-medium">Locked System Preamble</h2>
@@ -57,7 +83,13 @@ export default async function PromptPage() {
           ))}
         </p>
         <form action={savePromptVersion} className="space-y-3">
-          <Textarea name="content" rows={20} defaultValue={active?.content || ""} required />
+          <Textarea
+            name="content"
+            rows={20}
+            defaultValue={editorDefault}
+            required
+            placeholder="Paste or write the system prompt body, then Save & make ACTIVE."
+          />
           <div className="flex flex-wrap gap-2">
             <Button type="submit">Save as Draft</Button>
             <Button type="submit" name="promote" value="1">
@@ -66,12 +98,24 @@ export default async function PromptPage() {
           </div>
           <p className="text-xs text-slate-500">
             Generation always uses the ACTIVE row only. After Save &amp; make ACTIVE,
-            Regenerate packs to apply.
+            Regenerate packs to apply. Deleting/archiving ACTIVE will stick until you
+            promote another version or install the default seed.
           </p>
         </form>
+        {activeUsable ? (
+          <form action={archiveActivePrompt} className="pt-2">
+            <Button type="submit" variant="secondary">
+              Archive ACTIVE (clear for generation)
+            </Button>
+            <p className="mt-1 text-xs text-slate-500">
+              Archives the current ACTIVE row. Generation will refuse until you promote
+              another version or install the default seed. History is kept.
+            </p>
+          </form>
+        ) : null}
       </section>
 
-      {active ? (
+      {activeUsable && active ? (
         <section className="space-y-3 rounded-lg border p-4">
           <h2 className="font-medium">Test Mode</h2>
           <p className="text-sm text-slate-500">
@@ -107,7 +151,14 @@ export default async function PromptPage() {
               </tr>
             </thead>
             <tbody>
-              {versions.map((v, i) => (
+              {versions.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-6 text-slate-500">
+                    No versions yet. Install the default seed or Save a draft.
+                  </td>
+                </tr>
+              ) : null}
+              {versions.map((v) => (
                 <tr key={v.id} className="border-b last:border-0">
                   <td className="px-4 py-3 font-mono text-xs">{v.id.slice(0, 8)}</td>
                   <td className="px-4 py-3">{formatDateTime(v.createdAt)}</td>
@@ -147,7 +198,6 @@ export default async function PromptPage() {
                           </form>
                         </>
                       ) : null}
-                      {i === 0 ? null : null}
                     </div>
                   </td>
                 </tr>

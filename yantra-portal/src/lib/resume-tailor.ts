@@ -7,7 +7,6 @@
  */
 
 import { prisma } from "./db";
-import { DEFAULT_PROMPT } from "./constants";
 import { generateResumeWithOpenAi } from "./resume/ai-tailor";
 import { estimateLlmCostUsd } from "./resume/llm-config";
 import { getActiveLlmConfig } from "./system-settings";
@@ -19,7 +18,8 @@ import {
 import {
   generateResumeV2WithRegen,
   forceGenerateUnrestricted,
-  getActiveSystemPrompt,
+  requireActiveSystemPrompt,
+  NO_ACTIVE_PROMPT_MESSAGE,
   runPack,
   type RunPackChainBudget,
   type GenerationMeta,
@@ -281,21 +281,20 @@ export async function tailorResume(opts: {
    */
   fastMode?: boolean;
 }): Promise<TailorResumeResult> {
-  // Sole writing SOT: Admin ACTIVE PromptVersion (no code Bible override)
+  // Sole writing SOT: Admin ACTIVE PromptVersion (read-only; no auto-seed)
   let promptId = "default";
   let promptTemplate = "";
   try {
-    const active = await getActiveSystemPrompt();
+    const active = await requireActiveSystemPrompt();
     promptTemplate = active.content;
     promptId = active.versionId;
-    if (active.bootstrapped) {
-      console.info(
-        "[tailorResume] bootstrapped ACTIVE prompt from ADMIN_PROMPT_SEED (was empty)"
-      );
-    }
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("NO_ACTIVE_PROMPT")) {
+      throw new Error(NO_ACTIVE_PROMPT_MESSAGE);
+    }
     console.error("[tailorResume] failed to load ACTIVE prompt", e);
-    promptTemplate = (DEFAULT_PROMPT || "").trim();
+    throw new Error(NO_ACTIVE_PROMPT_MESSAGE);
   }
 
   // ── Prompt-only v2 path (default) ─────────────────────────────────
@@ -306,9 +305,7 @@ export async function tailorResume(opts: {
   const jdHydrated = normalizeJdText(opts.jd);
   const masterHydrated = normalizeMasterText(opts.master);
   if (!promptTemplate || promptTemplate.trim().length < 80) {
-    throw new Error(
-      "NO_ACTIVE_PROMPT: set Admin → Prompt, Save, and Promote to ACTIVE."
-    );
+    throw new Error(NO_ACTIVE_PROMPT_MESSAGE);
   }
 
   // Product law: NEVER surface generation errors to the user.

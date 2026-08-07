@@ -6,6 +6,8 @@ import { getLlmConfigForProvider, type LlmProvider } from "@/lib/resume/llm-conf
 import { getActiveLlmConfig } from "@/lib/system-settings";
 import {
   getActiveSystemPrompt,
+  requireActiveSystemPrompt,
+  NO_ACTIVE_PROMPT_MESSAGE,
   PROMPT_LAB_SECTIONS,
   getSection,
   generateResumeV2WithRegen,
@@ -21,7 +23,7 @@ async function resolvePrompt(override?: string): Promise<{
   if (override && override.trim().length > 100) {
     return { prompt: override.trim(), versionId: "override" };
   }
-  const active = await getActiveSystemPrompt();
+  const active = await requireActiveSystemPrompt();
   return { prompt: active.content, versionId: active.versionId };
 }
 
@@ -137,7 +139,17 @@ export async function runPromptLabSection(opts: {
     }
 
     const activeSys = await getActiveSystemPrompt();
-    const system = section.microPrompt || activeSys.content;
+    const system = section.microPrompt || activeSys?.content || "";
+    if (!system.trim()) {
+      return {
+        ok: false,
+        sectionId: section.id,
+        title: section.title,
+        raw: "",
+        latencyMs: Date.now() - t0,
+        error: NO_ACTIVE_PROMPT_MESSAGE,
+      };
+    }
 
     const userParts = [
       `=== MASTER ===\n${opts.master.slice(0, 14000)}`,
@@ -244,5 +256,5 @@ export async function listPromptLabSections() {
 export async function getBiblePromptSample() {
   await requireAdmin();
   const active = await getActiveSystemPrompt();
-  return active.content;
+  return active?.content ?? "";
 }
