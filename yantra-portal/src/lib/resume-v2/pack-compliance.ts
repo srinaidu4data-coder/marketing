@@ -213,20 +213,64 @@ export function buildPackCompliance(opts: {
     detail: objLeak ? "skills rendered as [object Object]" : "clean",
   });
 
-  // Clone stack/env across projects
-  if (projects.length >= 3) {
-    const stackKeys = projects.map((p) =>
-      `${(p.techStack || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}|${(p.environment || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}`
+  // Clone stack/env — exact signatures + Jaccard diversity (StackEnv engine ship law)
+  if (projects.length >= 2) {
+    const stackKeys = projects.map(
+      (p) =>
+        `${(p.techStack || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}|${(p.environment || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}`
     );
     const uniq = new Set(stackKeys.filter(Boolean));
-    const cloned = uniq.size === 1 && stackKeys.filter(Boolean).length >= 3;
+    const cloned = uniq.size === 1 && stackKeys.filter(Boolean).length >= 2;
+
+    const tok = (s: string) =>
+      (s || "")
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length >= 2);
+    let maxJ = 0;
+    for (let i = 0; i < projects.length; i++) {
+      const a = new Set([
+        ...tok(projects[i]!.techStack || ""),
+        ...tok(projects[i]!.environment || ""),
+      ]);
+      for (let j = i + 1; j < projects.length; j++) {
+        const b = new Set([
+          ...tok(projects[j]!.techStack || ""),
+          ...tok(projects[j]!.environment || ""),
+        ]);
+        let inter = 0;
+        for (const x of Array.from(a)) if (b.has(x)) inter++;
+        const union = a.size + b.size - inter;
+        const jacc = union ? inter / union : 0;
+        if (jacc > maxJ) maxJ = jacc;
+      }
+    }
+    const diverse =
+      !cloned &&
+      uniq.size >= Math.min(projects.length, Math.ceil(projects.length * 0.75)) &&
+      maxJ <= 0.55;
+
     items.push({
       id: "unique_stacks",
-      label: "Tech Stack/Environment differ across projects",
-      ok: !cloned,
+      label: "Tech Stack/Environment unique per project (no clone stamp)",
+      ok: diverse,
       detail: cloned
         ? "identical stack/env on every project (clone stamp)"
-        : `${uniq.size} unique stack/env signatures`,
+        : `${uniq.size}/${projects.length} signatures · max Jaccard ${maxJ.toFixed(2)}`,
+    });
+
+    // Stack vs env disjoint within projects
+    let disjoint = 0;
+    for (const p of projects) {
+      const s = new Set(tok(p.techStack || ""));
+      const e = tok(p.environment || "");
+      if (!e.some((t) => s.has(t))) disjoint++;
+    }
+    items.push({
+      id: "stack_env_disjoint",
+      label: "Stack and Environment have zero shared tokens",
+      ok: disjoint === projects.length,
+      detail: `${disjoint}/${projects.length} projects disjoint`,
     });
   }
 

@@ -25,14 +25,17 @@ import {
 } from "@/lib/resume/skill-neutral-bullet-bank";
 import {
   scrubToToolNouns,
-  scrubEnvironment,
   toolsFromJd,
-  normalizeStackEnvPair,
 } from "./tools-nouns";
 import {
   BANNED_BULLET_RE,
   hardenPackQuality,
 } from "./pack-quality-harden";
+import {
+  runStackEnvEngine,
+  getStackEnvBank,
+  type StackEnvBankDoc,
+} from "./stack-env";
 
 const EC = "Employer / Client:";
 
@@ -110,12 +113,14 @@ export function ensurePackShipShape(
   pack: ResumePackV2,
   masterText?: string,
   bulletBank?: string[],
-  jd?: string
+  jd?: string,
+  stackEnvBank?: StackEnvBankDoc
 ): ResumePackV2 {
-  // Phase A harden first (skills objects, certs, clone stacks, progressive roles)
+  // Phase A harden first (skills, certs, roles, StackEnv engine)
   const hardened = hardenPackQuality(pack, {
     masterText,
     jd,
+    bank: stackEnvBank,
   });
   pack = hardened.pack;
   if (hardened.notes.length) {
@@ -132,18 +137,17 @@ export function ensurePackShipShape(
       : DEFAULT_SKILL_NEUTRAL_BULLETS;
   const used = new Set<string>();
   const employers = guessEmployersFromMaster(masterText || "");
-  const stackFallback = toolsFromJd(jd, 10);
-  const envFallback = scrubEnvironment("", jd, 8) || stackFallback;
   let projects = [...(pack.projects || [])];
 
   if (!projects.length) {
+    // Skeleton only — StackEnv engine fills unique stack/env (never one shared JD list)
     projects = employers.map((emp) => ({
       role: pack.header.jobTitle || "Consultant",
       employerOrClient: emp,
       location: "",
       duration: "",
-      techStack: stackFallback,
-      environment: envFallback,
+      techStack: "",
+      environment: "",
       bullets: padBulletsFromBank([], bank, used, MIN_RECENT),
     }));
   } else {
@@ -154,35 +158,15 @@ export function ensurePackShipShape(
         employers[i] ||
         employers[0] ||
         `Client ${i + 1}`;
-      // Ship law: every project ≥ MIN_BULLETS_PER_PROJECT
       void n;
       const minB = MIN_BULLETS_PER_PROJECT;
-      // Scrub junk (C2C, engineering, NOTE…); noun tools only; zero stack/env overlap
-      const pair = normalizeStackEnvPair(
-        p.techStack || "",
-        p.environment || "",
-        jd,
-        { minStack: 3, minEnv: 2 }
-      );
-      const stack = pair.techStack || stackFallback;
-      let env = pair.environment || envFallback;
-      // Final zero-overlap pass
-      if (stack && env) {
-        const sSet = new Set(
-          stack.split(", ").map((x) => x.toLowerCase().trim())
-        );
-        env = env
-          .split(", ")
-          .filter((x) => x && !sSet.has(x.toLowerCase().trim()))
-          .join(", ");
-        if (!env) env = envFallback || scrubEnvironment("", jd, 6) || "Azure, Jira";
-      }
+      // Keep LLM/engine stacks; do NOT collapse empty fields to one global JD fallback
       return {
         ...p,
         role: (p.role || "").trim() || pack.header.jobTitle || "Consultant",
         employerOrClient: emp,
-        techStack: stack,
-        environment: env,
+        techStack: (p.techStack || "").trim(),
+        environment: (p.environment || "").trim(),
         bullets: padBulletsFromBank(
           p.bullets || [],
           bank,
@@ -197,6 +181,28 @@ export function ensurePackShipShape(
         ),
       };
     });
+  }
+
+  pack = { ...pack, projects };
+
+  // Final StackEnv pass after bullet pad (engine is deterministic; re-enforces uniqueness)
+  {
+    const eng = runStackEnvEngine(pack, {
+      jd,
+      masterText,
+      bank: stackEnvBank,
+    });
+    pack = eng.pack;
+    if (eng.notes.length || !eng.report.passed) {
+      pack.meta = {
+        ...(pack.meta || {}),
+        notes: [
+          ...(pack.meta?.notes || []),
+          ...eng.notes.map((n) => `ship-stack-env: ${n}`),
+          `ship-stack-env: passed=${eng.report.passed} sigs=${eng.report.uniqueSignatures} maxJ=${eng.report.maxPairJaccard.toFixed(2)}`,
+        ],
+      };
+    }
   }
 
   // Skills section: coerce object items, scrub prose, never ship [object Object]
@@ -271,7 +277,13 @@ export async function ensurePackShipShapeAsync(
   jd?: string
 ): Promise<ResumePackV2> {
   const bank = await getSkillNeutralBulletBank();
-  return ensurePackShipShape(pack, masterText, bank, jd);
+  let stackEnvBank: StackEnvBankDoc | undefined;
+  try {
+    stackEnvBank = await getStackEnvBank();
+  } catch {
+    stackEnvBank = undefined;
+  }
+  return ensurePackShipShape(pack, masterText, bank, jd, stackEnvBank);
 }
 
 /** Re-render text after ensuring shape */
@@ -279,9 +291,16 @@ export function ensureShipCompatibleText(
   pack: ResumePackV2,
   masterText?: string,
   bulletBank?: string[],
-  jd?: string
+  jd?: string,
+  stackEnvBank?: StackEnvBankDoc
 ): { pack: ResumePackV2; text: string } {
-  const shaped = ensurePackShipShape(pack, masterText, bulletBank, jd);
+  const shaped = ensurePackShipShape(
+    pack,
+    masterText,
+    bulletBank,
+    jd,
+    stackEnvBank
+  );
   const skillFallback = {
     toolNouns: toolsFromJd(jd, 12) || toolsFromJd(masterText, 12) || "",
   };
@@ -329,5 +348,11 @@ export async function ensureShipCompatibleTextAsync(
   jd?: string
 ): Promise<{ pack: ResumePackV2; text: string }> {
   const bank = await getSkillNeutralBulletBank();
-  return ensureShipCompatibleText(pack, masterText, bank, jd);
+  let stackEnvBank: StackEnvBankDoc | undefined;
+  try {
+    stackEnvBank = await getStackEnvBank();
+  } catch {
+    stackEnvBank = undefined;
+  }
+  return ensureShipCompatibleText(pack, masterText, bank, jd, stackEnvBank);
 }

@@ -20,6 +20,10 @@ import {
   toolsFromJd,
   normalizeStackEnvPair,
 } from "./tools-nouns";
+import {
+  runStackEnvEngine,
+  type StackEnvBankDoc,
+} from "./stack-env";
 
 /** Expanded filler / bank / meta lines */
 export const BANNED_BULLET_RE =
@@ -28,10 +32,6 @@ export const BANNED_BULLET_RE =
 /** Summary bio openers that kill 6s skim */
 export const BIO_OPENER_RE =
   /^(accomplished|seasoned|results-?driven|dynamic|motivated|passionate|dedicated|highly motivated|expert in|proven track record of|strong ability to|skilled in|experienced in leading|it professional with)/i;
-
-/** Tokens that must not appear on pre-2012 / pre-2016 early roles without master support */
-const MODERN_STACK_TOKENS =
-  /\b(ATTP|DSCSA|EPCIS|RISE|S\/4HANA|S4HANA|Boomi|MAH|FMD|GTIN|SSCC|BTP|Datasphere|IBP)\b/i;
 
 function endYearFromDuration(duration: string): number | null {
   const d = duration || "";
@@ -52,13 +52,6 @@ function normKey(s: string): string {
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function tokenizeTools(s: string): string[] {
-  return (s || "")
-    .split(/[,;|·•]/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 2 && t.length <= 48);
 }
 
 /**
@@ -106,84 +99,27 @@ export function groundCertsToMaster(
 }
 
 /**
- * If techStack/env nearly identical across projects, diversify early slots.
+ * @deprecated Prefer runStackEnvEngine — kept for tests/callers.
+ * Thin wrapper: full bank-backed diversify + anti-clone.
  */
 export function diversifyCloneStacks(
   pack: ResumePackV2,
-  jd?: string
+  jd?: string,
+  masterText?: string,
+  bank?: StackEnvBankDoc
 ): { pack: ResumePackV2; fixed: number } {
-  const projects = [...(pack.projects || [])];
-  if (projects.length < 2) return { pack, fixed: 0 };
-  let fixed = 0;
-  const keys = projects.map(
+  const before = (pack.projects || []).map(
     (p) => `${normKey(p.techStack)}||${normKey(p.environment)}`
   );
-  // Count dominant clone
-  const counts = new Map<string, number>();
-  for (const k of keys) {
-    if (!k || k === "||") continue;
-    counts.set(k, (counts.get(k) || 0) + 1);
+  const r = runStackEnvEngine(pack, { jd, masterText, bank });
+  const after = (r.pack.projects || []).map(
+    (p) => `${normKey(p.techStack)}||${normKey(p.environment)}`
+  );
+  let fixed = 0;
+  for (let i = 0; i < after.length; i++) {
+    if (after[i] !== before[i]) fixed++;
   }
-  let dominant = "";
-  let max = 0;
-  for (const [k, n] of Array.from(counts.entries())) {
-    if (n > max) {
-      max = n;
-      dominant = k;
-    }
-  }
-  if (max < 2 || !dominant) return { pack, fixed: 0 };
-
-  const jdTools = toolsFromJd(jd, 14) || "";
-  for (let i = 0; i < projects.length; i++) {
-    const p = projects[i]!;
-    const k = keys[i]!;
-    if (k !== dominant) continue;
-    // Keep first (most recent) as the clone base; diversify rest
-    if (i === 0) continue;
-    const endY = endYearFromDuration(p.duration);
-    let stack = p.techStack || "";
-    let env = p.environment || "";
-    if (endY != null && endY < 2016) {
-      // Strip modern tokens
-      stack = tokenizeTools(stack)
-        .filter((t) => !MODERN_STACK_TOKENS.test(t))
-        .join(", ");
-      env = tokenizeTools(env)
-        .filter((t) => !MODERN_STACK_TOKENS.test(t))
-        .join(", ");
-      if (!stack) {
-        stack =
-          endY < 2010
-            ? "SAP ECC, FI, Reporting, Excel"
-            : "SAP ECC, Integration, Master Data, Testing";
-      }
-      if (!env) {
-        env =
-          endY < 2010
-            ? "On-premise, Windows, SQL Server"
-            : "On-premise, SolMan, ALM";
-      }
-      fixed++;
-    } else if (i >= 3) {
-      // Mid/early: force differentiate from recent clone by taking subset
-      const recentStack = tokenizeTools(projects[0]?.techStack || "");
-      const subset = recentStack.slice(0, Math.max(2, Math.floor(recentStack.length / 2)));
-      stack = subset.join(", ") || scrubToToolNouns(jdTools, 4) || stack;
-      env = "Client site, On-premise, SolMan";
-      fixed++;
-    }
-    const pair = normalizeStackEnvPair(stack, env, jd, {
-      minStack: 2,
-      minEnv: 2,
-    });
-    projects[i] = {
-      ...p,
-      techStack: pair.techStack || stack,
-      environment: pair.environment || env,
-    };
-  }
-  return { pack: { ...pack, projects }, fixed };
+  return { pack: r.pack, fixed };
 }
 
 /**
@@ -277,7 +213,7 @@ export function assertNoObjectObject(text: string): boolean {
  */
 export function hardenPackQuality(
   pack: ResumePackV2,
-  opts: { masterText?: string; jd?: string }
+  opts: { masterText?: string; jd?: string; bank?: StackEnvBankDoc }
 ): {
   pack: ResumePackV2;
   notes: string[];
@@ -285,7 +221,7 @@ export function hardenPackQuality(
   const notes: string[] = [];
   let p = { ...pack, projects: [...(pack.projects || [])] };
 
-  // Skills coerce
+  // Skills coerce (pre-engine; engine may rebuild skills groups)
   {
     const n = normalizeTechSkills(p.techSkills);
     p.techSkills = n.techSkills;
@@ -322,26 +258,39 @@ export function hardenPackQuality(
     if (r.removed) notes.push(`filler/bio: removed ${r.removed} lines`);
   }
 
-  // Clone stacks
-  {
-    const r = diversifyCloneStacks(p, opts.jd);
-    p = r.pack;
-    if (r.fixed) notes.push(`stack/env: diversified ${r.fixed} clone project(s)`);
-  }
-
-  // Progressive roles
+  // Progressive roles (before stack engine so titles don't depend on stacks)
   {
     const r = progressiveRoles(p);
     p = r.pack;
     if (r.fixed) notes.push(`roles: progressive titles on ${r.fixed} project(s)`);
   }
 
-  // Final stack/env scrub per project
+  // StackEnv Engine — bank-backed assign, anti-clone, era honesty, category lanes
+  {
+    const r = runStackEnvEngine(p, {
+      jd: opts.jd,
+      masterText: opts.masterText,
+      bank: opts.bank,
+    });
+    p = r.pack;
+    notes.push(...r.notes.map((n) => `stack-env: ${n}`));
+    if (!r.report.passed) {
+      notes.push(
+        `stack-env: ship checks soft-fail maxJ=${r.report.maxPairJaccard.toFixed(2)} sigs=${r.report.uniqueSignatures}`
+      );
+    } else {
+      notes.push(
+        `stack-env: ship checks passed sigs=${r.report.uniqueSignatures}`
+      );
+    }
+  }
+
+  // Light scrub only (do NOT re-pad all projects from the same JD bag)
   p.projects = (p.projects || []).map((proj) => {
     const pair = normalizeStackEnvPair(
       proj.techStack || "",
       proj.environment || "",
-      opts.jd,
+      undefined, // no JD pad here — engine already assigned
       { minStack: 2, minEnv: 2 }
     );
     return {

@@ -12,10 +12,16 @@ export default async function BulletBankPage() {
     <div className="space-y-6 p-2 lg:p-4">
       <PageHeader
         title="Skill-neutral bullet bank"
-        description="Repository of consulting-delivery bullets used when packs are thin. Injected into the generation prompt and used by ship-shape padding — never company+(N/M) filler."
+        description="Repository of consulting-delivery bullets used when packs are thin. Injected into the generation prompt and used by ship-shape padding — never company+(N/M) filler. For Tech Stack / Environment catalogs, use Tool bank."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Badge status="ACTIVE">{data.bullets.length} bullets</Badge>
+            <Link
+              href="/admin/tool-bank"
+              className="text-sm font-medium text-sky-700 underline underline-offset-2"
+            >
+              Tool bank →
+            </Link>
             <Link
               href="/admin/prompt"
               className="text-sm font-medium text-sky-700 underline underline-offset-2"

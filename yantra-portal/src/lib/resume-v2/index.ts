@@ -101,3 +101,19 @@ export {
   BIO_OPENER_RE,
   assertNoObjectObject,
 } from "./pack-quality-harden";
+export {
+  runStackEnvEngine,
+  enforceStackEnvShipShape,
+  getStackEnvBank,
+  setStackEnvBank,
+  parseStackEnvBank,
+  serializeStackEnvBankSectioned,
+  serializeStackEnvBankJson,
+  DEFAULT_STACK_ENV_BANK,
+  defaultBankStats,
+  bankStats,
+  STACK_ENV_BANK_SETTING_KEY,
+  type StackEnvBankDoc,
+  type StackEnvReport,
+  type StackEnvEngineResult,
+} from "./stack-env";

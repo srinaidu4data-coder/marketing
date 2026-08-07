@@ -56,6 +56,7 @@ const adminGroups: NavGroup[] = [
       { href: "/admin/prompt", label: "Prompt", icon: MessageSquareText },
       { href: "/admin/prompt-lab", label: "Prompt Lab", icon: MessageSquareText },
       { href: "/admin/bullet-bank", label: "Bullet bank", icon: MessageSquareText },
+      { href: "/admin/tool-bank", label: "Tool bank", icon: MessageSquareText },
       { href: "/admin/email-template", label: "Email", icon: Mail },
       { href: "/admin/email-activity", label: "Email log", icon: ListOrdered },
     ],
