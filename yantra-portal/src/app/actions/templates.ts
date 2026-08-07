@@ -12,11 +12,26 @@ export async function savePromptVersion(formData: FormData) {
   const admin = await requireAdmin();
   const content = String(formData.get("content") || "");
   if (!content.trim()) return;
+  const promoteNow = formData.get("promote") === "1" || formData.get("makeActive") === "1";
+  if (promoteNow) {
+    await prisma.promptVersion.updateMany({
+      where: { status: "ACTIVE" },
+      data: { status: "ARCHIVED" },
+    });
+  }
   const v = await prisma.promptVersion.create({
-    data: { content, status: "DRAFT", tested: false },
+    data: {
+      content,
+      status: promoteNow ? "ACTIVE" : "DRAFT",
+      tested: false,
+    },
   });
-  await audit("PROMPT_SAVE", admin.id, { versionId: v.id });
+  await audit("PROMPT_SAVE", admin.id, {
+    versionId: v.id,
+    promoted: promoteNow,
+  });
   revalidatePath("/admin/prompt");
+  revalidatePath("/admin/prompt-lab");
 }
 
 export async function promotePrompt(versionId: string) {

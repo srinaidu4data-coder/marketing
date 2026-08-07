@@ -224,12 +224,9 @@ export async function generateResumeV2(opts: {
   dryPack?: ResumePackV2;
 }): Promise<GenerateV2Result> {
   const enginesTried: GenerateV2Result["enginesTried"] = [];
-  // Always prefer a real Bible if caller passed an empty/tiny prompt
-  const { BIBLE_PROMPT } = await import("./bible-prompt");
-  const promptForRun =
-    (opts.prompt || "").trim().length >= 80
-      ? opts.prompt.trim()
-      : (BIBLE_PROMPT || opts.prompt || "").trim();
+  // Admin ACTIVE only — load from DB if caller did not pass a full prompt
+  const { resolveSystemPrompt } = await import("./bible-prompt");
+  const promptForRun = await resolveSystemPrompt(opts.prompt);
 
   // Soft precheck only — never hard-stop. Product rule: always finish with AI.
   const pre = precheckGenerate({

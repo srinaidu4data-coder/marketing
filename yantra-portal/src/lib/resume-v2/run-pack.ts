@@ -39,7 +39,7 @@ import {
   buildFitAccumulateFeedback,
   injectMissingPhrasesIntoPack,
 } from "./pack-accumulate";
-import { BIBLE_PROMPT, resolveSystemPrompt } from "./bible-prompt";
+import { resolveSystemPrompt } from "./bible-prompt";
 
 /** C3 hard budgets */
 export const RUN_PACK_BUDGETS = {
@@ -287,12 +287,12 @@ export async function runPack(opts: RunPackOptions): Promise<RunPackResult> {
   let llmWaves = 0;
   const notes: string[] = [];
 
-  // Pure SOT: code Bible unless caller embeds pure recency law (rejects legacy EVERY-PROJECT)
-  const systemPrompt = resolveSystemPrompt(opts.prompt);
+  // Sole SOT: Admin ACTIVE (caller should pass it; resolve loads DB if empty)
+  const systemPrompt = await resolveSystemPrompt(opts.prompt);
   notes.push(
-    systemPrompt === (BIBLE_PROMPT || "").trim()
-      ? "system=code_BIBLE"
-      : "system=caller_pure_law"
+    (opts.prompt || "").trim().length >= 80
+      ? "system=admin_ACTIVE_or_caller"
+      : "system=admin_ACTIVE_db"
   );
 
   const genBase = {

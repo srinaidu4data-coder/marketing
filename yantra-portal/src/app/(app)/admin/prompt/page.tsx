@@ -19,7 +19,7 @@ export default async function PromptPage() {
     <div className="space-y-8 p-2 lg:p-4">
       <PageHeader
         title="Prompt Template"
-        description="Prompt is the Bible — sole writing source for resume-v2. ACTIVE text is the system message; master + JD are the user message. Test chambers under Admin → Prompt Lab."
+        description="ACTIVE prompt is the ONLY system-message source for generation (no separate code Bible). Master + JD are the user message. Edit → Save → Promote to ACTIVE. Test under Admin → Prompt Lab."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {active ? <Badge status="ACTIVE">Active</Badge> : null}
@@ -57,8 +57,17 @@ export default async function PromptPage() {
           ))}
         </p>
         <form action={savePromptVersion} className="space-y-3">
-          <Textarea name="content" rows={16} defaultValue={active?.content || ""} required />
-          <Button type="submit">Save as New Version</Button>
+          <Textarea name="content" rows={20} defaultValue={active?.content || ""} required />
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit">Save as Draft</Button>
+            <Button type="submit" name="promote" value="1">
+              Save &amp; make ACTIVE
+            </Button>
+          </div>
+          <p className="text-xs text-slate-500">
+            Generation always uses the ACTIVE row only. After Save &amp; make ACTIVE,
+            Regenerate packs to apply.
+          </p>
         </form>
       </section>
 

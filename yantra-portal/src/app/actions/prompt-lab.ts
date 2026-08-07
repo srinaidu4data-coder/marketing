@@ -6,7 +6,7 @@ import { llmChatJson } from "@/lib/resume/llm-chat";
 import { getLlmConfigForProvider, type LlmProvider } from "@/lib/resume/llm-config";
 import { getActiveLlmConfig } from "@/lib/system-settings";
 import {
-  BIBLE_PROMPT,
+  getActiveSystemPrompt,
   PROMPT_LAB_SECTIONS,
   getSection,
   generateResumeV2WithRegen,
@@ -14,7 +14,6 @@ import {
   precheckGenerate,
   type PromptSectionId,
 } from "@/lib/resume-v2";
-import { DEFAULT_PROMPT } from "@/lib/constants";
 
 async function resolvePrompt(override?: string): Promise<{
   prompt: string;
@@ -23,18 +22,8 @@ async function resolvePrompt(override?: string): Promise<{
   if (override && override.trim().length > 100) {
     return { prompt: override.trim(), versionId: "override" };
   }
-  try {
-    const active = await prisma.promptVersion.findFirst({
-      where: { status: "ACTIVE" },
-      orderBy: { createdAt: "desc" },
-    });
-    if (active && (active.content || "").trim().length > 200) {
-      return { prompt: active.content, versionId: active.id };
-    }
-  } catch {
-    /* */
-  }
-  return { prompt: DEFAULT_PROMPT || BIBLE_PROMPT, versionId: "bible" };
+  const active = await getActiveSystemPrompt();
+  return { prompt: active.content, versionId: active.versionId };
 }
 
 export type PromptLabSectionResult = {
@@ -148,7 +137,8 @@ export async function runPromptLabSection(opts: {
       };
     }
 
-    const system = section.microPrompt || BIBLE_PROMPT;
+    const activeSys = await getActiveSystemPrompt();
+    const system = section.microPrompt || activeSys.content;
 
     const userParts = [
       `=== MASTER ===\n${opts.master.slice(0, 14000)}`,
@@ -254,5 +244,6 @@ export async function listPromptLabSections() {
 
 export async function getBiblePromptSample() {
   await requireAdmin();
-  return BIBLE_PROMPT;
+  const active = await getActiveSystemPrompt();
+  return active.content;
 }

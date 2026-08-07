@@ -211,7 +211,7 @@ Keys: header, professionalSummary, techSkills, education, certifications, projec
     blurb: "Entire mega-prompt — end-to-end pack generation.",
     color: "bg-gradient-to-r from-indigo-50 to-violet-50 border-indigo-400",
     expectHint: "Full ResumePackV2 JSON",
-    microPrompt: "", // filled from BIBLE_PROMPT at runtime
+    microPrompt: "", // filled from Admin ACTIVE prompt at runtime
   },
 ];
 

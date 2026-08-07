@@ -1,10 +1,11 @@
 export {
-  BIBLE_PROMPT,
   JSON_SHAPE_REMINDER,
   JD_REWRITE_MAX_INDEX,
-  isPureProductLawPrompt,
+  getActiveSystemPrompt,
   resolveSystemPrompt,
+  type ActiveSystemPrompt,
 } from "./bible-prompt";
+export { ADMIN_PROMPT_SEED } from "./admin-prompt-seed";
 export {
   BULLETS_PER_BLOCK,
   parseAndValidatePack,
@@ -79,4 +80,5 @@ export {
   scrubEnvironment,
   toolsFromJd,
   isToolNoun,
+  normalizeStackEnvPair,
 } from "./tools-nouns";

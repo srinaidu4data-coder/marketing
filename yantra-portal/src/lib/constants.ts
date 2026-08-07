@@ -1,13 +1,16 @@
 /**
  * Role Forge system constants.
- * DEFAULT_PROMPT = Prompt Bible (v3) — sole writing source for generation.
- * Locks: name · employers · project set · dates. Free craft elsewhere.
+ * Writing SOT = Admin ACTIVE PromptVersion (DB). See getActiveSystemPrompt().
+ * ADMIN_PROMPT_SEED is bootstrap only when no ACTIVE row exists.
  */
 
-import { BIBLE_PROMPT } from "./resume-v2/bible-prompt";
+import { ADMIN_PROMPT_SEED } from "./resume-v2/admin-prompt-seed";
 
-/** Mega Bible — high-freedom craft; identity locks only. */
-export const DEFAULT_PROMPT = BIBLE_PROMPT;
+/**
+ * Sync fallback for legacy callers that cannot await DB.
+ * Prefer getActiveSystemPrompt() / resolveSystemPrompt() in generation paths.
+ */
+export const DEFAULT_PROMPT = ADMIN_PROMPT_SEED;
 
 /**
  * Default vendor subject — third person (employee writes about the candidate).

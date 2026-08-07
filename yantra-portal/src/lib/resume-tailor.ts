@@ -19,9 +19,7 @@ import {
 import {
   generateResumeV2WithRegen,
   forceGenerateUnrestricted,
-  BIBLE_PROMPT,
-  resolveSystemPrompt,
-  isPureProductLawPrompt,
+  getActiveSystemPrompt,
   runPack,
   type RunPackChainBudget,
   type GenerationMeta,
@@ -283,26 +281,21 @@ export async function tailorResume(opts: {
    */
   fastMode?: boolean;
 }): Promise<TailorResumeResult> {
+  // Sole writing SOT: Admin ACTIVE PromptVersion (no code Bible override)
   let promptId = "default";
-  // Pure SOT: code BIBLE_PROMPT always. ACTIVE may only replace if it is pure recency law
-  // (rejects legacy "EVERY PROJECT rewrite all" ACTIVE that reintroduces clashes).
-  let promptTemplate = resolveSystemPrompt(null);
+  let promptTemplate = "";
   try {
-    const active = await prisma.promptVersion.findFirst({
-      where: { status: "ACTIVE" },
-      orderBy: { createdAt: "desc" },
-    });
-    const activeBody = (active?.content || "").trim();
-    if (active) promptId = active.id;
-    if (active && isPureProductLawPrompt(activeBody)) {
-      promptTemplate = resolveSystemPrompt(activeBody);
-    } else if (active && activeBody.length > 400) {
-      console.warn(
-        "[tailorResume] ACTIVE is legacy/clash or incomplete — using code BIBLE_PROMPT (pure recency law)"
+    const active = await getActiveSystemPrompt();
+    promptTemplate = active.content;
+    promptId = active.versionId;
+    if (active.bootstrapped) {
+      console.info(
+        "[tailorResume] bootstrapped ACTIVE prompt from ADMIN_PROMPT_SEED (was empty)"
       );
     }
-  } catch {
-    promptTemplate = resolveSystemPrompt(null);
+  } catch (e) {
+    console.error("[tailorResume] failed to load ACTIVE prompt", e);
+    promptTemplate = (DEFAULT_PROMPT || "").trim();
   }
 
   // ── Prompt-only v2 path (default) ─────────────────────────────────
@@ -313,7 +306,9 @@ export async function tailorResume(opts: {
   const jdHydrated = normalizeJdText(opts.jd);
   const masterHydrated = normalizeMasterText(opts.master);
   if (!promptTemplate || promptTemplate.trim().length < 80) {
-    promptTemplate = BIBLE_PROMPT || DEFAULT_PROMPT;
+    throw new Error(
+      "NO_ACTIVE_PROMPT: set Admin → Prompt, Save, and Promote to ACTIVE."
+    );
   }
 
   // Product law: NEVER surface generation errors to the user.
@@ -460,8 +455,8 @@ export async function tailorResume(opts: {
             (opts.chainBudget.packsStarted || 0) + 1;
         }
         const packResult = await runPack({
-          // Pure SOT only (resolveSystemPrompt rejects legacy ACTIVE clash)
-          prompt: resolveSystemPrompt(promptTemplate),
+          // Admin ACTIVE only (already loaded)
+          prompt: promptTemplate,
           master: masterHydrated || opts.master || "Professional experience.",
           jd:
             jdHydrated ||
