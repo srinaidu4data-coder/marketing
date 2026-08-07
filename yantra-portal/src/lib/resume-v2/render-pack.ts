@@ -3,21 +3,78 @@
  * Labels are standard; visual templates may rename later.
  */
 
-import type { ResumePackV2 } from "./pack-schema";
+import {
+  coerceSkillToken,
+  OBJECT_OBJECT_RE,
+  skillsTextIsUnusable,
+  type ResumePackV2,
+} from "./pack-schema";
 import type { StructuredResume, ResumeSection } from "@/lib/resume/templates";
 
-function skillsToLines(skills: ResumePackV2["techSkills"]): string {
-  if (typeof skills === "string") return skills.trim();
-  if (Array.isArray(skills)) return skills.join(", ");
-  const lines: string[] = [];
-  for (const [k, v] of Object.entries(skills || {})) {
-    const vals = Array.isArray(v) ? v.join(", ") : String(v || "");
-    if (vals.trim()) lines.push(`${k}: ${vals}`);
-  }
-  return lines.join("\n");
+export type SkillsRenderFallback = {
+  /** Pre-scrubbed tool noun list (from JD/master) used when pack skills are unusable */
+  toolNouns?: string;
+};
+
+function cleanSkillPiece(x: unknown): string {
+  const t = coerceSkillToken(x);
+  if (!t || OBJECT_OBJECT_RE.test(t)) return "";
+  return t.replace(OBJECT_OBJECT_RE, "").trim();
 }
 
-export function renderPackText(pack: ResumePackV2): string {
+/**
+ * Harden skills → display lines.
+ * Never String(object). Object items use name/skill/label via coerceSkillToken.
+ */
+export function skillsToLines(
+  skills: ResumePackV2["techSkills"],
+  fallback?: SkillsRenderFallback
+): string {
+  let out = "";
+  if (typeof skills === "string") {
+    out = cleanSkillPiece(skills);
+  } else if (Array.isArray(skills)) {
+    out = skills.map(cleanSkillPiece).filter(Boolean).join(", ");
+  } else if (skills && typeof skills === "object") {
+    const lines: string[] = [];
+    for (const [k, v] of Object.entries(skills)) {
+      const key = cleanSkillPiece(k) || "Skills";
+      let vals = "";
+      if (Array.isArray(v)) {
+        vals = v.map(cleanSkillPiece).filter(Boolean).join(", ");
+      } else {
+        vals = cleanSkillPiece(v);
+      }
+      if (vals) lines.push(`${key}: ${vals}`);
+    }
+    out = lines.join("\n");
+  }
+
+  if (skillsTextIsUnusable(out)) {
+    const fb = (fallback?.toolNouns || "").trim();
+    if (fb && !skillsTextIsUnusable(fb)) return fb;
+    return "";
+  }
+  return out;
+}
+
+export function skillsLines(
+  skills: ResumePackV2["techSkills"],
+  fallback?: SkillsRenderFallback
+): string[] {
+  const text = skillsToLines(skills, fallback);
+  if (!text) return [];
+  // Keep group lines separate when multi-line; single line otherwise
+  if (text.includes("\n")) {
+    return text.split("\n").map((l) => l.trim()).filter(Boolean);
+  }
+  return [text];
+}
+
+export function renderPackText(
+  pack: ResumePackV2,
+  fallback?: SkillsRenderFallback
+): string {
   const h = pack.header;
   const parts: string[] = [];
 
@@ -36,7 +93,7 @@ export function renderPackText(pack: ResumePackV2): string {
   parts.push("");
 
   parts.push("TECHNICAL SKILLS");
-  parts.push(skillsToLines(pack.techSkills));
+  parts.push(skillsToLines(pack.techSkills, fallback));
   parts.push("");
 
   parts.push("PROFESSIONAL EXPERIENCE");
@@ -78,18 +135,11 @@ export function renderPackText(pack: ResumePackV2): string {
   return parts.filter((l, i, a) => !(l === "" && a[i - 1] === "")).join("\n");
 }
 
-function skillsLines(skills: ResumePackV2["techSkills"]): string[] {
-  if (typeof skills === "string") return skills ? [skills] : [];
-  if (Array.isArray(skills)) return skills.length ? [skills.join(", ")] : [];
-  return Object.entries(skills || {}).map(
-    ([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`
-  );
-}
-
 /** Build StructuredResume for existing DOCX/PDF/layout pipeline */
 export function packToStructuredResume(
   pack: ResumePackV2,
-  layoutId = "ats_classic"
+  layoutId = "ats_classic",
+  fallback?: SkillsRenderFallback
 ): StructuredResume {
   const h = pack.header;
   const contactLine = [h.phone, h.email, h.location, h.linkedin]
@@ -105,7 +155,7 @@ export function packToStructuredResume(
     },
     {
       heading: "Technical Skills",
-      lines: skillsLines(pack.techSkills),
+      lines: skillsLines(pack.techSkills, fallback),
     },
   ];
 

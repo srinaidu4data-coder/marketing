@@ -54,9 +54,184 @@ export type PackValidationIssue = {
   detail: string;
 };
 
-function asStringArray(v: unknown): string[] {
+/** Detect String(object) garbage from bad LLM shapes. */
+export const OBJECT_OBJECT_RE = /\[object\s+Object\]/i;
+
+const SKILL_NAME_KEYS = [
+  "name",
+  "skill",
+  "label",
+  "title",
+  "value",
+  "tool",
+  "technology",
+  "tech",
+  "item",
+  "text",
+] as const;
+
+/**
+ * Coerce one skill token to a clean string.
+ * Never use String(obj) — that yields "[object Object]".
+ */
+export function coerceSkillToken(x: unknown, depth = 0): string {
+  if (x == null || depth > 4) return "";
+  if (typeof x === "string") {
+    const t = x.trim();
+    if (!t || OBJECT_OBJECT_RE.test(t)) return "";
+    return t;
+  }
+  if (typeof x === "number" || typeof x === "boolean") {
+    return String(x).trim();
+  }
+  if (Array.isArray(x)) {
+    return x
+      .map((item) => coerceSkillToken(item, depth + 1))
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (typeof x === "object") {
+    const o = x as Record<string, unknown>;
+    for (const key of SKILL_NAME_KEYS) {
+      if (key in o) {
+        const raw = o[key];
+        // Named skill fields: strings preferred; ignore nested junk
+        if (typeof raw === "string" || typeof raw === "number") {
+          const v = coerceSkillToken(raw, depth + 1);
+          if (v && !/^\d+$/.test(v)) return v;
+          if (v && typeof raw === "string") return v;
+        }
+      }
+    }
+    // First non-empty string field only (never invent from numbers/booleans)
+    for (const v of Object.values(o)) {
+      if (typeof v === "string") {
+        const t = v.trim();
+        if (t && !OBJECT_OBJECT_RE.test(t)) return t;
+      }
+    }
+  }
+  return "";
+}
+
+/** Map unknown array items to strings without String(object). */
+export function asStringArray(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
-  return v.map((x) => String(x ?? "").trim()).filter(Boolean);
+  return v
+    .map((x) => coerceSkillToken(x))
+    .map((s) => s.trim())
+    .filter((s) => s && !OBJECT_OBJECT_RE.test(s));
+}
+
+/**
+ * Normalize techSkills into string | string[] | Record<string, string[]>.
+ * Pulls name/skill/label from object items; never leaves [object Object].
+ */
+export function normalizeTechSkills(raw: unknown): {
+  techSkills: ResumePackV2["techSkills"];
+  issues: PackValidationIssue[];
+} {
+  const issues: PackValidationIssue[] = [];
+
+  const stripLeak = (s: string): string =>
+    s
+      .replace(OBJECT_OBJECT_RE, "")
+      .replace(/\s{2,}/g, " ")
+      .replace(/^[,;\s]+|[,;\s]+$/g, "")
+      .trim();
+
+  if (typeof raw === "string") {
+    let t = raw.trim();
+    if (OBJECT_OBJECT_RE.test(t)) {
+      issues.push({
+        code: "skills_object_leak",
+        detail: 'techSkills string contained "[object Object]"',
+      });
+      t = stripLeak(t);
+    }
+    if (!t) {
+      issues.push({ code: "skills", detail: "Missing techSkills" });
+    }
+    return { techSkills: t, issues };
+  }
+
+  if (Array.isArray(raw)) {
+    const hadObjects = raw.some((x) => x != null && typeof x === "object");
+    const arr = asStringArray(raw).map(stripLeak).filter(Boolean);
+    if (hadObjects && arr.length === 0 && raw.length > 0) {
+      issues.push({
+        code: "skills_object_leak",
+        detail:
+          "techSkills was an array of objects with no name/skill/label — coerced empty",
+      });
+    }
+    if (arr.some((s) => OBJECT_OBJECT_RE.test(s))) {
+      issues.push({
+        code: "skills_object_leak",
+        detail: 'techSkills array leaked "[object Object]"',
+      });
+    }
+    const clean = arr.filter((s) => s && !OBJECT_OBJECT_RE.test(s));
+    if (!clean.length) {
+      issues.push({ code: "skills", detail: "Missing techSkills" });
+    }
+    return { techSkills: clean, issues };
+  }
+
+  if (raw && typeof raw === "object") {
+    const out: Record<string, string[]> = {};
+    let anyLeak = false;
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      const key = stripLeak(String(k || "").trim()) || "Skills";
+      let vals: string[] = [];
+      if (Array.isArray(v)) {
+        vals = asStringArray(v);
+      } else if (typeof v === "string") {
+        vals = v
+          .split(/[,;|]/)
+          .map((s) => stripLeak(s))
+          .filter(Boolean);
+      } else {
+        const t = coerceSkillToken(v);
+        vals = t ? [t] : [];
+      }
+      vals = vals.map(stripLeak).filter((s) => s && !OBJECT_OBJECT_RE.test(s));
+      if (
+        Array.isArray(v) &&
+        v.some((x) => x != null && typeof x === "object") &&
+        vals.length === 0 &&
+        v.length > 0
+      ) {
+        anyLeak = true;
+      }
+      if (vals.length) out[key] = vals;
+    }
+    if (anyLeak) {
+      issues.push({
+        code: "skills_object_leak",
+        detail:
+          "techSkills groups had object items without name/skill/label",
+      });
+    }
+    if (!Object.keys(out).length) {
+      issues.push({ code: "skills", detail: "Missing techSkills" });
+      return { techSkills: "", issues };
+    }
+    return { techSkills: out, issues };
+  }
+
+  issues.push({ code: "skills", detail: "Missing techSkills" });
+  return { techSkills: "", issues };
+}
+
+/** True when rendered skills text is unusable garbage. */
+export function skillsTextIsUnusable(text: string): boolean {
+  const t = (text || "").trim();
+  if (!t) return true;
+  if (OBJECT_OBJECT_RE.test(t)) return true;
+  // only punctuation / commas
+  if (!/[A-Za-z0-9]/.test(t)) return true;
+  return false;
 }
 
 function normalizeBullets(
@@ -124,16 +299,15 @@ export function parseAndValidatePack(raw: unknown): {
   );
   issues.push(...sum.issues);
 
-  let techSkills: ResumePackV2["techSkills"] = "";
-  if (typeof o.techSkills === "string") techSkills = o.techSkills;
-  else if (Array.isArray(o.techSkills)) techSkills = asStringArray(o.techSkills);
-  else if (o.techSkills && typeof o.techSkills === "object") {
-    techSkills = o.techSkills as Record<string, string[]>;
-  } else if (Array.isArray(o.skills)) {
-    techSkills = asStringArray(o.skills);
-  } else {
-    issues.push({ code: "skills", detail: "Missing techSkills" });
-  }
+  const skillsRaw =
+    o.techSkills !== undefined && o.techSkills !== null
+      ? o.techSkills
+      : o.skills !== undefined && o.skills !== null
+        ? o.skills
+        : undefined;
+  const skillsNorm = normalizeTechSkills(skillsRaw);
+  issues.push(...skillsNorm.issues);
+  const techSkills = skillsNorm.techSkills;
 
   const educationRaw = Array.isArray(o.education) ? o.education : [];
   const education = educationRaw.map((e) => {
@@ -188,7 +362,7 @@ export function parseAndValidatePack(raw: unknown): {
   };
 
   const hardFail = issues.some((x) =>
-    ["header", "projects", "employer"].includes(x.code)
+    ["header", "projects", "employer", "skills_object_leak"].includes(x.code)
   );
 
   return { pack, issues, ok: !hardFail && !!header.name && projects.length > 0 };
