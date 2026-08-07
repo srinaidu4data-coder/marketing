@@ -55,6 +55,7 @@ export function mergeBankDocs(
         aliases: e.aliases?.map((x) => x.trim()).filter(Boolean),
         eraMin: e.eraMin,
         eraMax: e.eraMax,
+        timeless: e.timeless === true ? true : undefined,
       });
     }
   };
@@ -74,14 +75,154 @@ export function mergeBankDocs(
 }
 
 /**
- * Parse admin payload:
- * - Full JSON StackEnvBankDoc
- * - Or sectioned text:
- *   [tools]
+ * Parse one bank line with optional year metadata.
+ *
+ * Formats (pipe-separated, order flexible after term):
  *   SQL
- *   ...
- *   [platforms]
- *   ...
+ *   SQL | timeless
+ *   FastAPI | 2018+
+ *   FastAPI | 2018-
+ *   ECC | 2004-2027
+ *   S/4HANA | 2015+ | aliases: S4HANA, S4
+ *   Kubernetes | years:2015- | aliases: K8s
+ *   Agile | @timeless
+ *   Snowflake | @2015+
+ */
+export function parseCatalogLine(
+  line: string,
+  kind: BankKind
+): CatalogEntry | null {
+  let t = (line || "").replace(/^[-•*\d.)\s]+/, "").trim();
+  if (!t || t.length < 2) return null;
+
+  // Strip trailing comments
+  t = t.replace(/\s+#.*$/, "").trim();
+
+  let eraMin: number | undefined;
+  let eraMax: number | undefined;
+  let timeless = false;
+  let aliases: string[] | undefined;
+
+  // Support "Term @2015+" or "Term @timeless" suffix
+  const atM = t.match(/^(.*?)\s+@(timeless|any|(\d{4})\s*[-–+]?\s*(\d{4})?)\s*$/i);
+  if (atM) {
+    t = atM[1]!.trim();
+    const tag = atM[2]!.toLowerCase();
+    if (tag === "timeless" || tag === "any") {
+      timeless = true;
+    } else if (atM[3]) {
+      eraMin = Number(atM[3]);
+      if (atM[4]) eraMax = Number(atM[4]);
+    }
+  }
+
+  const parts = t.split("|").map((p) => p.trim()).filter(Boolean);
+  if (!parts.length) return null;
+  const term = parts[0]!;
+  if (term.length < 2 || term.length > 80) return null;
+
+  for (let i = 1; i < parts.length; i++) {
+    const p = parts[i]!;
+    const pl = p.toLowerCase();
+
+    if (
+      pl === "timeless" ||
+      pl === "any" ||
+      pl === "era:any" ||
+      pl === "years:any" ||
+      pl === "years:timeless"
+    ) {
+      timeless = true;
+      continue;
+    }
+
+    // years:2015-2020 or years:2015+ or 2015-2020 or 2015+
+    const yLabel = p.replace(/^(years?|era)\s*:\s*/i, "").trim();
+    const yRange = yLabel.match(
+      /^(\d{4})\s*[-–]\s*(\d{4})$/
+    );
+    const yFrom = yLabel.match(/^(\d{4})\s*[-–+]\s*$/);
+    const yPlus = yLabel.match(/^(\d{4})\s*\+\s*$/);
+    const yOnly = yLabel.match(/^(\d{4})$/);
+    if (yRange) {
+      eraMin = Number(yRange[1]);
+      eraMax = Number(yRange[2]);
+      continue;
+    }
+    if (yFrom || yPlus) {
+      eraMin = Number((yFrom || yPlus)![1]);
+      continue;
+    }
+    if (yOnly && /^(years?|era)\s*:/i.test(p)) {
+      eraMin = Number(yOnly[1]);
+      continue;
+    }
+    // bare 2015+ in a pipe segment
+    if (/^\d{4}\s*[-–+]\s*$/.test(p) || /^\d{4}\s*\+\s*$/.test(p)) {
+      eraMin = Number(p.match(/(\d{4})/)![1]);
+      continue;
+    }
+    if (/^\d{4}\s*[-–]\s*\d{4}$/.test(p)) {
+      const m = p.match(/(\d{4})\s*[-–]\s*(\d{4})/)!;
+      eraMin = Number(m[1]);
+      eraMax = Number(m[2]);
+      continue;
+    }
+
+    // aliases: a, b  OR  just comma list if looks like aliases
+    if (/^aliases?\s*:/i.test(p)) {
+      aliases = p
+        .replace(/^aliases?\s*:\s*/i, "")
+        .split(/[,;]/)
+        .map((a) => a.trim())
+        .filter((a) => a.length >= 1 && a.length <= 48);
+      continue;
+    }
+  }
+
+  // Sanity on years
+  if (eraMin != null && (eraMin < 1970 || eraMin > 2100)) eraMin = undefined;
+  if (eraMax != null && (eraMax < 1970 || eraMax > 2100)) eraMax = undefined;
+  if (eraMin != null && eraMax != null && eraMax < eraMin) {
+    const tmp = eraMin;
+    eraMin = eraMax;
+    eraMax = tmp;
+  }
+
+  return {
+    term,
+    kind,
+    ...(aliases?.length ? { aliases } : {}),
+    ...(eraMin != null ? { eraMin } : {}),
+    ...(eraMax != null ? { eraMax } : {}),
+    ...(timeless ? { timeless: true } : {}),
+  };
+}
+
+/** Serialize one catalog entry to sectioned line with years. */
+export function formatCatalogLine(e: CatalogEntry): string {
+  const bits: string[] = [e.term];
+  if (e.timeless) {
+    bits.push("timeless");
+  } else if (e.eraMin != null || e.eraMax != null) {
+    if (e.eraMin != null && e.eraMax != null) {
+      bits.push(`${e.eraMin}-${e.eraMax}`);
+    } else if (e.eraMin != null) {
+      bits.push(`${e.eraMin}+`);
+    } else if (e.eraMax != null) {
+      bits.push(`-${e.eraMax}`);
+    }
+  }
+  if (e.aliases?.length) {
+    bits.push(`aliases: ${e.aliases.join(", ")}`);
+  }
+  return bits.join(" | ");
+}
+
+/**
+ * Parse admin payload:
+ * - Full JSON StackEnvBankDoc (catalog entries may include eraMin/eraMax/timeless)
+ * - Or sectioned text with optional years per line
  */
 export function parseStackEnvBank(
   raw: string | null | undefined
@@ -98,16 +239,32 @@ export function parseStackEnvBank(
     };
     if (j && (Array.isArray(j.catalog) || j.tools || j.platforms)) {
       let catalog: CatalogEntry[] = Array.isArray(j.catalog)
-        ? [...j.catalog]
+        ? j.catalog.map((e) => ({
+            term: String(e.term || "").trim(),
+            kind: e.kind,
+            aliases: e.aliases,
+            eraMin:
+              typeof e.eraMin === "number"
+                ? e.eraMin
+                : e.eraMin != null
+                  ? Number(e.eraMin)
+                  : undefined,
+            eraMax:
+              typeof e.eraMax === "number"
+                ? e.eraMax
+                : e.eraMax != null
+                  ? Number(e.eraMax)
+                  : undefined,
+            timeless: e.timeless === true ? true : undefined,
+          }))
         : [];
       const fromLines = (
         lines: string[] | undefined,
         kind: BankKind
       ): CatalogEntry[] =>
         (lines || [])
-          .map((t) => String(t || "").trim())
-          .filter((t) => t.length >= 2 && t.length <= 64)
-          .map((term) => ({ term, kind }));
+          .map((t) => parseCatalogLine(String(t || ""), kind))
+          .filter((e): e is CatalogEntry => !!e);
 
       if (!catalog.length) {
         catalog = [
@@ -118,6 +275,7 @@ export function parseStackEnvBank(
           ...fromLines(j.regulations, "regulation"),
         ];
       }
+      catalog = catalog.filter((e) => e.term && KINDS.includes(e.kind));
       if (catalog.length >= 20) {
         return mergeBankDocs(DEFAULT_STACK_ENV_BANK, {
           version: 1,
@@ -131,7 +289,7 @@ export function parseStackEnvBank(
   }
 
   // Sectioned plain text
-  const sections: Record<string, string[]> = {
+  const sections: Record<string, CatalogEntry[]> = {
     tools: [],
     platforms: [],
     processes: [],
@@ -142,7 +300,9 @@ export function parseStackEnvBank(
   for (const line of raw.split(/\r?\n/)) {
     const t = line.trim();
     if (!t || t.startsWith("#") || t.startsWith("//")) continue;
-    const sec = t.match(/^\[(tools?|platforms?|processes?|compliance|regulations?)\]$/i);
+    const sec = t.match(
+      /^\[(tools?|platforms?|processes?|compliance|regulations?)\]$/i
+    );
     if (sec) {
       const name = sec[1]!.toLowerCase();
       if (name.startsWith("tool")) cur = "tools";
@@ -152,21 +312,27 @@ export function parseStackEnvBank(
       else cur = "regulations";
       continue;
     }
-    if (cur) sections[cur].push(t.replace(/^[-•*]\s*/, ""));
+    if (!cur) continue;
+    const kind: BankKind =
+      cur === "tools"
+        ? "tool"
+        : cur === "platforms"
+          ? "platform"
+          : cur === "processes"
+            ? "process"
+            : cur === "compliance"
+              ? "compliance"
+              : "regulation";
+    const entry = parseCatalogLine(t, kind);
+    if (entry) sections[cur].push(entry);
   }
 
   const catalog: CatalogEntry[] = [
-    ...sections.tools.map((term) => ({ term, kind: "tool" as const })),
-    ...sections.platforms.map((term) => ({ term, kind: "platform" as const })),
-    ...sections.processes.map((term) => ({ term, kind: "process" as const })),
-    ...sections.compliance.map((term) => ({
-      term,
-      kind: "compliance" as const,
-    })),
-    ...sections.regulations.map((term) => ({
-      term,
-      kind: "regulation" as const,
-    })),
+    ...sections.tools,
+    ...sections.platforms,
+    ...sections.processes,
+    ...sections.compliance,
+    ...sections.regulations,
   ];
 
   if (catalog.length >= 20) {
@@ -175,7 +341,7 @@ export function parseStackEnvBank(
   return { ...DEFAULT_STACK_ENV_BANK };
 }
 
-/** Human-editable sectioned export (easy bulk edit). */
+/** Human-editable sectioned export with year metadata. */
 export function serializeStackEnvBankSectioned(doc: StackEnvBankDoc): string {
   const by: Record<BankKind, string[]> = {
     tool: [],
@@ -185,27 +351,44 @@ export function serializeStackEnvBankSectioned(doc: StackEnvBankDoc): string {
     regulation: [],
   };
   for (const e of doc.catalog) {
-    by[e.kind].push(e.term);
+    by[e.kind].push(formatCatalogLine(e));
   }
+  // Sort: timeless first, then by eraMin, then name
+  const sortLines = (lines: string[]) =>
+    lines.sort((a, b) => {
+      const ta = a.includes("timeless") ? 0 : 1;
+      const tb = b.includes("timeless") ? 0 : 1;
+      if (ta !== tb) return ta - tb;
+      return a.localeCompare(b);
+    });
+
   const lines = [
     "# Stack / Environment tool bank",
     "# Each term in exactly one section — no cross-category overlap.",
-    "# Engine uses these to pad, classify, and diversify per project.",
+    "#",
+    "# YEAR FORMAT (optional after | ):",
+    "#   Term | timeless              → any era / any profile (MS Office, UAT, SQL)",
+    "#   Term | 2015+                 → available from 2015 onward",
+    "#   Term | 2004-2027             → available only in that window",
+    "#   Term | 2015+ | aliases: A, B",
+    "#   Term @2018+                  → short form",
+    "#   Term @timeless",
+    "# Engine refuses terms on projects that ended before eraMin.",
     "",
     "[tools]",
-    ...by.tool,
+    ...sortLines(by.tool),
     "",
     "[platforms]",
-    ...by.platform,
+    ...sortLines(by.platform),
     "",
     "[processes]",
-    ...by.process,
+    ...sortLines(by.process),
     "",
     "[compliance]",
-    ...by.compliance,
+    ...sortLines(by.compliance),
     "",
     "[regulations]",
-    ...by.regulation,
+    ...sortLines(by.regulation),
     "",
   ];
   return lines.join("\n");

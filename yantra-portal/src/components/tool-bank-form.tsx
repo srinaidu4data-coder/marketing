@@ -17,11 +17,17 @@ export function ToolBankForm({
     total: number;
     byKind: Record<string, number>;
     recipes: number;
+    withYears?: number;
+    timeless?: number;
+    openEnded?: number;
+    ranged?: number;
   };
   defaultStats: {
     total: number;
     byKind: Record<string, number>;
     recipes: number;
+    withYears?: number;
+    timeless?: number;
   };
 }) {
   const [raw, setRaw] = useState(initialSectioned);
@@ -32,10 +38,11 @@ export function ToolBankForm({
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 text-sm text-emerald-950">
-        <p className="font-semibold">Stack / Environment engine bank</p>
+        <p className="font-semibold">Stack / Environment tool bank (with years)</p>
         <p className="mt-1 text-[13px] leading-relaxed text-emerald-900/90">
-          Four <strong>disjoint</strong> catalogs power Tech Stack, Environment,
-          and Technical Skills after every LLM pass:
+          Catalogs power Tech Stack, Environment, and Technical Skills. Each term
+          can carry a <strong>year window</strong> so 1999 jobs never get FastAPI /
+          Kubernetes.
         </p>
         <ul className="mt-2 list-inside list-disc text-[13px] text-emerald-900/90">
           <li>
@@ -48,28 +55,66 @@ export function ToolBankForm({
             <strong>processes</strong> → delivery methods (Agile, UAT, cutover…)
           </li>
           <li>
-            <strong>compliance / regulations</strong> → control frameworks &amp;
-            legal regimes (SOX, GDPR, DSCSA…)
+            <strong>compliance / regulations</strong> → SOX, GDPR, DSCSA…
           </li>
         </ul>
-        <p className="mt-2 text-[13px] text-emerald-900/90">
-          The engine assigns <em>different</em> era-true sets per project (Jaccard
-          anti-clone). AI may invent anything; bank classifies, pads, and strips
-          overlap. No term may appear in two sections.
-        </p>
+
+        <div className="mt-3 rounded-lg border border-emerald-300/80 bg-white/70 p-3 font-mono text-[12px] leading-relaxed text-emerald-950">
+          <p className="font-sans text-[12px] font-semibold text-emerald-900">
+            Year syntax (one term per line)
+          </p>
+          <pre className="mt-1 whitespace-pre-wrap">{`SQL | timeless
+Excel | timeless
+FastAPI | 2018+
+Kubernetes | 2015+
+ECC | 2004-2027
+S/4HANA | 2015+ | aliases: S4HANA, S4
+Snowflake @2015+
+Agile @timeless`}</pre>
+          <p className="mt-2 font-sans text-[12px] text-emerald-800">
+            <code className="rounded bg-emerald-100 px-1">timeless</code> = any
+            era / any profile (BA, SAP, Oracle, Workday, Java, Data).{" "}
+            <code className="rounded bg-emerald-100 px-1">2015+</code> = only if
+            project end year ≥ 2015.{" "}
+            <code className="rounded bg-emerald-100 px-1">2004-2027</code> = only
+            inside that window.
+          </p>
+        </div>
+
         <p className="mt-2 text-[12px] text-emerald-800">
           Loaded: <strong>{stats.total}</strong> terms (
           {Object.entries(stats.byKind)
             .map(([k, v]) => `${k}:${v}`)
             .join(" · ")}
-          ) · Recipes: <strong>{stats.recipes}</strong> · Defaults:{" "}
-          <strong>{defaultStats.total}</strong> terms / {defaultStats.recipes}{" "}
-          recipes
+          )
+          {typeof stats.timeless === "number" ? (
+            <>
+              {" "}
+              · Timeless: <strong>{stats.timeless}</strong>
+            </>
+          ) : null}
+          {typeof stats.withYears === "number" ? (
+            <>
+              {" "}
+              · With years: <strong>{stats.withYears}</strong>
+              {typeof stats.openEnded === "number"
+                ? ` (${stats.openEnded} open-ended, ${stats.ranged ?? 0} ranged)`
+                : ""}
+            </>
+          ) : null}
+          {" "}
+          · Recipes: <strong>{stats.recipes}</strong> · Defaults:{" "}
+          <strong>{defaultStats.total}</strong>
+          {typeof defaultStats.withYears === "number"
+            ? ` (${defaultStats.withYears} dated, ${defaultStats.timeless ?? 0} timeless)`
+            : ""}
         </p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="toolBank">Bank (sectioned text or full JSON)</Label>
+        <Label htmlFor="toolBank">
+          Bank (sectioned text with years, or full JSON catalog)
+        </Label>
         <Textarea
           id="toolBank"
           name="toolBank"
@@ -108,7 +153,9 @@ export function ToolBankForm({
                 return;
               }
               setMsg(
-                `Saved ${r.stats.total} terms · ${Object.entries(r.stats.byKind)
+                `Saved ${r.stats.total} terms · timeless ${r.stats.timeless ?? 0} · with years ${r.stats.withYears ?? 0} · ${Object.entries(
+                  r.stats.byKind
+                )
                   .map(([k, v]) => `${k}:${v}`)
                   .join(", ")}`
               );
@@ -130,8 +177,9 @@ export function ToolBankForm({
                 setErr(r.error);
                 return;
               }
-              setMsg(`Reset to defaults (${r.stats.total} terms)`);
-              // Reload page data via full navigation
+              setMsg(
+                `Reset to defaults (${r.stats.total} terms, ${r.stats.withYears ?? 0} with years)`
+              );
               window.location.reload();
             });
           }}

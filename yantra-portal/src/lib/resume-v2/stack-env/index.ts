@@ -18,6 +18,8 @@ export {
 export {
   STACK_ENV_BANK_SETTING_KEY,
   parseStackEnvBank,
+  parseCatalogLine,
+  formatCatalogLine,
   serializeStackEnvBankSectioned,
   serializeStackEnvBankJson,
   getStackEnvBank,

@@ -12,7 +12,7 @@ export default async function ToolBankPage() {
     <div className="space-y-6 p-2 lg:p-4">
       <PageHeader
         title="Tool bank"
-        description="System-agnostic Tools, Platforms, Processes, Compliance, and Regulations. Powers the StackEnv engine so Tech Stack and Environment never clone across projects."
+        description="Tools, Platforms, Processes, Compliance, and Regulations — each with optional year ranges (e.g. FastAPI | 2018+, SQL | timeless). Powers era-honest Tech Stack / Environment / Technical Skills."
         actions={
           <div className="flex flex-wrap gap-3 text-sm">
             <Link

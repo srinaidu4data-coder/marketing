@@ -1738,12 +1738,30 @@ export const DEFAULT_STACK_ENV_BANK: StackEnvBankDoc = {
 /** Counts for admin UI */
 export function bankStats(doc: StackEnvBankDoc = DEFAULT_STACK_ENV_BANK) {
   const byKind: Record<string, number> = {};
+  let withYears = 0;
+  let timeless = 0;
+  let openEnded = 0; // eraMin only
+  let ranged = 0; // min+max
   for (const e of doc.catalog) {
     byKind[e.kind] = (byKind[e.kind] || 0) + 1;
+    if (e.timeless) timeless++;
+    if (e.eraMin != null || e.eraMax != null) {
+      withYears++;
+      if (e.eraMin != null && e.eraMax != null) ranged++;
+      else if (e.eraMin != null) openEnded++;
+    }
   }
   return {
     total: doc.catalog.length,
     byKind,
     recipes: doc.recipes.length,
+    /** Terms with eraMin and/or eraMax set */
+    withYears,
+    /** Explicit timeless (any era / skill-agnostic) */
+    timeless,
+    /** eraMin only (e.g. 2015+) */
+    openEnded,
+    /** eraMin + eraMax window */
+    ranged,
   };
 }
