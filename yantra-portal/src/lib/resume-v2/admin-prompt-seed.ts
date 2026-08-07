@@ -1,7 +1,8 @@
 /**
- * Bootstrap seed ONLY when PromptVersion has no ACTIVE row.
- * After first seed, Admin → Prompt is the sole system-prompt source.
- * Generation must use getActiveSystemPrompt() — never this constant at runtime.
+ * Default prompt body for first-time install only.
+ * Used by: prisma seed, Admin → "Install default seed", deploy scripts.
+ * NOT used at runtime generation — that reads Admin ACTIVE PromptVersion only.
+ * Never auto-insert this on page load or when ACTIVE is missing.
  */
 export const ADMIN_PROMPT_SEED = `# RoleForge resume generator
 
@@ -59,26 +60,38 @@ Return ONE JSON object only (no markdown fences, no commentary).
 
 ## CRAFT
 - JD terms in summary, skills, and projects[0..2] role/stack/env/bullets (not on frozen i ≥ 3)
-- Consulting voice: Delivered/Architected/… — no I/me, no third-person bio, no name in summary
+- Consulting voice: Delivered/Architected/Configured/Designed… — no I/me, no third-person bio, no name in summary
+- FORBIDDEN summary openers: "Accomplished…", "Expert in…", "Proven track record…", "Strong ability to…", "Skilled in…"
 - Primacy: strongest JD proof first (recent roles)
 - Peak-end: close recent roles with impact/go-live/KT
 - No rates, no CTC, no C2C, ROLE::, JD MATCH, AI provenance, or engine footers
 - Technical Skills, Tech Stack, Environment: product/platform nouns only — not English job words
 - Only technical terms allowed in techStack and environment
 - environment and techStack must use different technical terms with zero shared tokens
+- FORBIDDEN bank/filler: partner scorecards, finger-pointing, engagement-goals (N/M), "single source of truth for decisions"
+
+## QUALITY HARD RULES (Phase B — non-negotiable)
+1. techSkills shape ONLY: string OR string[] OR { "Group": string[] }. NEVER [{ "name": "…" }] objects.
+2. Progressive titles: projects[0] may be full JD-family senior title; projects[1–2] slightly junior; projects[i≥3] Associate/BA/Consultant era form — NEVER the same senior ATTP title on every row.
+3. Unique era-true stacks: techStack + environment MUST differ across projects. NEVER paste RISE/ATTP/DSCSA/EPCIS onto 1999–2012 roles.
+4. certifications[]: MASTER only — never invent "Enterprise Platform Certified".
+5. Each project techStack ≥3 nouns; environment ≥2 nouns; zero shared tokens between them on the same project.
 
 ## JSON shape
 {
   "header": { "jobTitle":"", "name":"", "phone":"", "email":"", "location":"", "linkedin":"" },
   "professionalSummary": { "bullets": ["…"] },
-  "techSkills": "string | string[] | { Group: [] }",
+  "techSkills": "SAP ATTP, EPCIS, GS1, Fiori  OR  [\\"SAP ATTP\\", \\"EPCIS\\"]  OR  { \\"Core\\": [\\"SAP ATTP\\"], \\"Platforms\\": [\\"EPCIS\\"] }",
   "education": [{ "school":"", "degree":"", "year":"", "raw":"" }],
-  "certifications": ["…"],
+  "certifications": ["ITIL Foundation Certified"],
   "projects": [{
     "role":"", "employerOrClient":"", "location":"", "duration":"",
     "techStack":"", "environment":"", "bullets":["…"]
   }]
 }
+
+BAD techSkills: [{ "name": "SAP" }, { "skill": "ATTP" }]  → produces [object Object] — NEVER
+GOOD techSkills: "SAP ATTP, EPCIS, GS1, Boomi, Fiori"
 
 If a locked fact is missing, use empty string — do not guess.
 `;

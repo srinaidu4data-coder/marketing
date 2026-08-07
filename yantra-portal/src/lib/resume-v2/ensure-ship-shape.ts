@@ -5,8 +5,12 @@
  * Never company+(N/M) "engagement goals" filler.
  */
 
-import type { ResumePackV2 } from "./pack-schema";
-import { renderPackText } from "./render-pack";
+import {
+  normalizeTechSkills,
+  skillsTextIsUnusable,
+  type ResumePackV2,
+} from "./pack-schema";
+import { renderPackText, skillsToLines } from "./render-pack";
 import {
   MIN_BULLETS_PER_PROJECT,
   TARGET_BULLETS_PER_PROJECT,
@@ -25,11 +29,15 @@ import {
   toolsFromJd,
   normalizeStackEnvPair,
 } from "./tools-nouns";
+import {
+  BANNED_BULLET_RE,
+  hardenPackQuality,
+} from "./pack-quality-harden";
 
 const EC = "Employer / Client:";
 
-export const FILLER_BULLET =
-  /aligned to engagement goals\s*\(\d+\s*\/\s*\d+\)|engagement outcomes aligned to role expectations\s*\(\d+\s*\/\s*\d+\)|Supported .+ outcomes with quality delivery\s*\(\d+\s*\/\s*\d+\)|measurable outcomes for .+\(\d+\s*\/\s*\d+\)|Delivered measurable outcomes for/i;
+/** @deprecated use BANNED_BULLET_RE — kept for pack-compliance imports */
+export const FILLER_BULLET = BANNED_BULLET_RE;
 
 function padBulletsFromBank(
   bullets: string[],
@@ -104,6 +112,19 @@ export function ensurePackShipShape(
   bulletBank?: string[],
   jd?: string
 ): ResumePackV2 {
+  // Phase A harden first (skills objects, certs, clone stacks, progressive roles)
+  const hardened = hardenPackQuality(pack, {
+    masterText,
+    jd,
+  });
+  pack = hardened.pack;
+  if (hardened.notes.length) {
+    pack.meta = {
+      ...(pack.meta || {}),
+      notes: [...(pack.meta?.notes || []), ...hardened.notes.map((n) => `harden: ${n}`)],
+    };
+  }
+
   stripFillerBullets(pack);
   const bank =
     bulletBank && bulletBank.length >= 10
@@ -178,10 +199,56 @@ export function ensurePackShipShape(
     });
   }
 
-  // Skills section: noun tools only (never keep requirement prose)
-  if (typeof pack.techSkills === "string") {
-    pack.techSkills =
-      scrubToToolNouns(pack.techSkills, 20) || toolsFromJd(jd, 12) || "";
+  // Skills section: coerce object items, scrub prose, never ship [object Object]
+  {
+    const reNorm = normalizeTechSkills(pack.techSkills);
+    pack.techSkills = reNorm.techSkills;
+    const jdTools = toolsFromJd(jd, 12) || "";
+    const masterTools = toolsFromJd(masterText, 12) || "";
+    const fallbackTools = jdTools || masterTools || "";
+
+    if (typeof pack.techSkills === "string") {
+      pack.techSkills =
+        scrubToToolNouns(pack.techSkills, 20) || fallbackTools || "";
+    } else if (Array.isArray(pack.techSkills)) {
+      const joined = pack.techSkills.join(", ");
+      const scrubbed = scrubToToolNouns(joined, 20);
+      pack.techSkills = scrubbed
+        ? scrubbed.split(/[,;|]/).map((s) => s.trim()).filter(Boolean)
+        : fallbackTools
+          ? fallbackTools.split(/[,;|]/).map((s) => s.trim()).filter(Boolean)
+          : [];
+    } else if (pack.techSkills && typeof pack.techSkills === "object") {
+      const rendered = skillsToLines(pack.techSkills);
+      if (skillsTextIsUnusable(rendered)) {
+        pack.techSkills = fallbackTools || "";
+      } else {
+        // Re-scrub each group values to tool nouns
+        const next: Record<string, string[]> = {};
+        for (const [k, vals] of Object.entries(pack.techSkills)) {
+          const scrubbed = scrubToToolNouns(
+            (Array.isArray(vals) ? vals : []).join(", "),
+            12
+          );
+          if (scrubbed) {
+            next[k] = scrubbed
+              .split(/[,;|]/)
+              .map((s) => s.trim())
+              .filter(Boolean);
+          }
+        }
+        pack.techSkills = Object.keys(next).length
+          ? next
+          : fallbackTools || "";
+      }
+    }
+
+    const finalText = skillsToLines(pack.techSkills, {
+      toolNouns: fallbackTools,
+    });
+    if (skillsTextIsUnusable(finalText) && fallbackTools) {
+      pack.techSkills = fallbackTools;
+    }
   }
 
   const summary = padBulletsFromBank(
@@ -215,7 +282,10 @@ export function ensureShipCompatibleText(
   jd?: string
 ): { pack: ResumePackV2; text: string } {
   const shaped = ensurePackShipShape(pack, masterText, bulletBank, jd);
-  let text = renderPackText(shaped);
+  const skillFallback = {
+    toolNouns: toolsFromJd(jd, 12) || toolsFromJd(masterText, 12) || "",
+  };
+  let text = renderPackText(shaped, skillFallback);
   if (!/Employer\s*\/\s*Client\s*:/i.test(text)) {
     text +=
       `\n\nPROFESSIONAL EXPERIENCE\n` +
@@ -232,6 +302,24 @@ export function ensureShipCompatibleText(
     .split(/\r?\n/)
     .filter((line) => !FILLER_BULLET.test(line))
     .join("\n");
+  // Phase C: never ship [object Object]
+  if (/\[object\s+Object\]/i.test(text)) {
+    text = text.replace(/\[object\s+Object\]/gi, "").replace(/,\s*,/g, ",");
+    const fb = skillFallback.toolNouns || "";
+    if (/TECHNICAL SKILLS\s*\n\s*$/im.test(text) || /TECHNICAL SKILLS\s*\n\s*\n/i.test(text)) {
+      text = text.replace(
+        /TECHNICAL SKILLS\s*\n[^\n]*/i,
+        `TECHNICAL SKILLS\n${fb || "SAP, Integration, Testing"}`
+      );
+    }
+    shaped.meta = {
+      ...(shaped.meta || {}),
+      notes: [
+        ...(shaped.meta?.notes || []),
+        "harden: stripped residual [object Object] from text",
+      ],
+    };
+  }
   return { pack: shaped, text };
 }
 

@@ -1,7 +1,11 @@
 export {
   JSON_SHAPE_REMINDER,
   JD_REWRITE_MAX_INDEX,
+  MIN_ACTIVE_PROMPT_CHARS,
+  NO_ACTIVE_PROMPT_MESSAGE,
   getActiveSystemPrompt,
+  requireActiveSystemPrompt,
+  installDefaultActivePrompt,
   resolveSystemPrompt,
   type ActiveSystemPrompt,
 } from "./bible-prompt";
@@ -9,6 +13,10 @@ export { ADMIN_PROMPT_SEED } from "./admin-prompt-seed";
 export {
   BULLETS_PER_BLOCK,
   parseAndValidatePack,
+  normalizeTechSkills,
+  coerceSkillToken,
+  skillsTextIsUnusable,
+  OBJECT_OBJECT_RE,
   type ResumePackV2,
   type PackValidationIssue,
 } from "./pack-schema";
@@ -16,6 +24,8 @@ export {
   renderPackText,
   packToStructuredResume,
   packToLegacyStructured,
+  skillsToLines,
+  skillsLines,
 } from "./render-pack";
 export { precheckGenerate, type PrecheckResult } from "./precheck";
 export {
@@ -82,3 +92,12 @@ export {
   isToolNoun,
   normalizeStackEnvPair,
 } from "./tools-nouns";
+export {
+  hardenPackQuality,
+  groundCertsToMaster,
+  diversifyCloneStacks,
+  progressiveRoles,
+  BANNED_BULLET_RE,
+  BIO_OPENER_RE,
+  assertNoObjectObject,
+} from "./pack-quality-harden";

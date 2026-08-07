@@ -204,6 +204,51 @@ export function buildPackCompliance(opts: {
     detail: filler ? "banned filler still present" : "clean",
   });
 
+  // Phase C: never ship [object Object]
+  const objLeak = /\[object\s+Object\]/i.test(text);
+  items.push({
+    id: "no_object_object",
+    label: "No [object Object] skills leak",
+    ok: !objLeak,
+    detail: objLeak ? "skills rendered as [object Object]" : "clean",
+  });
+
+  // Clone stack/env across projects
+  if (projects.length >= 3) {
+    const stackKeys = projects.map((p) =>
+      `${(p.techStack || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}|${(p.environment || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}`
+    );
+    const uniq = new Set(stackKeys.filter(Boolean));
+    const cloned = uniq.size === 1 && stackKeys.filter(Boolean).length >= 3;
+    items.push({
+      id: "unique_stacks",
+      label: "Tech Stack/Environment differ across projects",
+      ok: !cloned,
+      detail: cloned
+        ? "identical stack/env on every project (clone stamp)"
+        : `${uniq.size} unique stack/env signatures`,
+    });
+  }
+
+  // Progressive roles (not all identical senior titles)
+  if (projects.length >= 3) {
+    const roleKeys = projects.map((p) =>
+      (p.role || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+    );
+    const allSame =
+      roleKeys[0] &&
+      roleKeys.every((r) => r === roleKeys[0]) &&
+      roleKeys[0].length > 10;
+    items.push({
+      id: "progressive_roles",
+      label: "Progressive role titles (not identical on every job)",
+      ok: !allSame,
+      detail: allSame
+        ? `same title on all ${projects.length} projects`
+        : "titles vary by era",
+    });
+  }
+
   // Summary present
   const summaryBullets = pack?.professionalSummary?.bullets?.length ?? 0;
   items.push({

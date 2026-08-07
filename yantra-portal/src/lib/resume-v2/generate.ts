@@ -12,12 +12,15 @@ import {
 import { getActiveLlmConfig } from "@/lib/system-settings";
 import {
   parseAndValidatePack,
+  normalizeTechSkills,
+  skillsTextIsUnusable,
   type ResumePackV2,
   type PackValidationIssue,
 } from "./pack-schema";
-import { renderPackText, packToStructuredResume } from "./render-pack";
+import { renderPackText, packToStructuredResume, skillsToLines } from "./render-pack";
 import { precheckGenerate, normalizeJdText } from "./precheck";
 import { JSON_SHAPE_REMINDER } from "./bible-prompt";
+import { toolsFromJd } from "./tools-nouns";
 
 function normalizeFallbackJd(jd: string): string {
   return normalizeJdText(jd) || "Professional role — tailor using master experience.";
@@ -108,14 +111,15 @@ function buildUserMessage(opts: {
 
   parts.push(
     "LOCKS: name + every employerOrClient + duration exact. Same project count/order. Certs/education from master only — never invent.",
+    "techSkills: string OR string[] OR {Group: string[]} ONLY — NEVER array of objects (causes [object Object]).",
     "JD REWRITE ONLY projects[0], projects[1], projects[2]: role + techStack + environment + ALL bullets in JD domain (era-honest).",
     "projects[i] with i≥3: FREEZE — keep neutral/master/era-true; do NOT invent role/stack/env/bullets; little JD matching is correct.",
-    "header.jobTitle + projects[0..2].role = JD role family. FORBIDDEN: FICO/RTR face on 0..2 when JD is another domain.",
-    "ERA: never put modern jargon on a project whose end year predates that tech (no Data Science in 1999).",
-    "techStack + environment: NOUN tools only, DIFFERENT lists (Jira/ServiceNow/S/4HANA/IBP/CPI — not sentences).",
-    "FORBIDDEN in stack/env: hands-on, expertise, candidate must, strong experience. Phrases → summary/bullets only.",
-    "ACCUMULATE: keep prior tool nouns + bullets; add missing tool nouns; Fit phrases into bullets only; do not JD-paint i≥3.",
-    "Budget: summary 6–8; EVERY project 8–12 bullets (min 8). No engagement-goals (N/M) filler. No rates/CTC. JSON only."
+    "PROGRESSIVE TITLES: do NOT use the same senior JD title on every project; early careers = Consultant/BA forms.",
+    "UNIQUE STACKS: techStack+environment must DIFFER per project — never paste identical RISE/ATTP/DSCSA lists on all eras.",
+    "ERA: never put modern jargon (ATTP/DSCSA/RISE/S/4) on a project whose end year predates that tech.",
+    "techStack + environment: NOUN tools only, DIFFERENT lists, zero shared tokens. Phrases → summary/bullets only.",
+    "Summary: imperative (Delivered/Configured…) — FORBIDDEN openers Accomplished/Expert in/Proven track/Strong ability.",
+    "FORBIDDEN filler: engagement-goals (N/M), partner scorecards, finger-pointing. No rates/CTC. JSON only."
   );
 
   if (opts.evidenceBlock && !isFitAccumulate) {
@@ -400,8 +404,23 @@ export async function generateResumeV2(opts: {
     notes: issues.map((i) => i.detail),
   };
 
-  const text = renderPackText(pack);
-  const structured = packToStructuredResume(pack);
+  // Harden techSkills before any render (never ship [object Object])
+  const skillFallback = {
+    toolNouns: toolsFromJd(jdForLlm, 12) || toolsFromJd(masterForLlm, 12) || "",
+  };
+  {
+    const re = normalizeTechSkills(pack.techSkills);
+    pack.techSkills = re.techSkills;
+    issues.push(...re.issues.filter((i) => i.code === "skills_object_leak"));
+    if (
+      skillsTextIsUnusable(skillsToLines(pack.techSkills)) &&
+      skillFallback.toolNouns
+    ) {
+      pack.techSkills = skillFallback.toolNouns;
+    }
+  }
+  const text = renderPackText(pack, skillFallback);
+  const structured = packToStructuredResume(pack, "ats_classic", skillFallback);
   const jobTitle = pack.header.jobTitle;
   const modeResult = resolveTailorMode(jdForLlm, masterForLlm);
   const ats = scoreResume({

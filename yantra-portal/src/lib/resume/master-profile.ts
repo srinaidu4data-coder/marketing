@@ -10,7 +10,11 @@
  * The AI path receives: MasterProfile (structured) + raw text (optional context) + JD.
  */
 
-import { extractEducationAndCertsFromMaster } from "./education-filter";
+import {
+  classifyEducationLine,
+  extractEducationAndCertsFromMaster,
+  normalizeEduKey,
+} from "./education-filter";
 
 export const MASTER_PROFILE_VERSION = 1 as const;
 
@@ -128,6 +132,17 @@ export function parseStoredMasterProfile(
   }
 }
 
+/** Collapse punctuation left after year/school extraction (", ,", "– –"). */
+function tidyEduFragment(s: string): string {
+  return s
+    .replace(/\s+/g, " ")
+    .replace(/\s*,\s*,+/g, ", ")
+    .replace(/,\s*$/g, "")
+    .replace(/^[,–—\-\s]+|[,–—\-\s]+$/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 /** Split a degree line into degree / school / year when possible. */
 export function parseEducationLine(raw: string): MasterEducation {
   const t = (raw || "").replace(/\s+/g, " ").trim();
@@ -140,23 +155,16 @@ export function parseEducationLine(raw: string): MasterEducation {
 
   // "Bachelor of Science, University of X, 2010"
   const uni = t.match(
-    /(?:,|\bat\b|\bfrom\b)\s*([A-Z][^,]{2,80}?(?:University|College|Institute|School|Academy)[^,]*)/i
+    /(?:,|\bat\b|\bfrom\b)\s*([A-Z][^,]{2,80}?(?:University|College|Institute|School|Academy|JNTU)[^,]*)/i
   );
   if (uni) {
     school = uni[1]!.trim();
-    degree = t
-      .replace(uni[0], " ")
-      .replace(/\b(19|20)\d{2}\b/g, " ")
-      .replace(/\s+/g, " ")
-      .replace(/^[,–—\-\s]+|[,–—\-\s]+$/g, "")
-      .trim();
+    degree = tidyEduFragment(
+      t.replace(uni[0], " ").replace(/\b(19|20)\d{2}\b/g, " ")
+    );
   } else {
-    // Strip trailing year from degree display
-    degree = t
-      .replace(/\b(19|20)\d{2}\b/g, " ")
-      .replace(/\s+/g, " ")
-      .replace(/^[,–—\-\s]+|[,–—\-\s]+$/g, "")
-      .trim();
+    // Strip year; keep remainder as degree (may still include school tokens)
+    degree = tidyEduFragment(t.replace(/\b(19|20)\d{2}\b/g, " "));
   }
 
   return {
@@ -165,6 +173,56 @@ export function parseEducationLine(raw: string): MasterEducation {
     year,
     raw: t,
   };
+}
+
+/**
+ * Remove education/cert section headers and extracted credential lines from
+ * engagement bullets (common when masters append EDUCATION after last job).
+ */
+export function scrubEducationFromEngagementBullets(
+  profile: MasterProfile
+): void {
+  const banKeys = new Set<string>();
+  for (const e of profile.education || []) {
+    if (e.raw) banKeys.add(normalizeEduKey(e.raw));
+    if (e.degree) banKeys.add(normalizeEduKey(e.degree));
+  }
+  for (const c of profile.certifications || []) {
+    banKeys.add(normalizeEduKey(c));
+  }
+
+  const isEduHeader = (line: string) =>
+    /^(education|certifications?|certificates?|licenses?|academic)(\s*[&+/|,]\s*(education|certifications?|certificates?))?\s*$/i.test(
+      line.trim()
+    ) ||
+    /education\s*&\s*certifications?|certifications?\s*&\s*education/i.test(
+      line.trim()
+    );
+
+  for (const eng of profile.engagements) {
+    eng.bullets = eng.bullets.filter((b) => {
+      const t = (b || "").trim();
+      if (!t) return false;
+      if (isEduHeader(t)) return false;
+      const k = normalizeEduKey(t);
+      if (k && banKeys.has(k)) return false;
+      // Near-match against banned keys (prefix)
+      const banList = Array.from(banKeys);
+      for (let bi = 0; bi < banList.length; bi++) {
+        const ban = banList[bi]!;
+        if (
+          ban.length >= 18 &&
+          k.length >= 18 &&
+          (k.startsWith(ban.slice(0, 28)) || ban.startsWith(k.slice(0, 28)))
+        ) {
+          return false;
+        }
+      }
+      const kind = classifyEducationLine(t);
+      if (kind === "degree" || kind === "cert") return false;
+      return true;
+    });
+  }
 }
 
 // ─── Date parsing (tolerant of Word export quirks) ─────────────────────────
@@ -517,6 +575,8 @@ export function parseMasterProfile(masterText: string): MasterProfile {
         "No education/certification block detected on master."
       );
     }
+    // Masters often append EDUCATION after the last role — strip from bullets
+    scrubEducationFromEngagementBullets(profile);
   } catch (e) {
     profile.warnings.push(
       `Education parse skipped: ${e instanceof Error ? e.message : String(e)}`
