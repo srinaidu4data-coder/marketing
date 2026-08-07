@@ -230,19 +230,6 @@ function fontsFor(layout: LayoutDef): DocxFontSet {
   return getDocxFonts(layout.id, layout.style);
 }
 
-function bodyFont(layout: LayoutDef) {
-  return fontsFor(layout).body;
-}
-function nameFont(layout: LayoutDef) {
-  return fontsFor(layout).name;
-}
-function headlineFont(layout: LayoutDef) {
-  return fontsFor(layout).headline;
-}
-function monoFont(layout: LayoutDef) {
-  return fontsFor(layout).mono;
-}
-
 function docxDefaultStyles(fonts: DocxFontSet, bodySizePt: number) {
   return {
     default: {

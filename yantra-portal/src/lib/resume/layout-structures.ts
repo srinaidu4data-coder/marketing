@@ -247,8 +247,9 @@ export function buildSectionsForLayout(ctx: StructureCtx): ResumeSection[] {
     case "signal_classic":
     case "ats_classic":
     case "f_pattern":
-    case "modern_minimal":
       return buildAtsClassic(ctx);
+    case "modern_minimal":
+      return buildMinimalSparse(ctx);
     case "pyramid_brief":
     case "executive_serif":
     case "board_memo":
