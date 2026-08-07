@@ -132,7 +132,7 @@ function masterToolsNearEmployer(
   }
   const lines = masterText.split(/\r?\n/);
   const emp = employer.toLowerCase().slice(0, 24);
-  let idx = lines.findIndex((l) => l.toLowerCase().includes(emp));
+  const idx = lines.findIndex((l) => l.toLowerCase().includes(emp));
   if (idx < 0) return tokenize(scrubToToolNouns(masterText, limit));
   const window = lines
     .slice(Math.max(0, idx - 2), Math.min(lines.length, idx + 25))
@@ -366,7 +366,10 @@ function assignOne(opts: {
   ]);
 
   // Pad remaining mins from exclusive pools (never the same global JD bag)
-  let stackForbidden = occupancyKeys([...env, ...Array.from(priorOccupied)]);
+  const stackForbidden = occupancyKeys([
+    ...env,
+    ...Array.from(priorOccupied),
+  ]);
   stack = padFrom(
     stack,
     [...exclusiveTools, ...recipe.stack, ...toolPool],

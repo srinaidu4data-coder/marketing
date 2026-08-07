@@ -17,7 +17,7 @@ import {
   type ResumePackV2,
   type PackValidationIssue,
 } from "./pack-schema";
-import { renderPackText, packToStructuredResume, skillsToLines } from "./render-pack";
+import { packToStructuredResume, skillsToLines } from "./render-pack";
 import { precheckGenerate, normalizeJdText } from "./precheck";
 import { JSON_SHAPE_REMINDER } from "./bible-prompt";
 import { toolsFromJd } from "./tools-nouns";

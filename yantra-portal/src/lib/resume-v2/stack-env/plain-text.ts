@@ -310,7 +310,7 @@ export function applyStackEnvToPlainText(
         changed = true;
       }
     } else if (envBody) {
-      let insertAt =
+      const insertAt =
         b.stackLineIdx != null ? b.stackLineIdx + 1 : b.startLine + 2;
       next.splice(insertAt, 0, `Environment: ${envBody}`);
       for (let k = i + 1; k < blocks.length; k++) {
