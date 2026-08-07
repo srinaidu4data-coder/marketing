@@ -14,8 +14,9 @@ const STACK_LINE =
 const ENV_LINE =
   /^(Environment(?:\s*\/\s*tools(?:\s+in\s+period)?)?|Tools(?:\s+in\s+period)?)\s*:\s*(.*)$/i;
 const EMPLOYER_LINE = /^Employer\s*\/\s*Client\s*:\s*(.*)$/i;
+/** Matches year spans including "Mar 1999 – Apr 2003" and "Hyderabad | 1999-2003". */
 const DURATION_HINT =
-  /(19|20)\d{2}\s*[-–—]\s*((19|20)\d{2}|[Pp]resent|[Cc]urrent)/;
+  /\b(?:19|20)\d{2}\b.*\b(?:(?:19|20)\d{2}|[Pp]resent|[Cc]urrent)\b|\b(?:19|20)\d{2}\s*[-–—]\s*(?:(?:19|20)\d{2}|[Pp]resent|[Cc]urrent)\b/;
 
 export type PlainTextStackEnvResult = {
   text: string;

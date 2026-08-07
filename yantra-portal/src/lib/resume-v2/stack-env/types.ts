@@ -21,6 +21,12 @@ export type CatalogEntry = {
   /** Inclusive year range when this term is era-honest */
   eraMin?: number;
   eraMax?: number;
+  /**
+   * True = skill/era agnostic (MS Office, UAT, SQL basics) — safe for any
+   * profile (SAP/Oracle/Workday/Java/Data) and early careers.
+   * Domain products (FICO, ATTP, FastAPI) must leave this unset/false.
+   */
+  timeless?: boolean;
 };
 
 export type EraBucket = "pre2010" | "2010_2015" | "2016_2019" | "2020_plus";

@@ -98,23 +98,105 @@ function jaccard(a: string[], b: string[]): number {
   return union ? inter / union : 0;
 }
 
-function endYearFromDuration(duration: string): number | null {
+/**
+ * Parse end year from free-form duration lines, e.g.:
+ * - "2022 – Present"
+ * - "Mar 1999 – Apr 2003"
+ * - "Hyderabad, IN | Mar 1999 – Apr 2003"
+ * - "1999-2003"
+ */
+export function endYearFromDuration(duration: string): number | null {
   const d = duration || "";
   if (/present|current/i.test(d)) return new Date().getFullYear();
   const years: number[] = [];
-  const re = /(19|20)\d{2}/g;
+  const re = /\b((?:19|20)\d{2})\b/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(d)) !== null) years.push(Number(m[0]));
+  while ((m = re.exec(d)) !== null) {
+    const y = Number(m[1]);
+    if (y >= 1970 && y <= new Date().getFullYear() + 1) years.push(y);
+  }
   if (!years.length) return null;
   return Math.max(...years);
 }
 
-export function eraBucket(endYear: number | null): EraBucket {
-  if (endYear == null) return "2020_plus";
+export function startYearFromDuration(duration: string): number | null {
+  const d = duration || "";
+  const years: number[] = [];
+  const re = /\b((?:19|20)\d{2})\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(d)) !== null) {
+    const y = Number(m[1]);
+    if (y >= 1970 && y <= new Date().getFullYear() + 1) years.push(y);
+  }
+  if (!years.length) return null;
+  return Math.min(...years);
+}
+
+export function eraBucket(
+  endYear: number | null,
+  opts?: { projectIndex?: number }
+): EraBucket {
+  // Unknown dates: never assume 2020+ (that stamped FastAPI/K8s on 1999 roles)
+  if (endYear == null) {
+    const i = opts?.projectIndex ?? 0;
+    if (i <= 0) return "2020_plus";
+    if (i === 1) return "2016_2019";
+    if (i === 2) return "2010_2015";
+    return "pre2010";
+  }
   if (endYear < 2010) return "pre2010";
   if (endYear < 2016) return "2010_2015";
   if (endYear < 2020) return "2016_2019";
   return "2020_plus";
+}
+
+/**
+ * Hard ban modern tokens even when not in catalog / missing eraMin.
+ * Applied whenever endYear is known and below the token's birth year.
+ */
+const HARD_ERA_BANS: { re: RegExp; minYear: number }[] = [
+  { re: /\b(fastapi|uvicorn|pydantic)\b/i, minYear: 2018 },
+  { re: /\b(kubernetes|k8s|gke|eks|aks|helm|istio)\b/i, minYear: 2015 },
+  { re: /\b(docker|containerd)\b/i, minYear: 2014 },
+  { re: /\b(kafka|confluent)\b/i, minYear: 2011 },
+  { re: /\b(grafana|prometheus|datadog|new relic)\b/i, minYear: 2012 },
+  { re: /\b(openapi|swagger ui)\b/i, minYear: 2011 },
+  { re: /\b(github actions|gitlab ci|circleci|argo)\b/i, minYear: 2015 },
+  { re: /\b(cloudflare|fastly|vercel|netlify)\b/i, minYear: 2010 },
+  { re: /\b(hyper-?v)\b/i, minYear: 2008 },
+  { re: /\b(siem console|splunk|elk)\b/i, minYear: 2005 },
+  { re: /\b(react|angular|vue|node\.?js|typescript)\b/i, minYear: 2010 },
+  { re: /\b(s\/?4\s*hana|s4hana|fiori|ui5|btp|rise|attp|epcis)\b/i, minYear: 2013 },
+  { re: /\b(snowflake|databricks|dbt|synapse|bigquery)\b/i, minYear: 2012 },
+  { re: /\b(terraform|ansible|kubernetes)\b/i, minYear: 2013 },
+  { re: /\b(llm|rag |vector search|chatgpt|openai)\b/i, minYear: 2022 },
+  { re: /\b(power bi|powerbi)\b/i, minYear: 2015 },
+  { re: /\b(azure devops|ado\b)\b/i, minYear: 2018 },
+  { re: /\b(slack|teams|zoom|miro)\b/i, minYear: 2013 },
+  { re: /\b(aws|gcp|azure)\b/i, minYear: 2008 },
+  { re: /\b(git\b|github|gitlab|bitbucket)\b/i, minYear: 2005 },
+  { re: /\b(servicenow|snow\b|workday|successfactors)\b/i, minYear: 2008 },
+  { re: /\b(confluence)\b/i, minYear: 2004 },
+  { re: /\b(jira)\b/i, minYear: 2002 },
+  { re: /\b(tableau|qlik|looker)\b/i, minYear: 2004 },
+  { re: /\b(python)\b/i, minYear: 1995 }, // ok mid-90s+
+  { re: /\b(fastapi|flask|django)\b/i, minYear: 2005 },
+  { re: /\b(spark|hadoop|hive|pyspark)\b/i, minYear: 2008 },
+  { re: /\b(wm\b|ewm)\b/i, minYear: 2000 }, // keep WM for 2003 ok
+];
+
+export function passesHardEraBan(term: string, year: number | null): boolean {
+  if (year == null) {
+    // Unknown year: only allow if no hard ban with minYear > 2005
+    for (const b of HARD_ERA_BANS) {
+      if (b.minYear > 2005 && b.re.test(term)) return false;
+    }
+    return true;
+  }
+  for (const b of HARD_ERA_BANS) {
+    if (b.re.test(term) && year < b.minYear) return false;
+  }
+  return true;
 }
 
 function recipesForEra(doc: StackEnvBankDoc, era: EraBucket): EraRecipe[] {
@@ -166,13 +248,19 @@ function classifyTokens(
 
   for (const t of tokenize(raw)) {
     if (!idx.isEraOk(t, year)) continue;
+    if (!passesHardEraBan(t, year)) continue;
     const e = idx.classify(t);
     if (!e) {
-      // Keep scrubbed unknowns on preferred lane
+      // Unlisted + known early year: only keep if hard-ban allows (already checked)
+      // Still drop obvious modern residue when year < 2010
+      if (year != null && year < 2010 && !idx.isTimeless(t)) {
+        // allow classic short tokens already past hard ban
+      }
       if (prefer === "stack") stack.push(t);
       else env.push(t);
       continue;
     }
+    if (!idx.isEraOk(t, year)) continue;
     const term = e.term;
     switch (e.kind) {
       case "tool":
@@ -241,17 +329,17 @@ function padFrom(
     const k = normKey(t);
     if (!k || have.has(k) || conflictsWith(t, forbidden) || conflictsWith(t, have))
       continue;
-    if (!idx.isEraOk(t, year)) continue;
+    if (!idx.isEraOk(t, year) || !passesHardEraBan(t, year)) continue;
     have.add(k);
     const head = k.split(" ")[0];
     if (head && head.length >= 4) have.add(head);
     out.push(t);
   }
-  // Last resort: only era-ok generics already in pool (never modern cloud on 2001)
+  // Last resort: only era-ok items already in pool
   if (out.length < min) {
     for (const t of pool) {
       if (out.length >= min) break;
-      if (!idx.isEraOk(t, year)) continue;
+      if (!idx.isEraOk(t, year) || !passesHardEraBan(t, year)) continue;
       if (conflictsWith(t, forbidden) || conflictsWith(t, have)) continue;
       const k = normKey(t);
       if (!k || have.has(k)) continue;
@@ -277,11 +365,17 @@ function assignOne(opts: {
   isRecent: boolean;
 }): Assigned {
   const year = endYearFromDuration(opts.duration);
-  const era = eraBucket(year);
+  const era = eraBucket(year, { projectIndex: opts.projectIndex });
   const recipes = recipesForEra(opts.bank.doc, era);
   const used = opts.usedRecipeIdx.get(era) || new Set<number>();
   opts.usedRecipeIdx.set(era, used);
   const { recipe } = pickRecipe(recipes, opts.projectIndex, used);
+
+  // Pre-2010 (and unknown early slots): domain-agnostic timeless tools only.
+  // Avoid stamping FICO/ECC/ATTP onto every 1999 BA / any-profile early job.
+  const forceTimeless =
+    (year != null && year < 2010) ||
+    (year == null && opts.projectIndex >= 2);
 
   const fromStack = classifyTokens(opts.techStack, opts.bank, year, "stack");
   const fromEnv = classifyTokens(opts.environment, opts.bank, year, "env");
@@ -294,7 +388,15 @@ function assignOne(opts: {
   const fromJd = classifyTokens(opts.jdTools.join(", "), opts.bank, year, "stack");
 
   const eraFilter = (terms: string[]) =>
-    terms.filter((t) => opts.bank.isEraOk(t, year));
+    terms.filter(
+      (t) =>
+        opts.bank.isEraOk(t, year) &&
+        passesHardEraBan(t, year) &&
+        // Unknown / early years: prefer timeless (no eraMin) or eraMin ≤ year
+        (year == null
+          ? opts.bank.isTimeless(t) || opts.bank.eraMinOf(t) == null
+          : true)
+    );
 
   // Recipe-first (rotated per project) — guarantees projects never share one set.
   // LLM / master / JD only add tokens that do not collide with prior projects.
@@ -312,9 +414,9 @@ function assignOne(opts: {
     uniqueTerms([...fromStack.env, ...fromEnv.env, ...fromMaster.env])
   ).filter((t) => !conflictsWith(t, priorOccupied));
 
-  // Exclusive bank slices by project index so pads diverge even when recipes thin
-  const toolPool = opts.bank.termsByKind("tool");
-  const platformPool = opts.bank.termsByKind("platform");
+  // Exclusive bank slices — ONLY era-safe / timeless pools (never modern on 1999)
+  const toolPool = opts.bank.padPool("tool", year);
+  const platformPool = opts.bank.padPool("platform", year);
   const slice = <T,>(arr: T[], start: number, n: number): T[] => {
     if (!arr.length) return [];
     const out: T[] = [];
@@ -322,28 +424,54 @@ function assignOne(opts: {
     return out;
   };
   const exclusiveTools = slice(toolPool, opts.projectIndex * 11, 10).filter(
-    (t) => opts.bank.isEraOk(t, year) && !conflictsWith(t, priorOccupied)
+    (t) =>
+      opts.bank.isEraOk(t, year) &&
+      passesHardEraBan(t, year) &&
+      !conflictsWith(t, priorOccupied)
   );
   const exclusivePlatforms = slice(
     platformPool,
     opts.projectIndex * 13 + 3,
     8
   ).filter(
-    (t) => opts.bank.isEraOk(t, year) && !conflictsWith(t, priorOccupied)
+    (t) =>
+      opts.bank.isEraOk(t, year) &&
+      passesHardEraBan(t, year) &&
+      !conflictsWith(t, priorOccupied)
   );
+
+  const recipeStackSeed = forceTimeless
+    ? [
+        ...recipe.stack.filter((t) => opts.bank.isTimeless(t)),
+        ...opts.bank.timelessByKind("tool").slice(
+          (opts.projectIndex * 5) % 40,
+          (opts.projectIndex * 5) % 40 + 8
+        ),
+      ]
+    : recipe.stack;
+  const recipeEnvSeed = forceTimeless
+    ? [
+        ...recipe.env.filter((t) => opts.bank.isTimeless(t)),
+        ...opts.bank.timelessByKind("platform").slice(
+          (opts.projectIndex * 4) % 20,
+          (opts.projectIndex * 4) % 20 + 6
+        ),
+      ]
+    : recipe.env;
 
   let stack = eraFilter(
     uniqueTerms([
-      ...recipe.stack,
-      ...llmStack.slice(0, opts.isRecent ? 3 : 1),
+      ...recipeStackSeed,
+      // Master pocket still allowed if era-ok (real employer tools)
+      ...llmStack.slice(0, forceTimeless ? 2 : opts.isRecent ? 3 : 1),
       ...exclusiveTools,
     ])
   );
 
   let env = eraFilter(
     uniqueTerms([
-      ...recipe.env,
-      ...llmEnv.slice(0, opts.isRecent ? 2 : 1),
+      ...recipeEnvSeed,
+      ...llmEnv.slice(0, forceTimeless ? 1 : opts.isRecent ? 2 : 1),
       ...exclusivePlatforms,
     ])
   );
@@ -406,7 +534,8 @@ function assignOne(opts: {
   for (const f of flavor) {
     if (conflictsWith(f, envForbidden) || env.some((x) => normKey(x) === normKey(f)))
       continue;
-    if (!opts.bank.isEraOk(f, year) && year != null && year < 2016) continue;
+    if (!opts.bank.isEraOk(f, year) || !passesHardEraBan(f, year)) continue;
+    // Processes/compliance on env only when timeless or era-ok (UAT/ALM ok for any era)
     if (env.length < MAX_ENV) env.push(f);
   }
 
@@ -450,7 +579,7 @@ function assignOne(opts: {
             stackNext,
             [
               ...recipe.stack,
-              ...opts.bank.termsByKind("tool").filter(
+              ...opts.bank.padPool("tool", year).filter(
                 (_, i) => (i + opts.projectIndex) % 3 === 0
               ),
             ],
@@ -467,7 +596,7 @@ function assignOne(opts: {
             envNext,
             [
               ...recipe.env,
-              ...opts.bank.termsByKind("platform").filter(
+              ...opts.bank.padPool("platform", year).filter(
                 (_, i) => (i + opts.projectIndex + 1) % 3 === 0
               ),
             ],
@@ -483,28 +612,53 @@ function assignOne(opts: {
     env = env.filter((t) => !sk.has(normKey(t)));
   }
 
-  stack = uniqueTerms(stack).slice(0, MAX_STACK);
-  env = uniqueTerms(env).slice(0, MAX_ENV);
+  // Final era scrub (recipe mis-entries + LLM residue)
+  stack = uniqueTerms(stack)
+    .filter((t) => opts.bank.isEraOk(t, year) && passesHardEraBan(t, year))
+    .slice(0, MAX_STACK);
+  env = uniqueTerms(env)
+    .filter((t) => opts.bank.isEraOk(t, year) && passesHardEraBan(t, year))
+    .slice(0, MAX_ENV);
 
-  // Ensure mins with last-resort era generics (still rotated)
+  // Ensure mins with timeless / era-safe generics only
   if (stack.length < MIN_STACK) {
     const generics = [
-      ["SQL", "Excel", "Reporting"],
-      ["ETL", "Data Mapping", "Reconciliation"],
-      ["Master Data", "Dashboards", "REST"],
-      ["GL", "AP", "AR"],
+      ["SQL", "Excel", "MS Office", "Reporting"],
+      ["Requirements", "Documentation", "Test cases", "SQL"],
+      ["Excel", "Visio", "Word", "PowerPoint"],
+      ["SQL", "RDBMS", "Reporting", "Data Mapping"],
     ][opts.projectIndex % 4]!;
-    stack = padFrom(stack, generics, MIN_STACK, MAX_STACK, new Set(env.map(normKey)), year, opts.bank);
+    stack = padFrom(
+      stack,
+      generics,
+      MIN_STACK,
+      MAX_STACK,
+      occupancyKeys(env),
+      year,
+      opts.bank
+    );
   }
   if (env.length < MIN_ENV) {
     const generics = [
-      ["On-premise", "Client site"],
-      ["Jira", "Confluence"],
-      ["QA landscape", "Staging landscape"],
-      ["Remote delivery", "ServiceNow"],
+      ["On-premise", "Windows", "Client site"],
+      ["ALM", "Test lab", "Shared services hub"],
+      ["On-premise", "Data center", "VPN"],
+      ["Windows Server", "LAN", "Client site"],
     ][opts.projectIndex % 4]!;
-    env = padFrom(env, generics, MIN_ENV, MAX_ENV, new Set(stack.map(normKey)), year, opts.bank);
+    env = padFrom(
+      env,
+      generics,
+      MIN_ENV,
+      MAX_ENV,
+      occupancyKeys(stack),
+      year,
+      opts.bank
+    );
   }
+
+  // Last pass: hard era ban again
+  stack = stack.filter((t) => passesHardEraBan(t, year));
+  env = env.filter((t) => passesHardEraBan(t, year));
 
   const techStack = stack.join(", ");
   const environment = env.join(", ");
@@ -618,23 +772,18 @@ function runChecks(
     hard: false,
   });
 
-  // Era honesty soft
+  // Era honesty — hard bans + no modern cloud on pre-2010
   let eraOk = 0;
   for (const p of projects) {
     const y = endYearFromDuration(p.duration || "");
-    if (y == null || y >= 2016) {
-      eraOk++;
-      continue;
-    }
-    const bad =
-      /\b(ATTP|DSCSA|EPCIS|RISE|S\/?4HANA|Boomi|Datasphere|BTP)\b/i.test(
-        `${p.techStack} ${p.environment}`
-      );
+    const blob = `${p.techStack} ${p.environment}`;
+    const tokens = blob.split(/[,;|]/).map((t) => t.trim()).filter(Boolean);
+    const bad = tokens.some((t) => !passesHardEraBan(t, y));
     if (!bad) eraOk++;
   }
   checks.push({
     id: "era_honesty",
-    label: "No modern tokens on pre-2016 projects",
+    label: "No modern tokens on pre-era projects (hard era bans)",
     ok: eraOk === n,
     detail: `${eraOk}/${n} era-ok`,
     hard: true,
@@ -717,40 +866,103 @@ export function runStackEnvEngine(
     };
   });
 
-  // Global techSkills: union of unique project tools + processes (not clone of project 0)
+  // Global techSkills: 40–50 era-agnostic + domain tools (not clone of project 0)
   let nextSkills = pack.techSkills;
   {
     const toolSet: string[] = [];
     const processSet: string[] = [];
     for (const p of nextProjects) {
+      const y = endYearFromDuration(p.duration || "");
       const c = classifyTokens(
         `${p.techStack}, ${p.environment}`,
         idx,
-        null,
+        y,
         "stack"
       );
-      toolSet.push(...c.stack);
+      toolSet.push(...c.stack.filter((t) => passesHardEraBan(t, y)));
       processSet.push(...c.process);
     }
-    // Also JD tools + bank processes sample
-    toolSet.push(...jdTools.slice(0, 8));
-    const tools = uniqueTerms(toolSet).slice(0, 24);
+    // JD tools only if they pass hard ban for "recent" (use current year for skills display)
+    const nowY = new Date().getFullYear();
+    toolSet.push(
+      ...jdTools.filter((t) => passesHardEraBan(t, nowY)).slice(0, 12)
+    );
+
+    // Bulk timeless / skill-agnostic catalog (works for SAP, Oracle, Workday, Java, Data)
+    const timelessTools = idx.timelessByKind("tool");
+    const timelessProc = idx.timelessByKind("process");
+    const timelessPlat = idx.timelessByKind("platform");
+
+    const tools = uniqueTerms([
+      ...toolSet,
+      ...timelessTools.slice(0, 40),
+      ...jdTools.slice(0, 8),
+    ]).slice(0, 28);
+
     const processes = uniqueTerms([
       ...processSet,
-      ...idx.termsByKind("process").slice(0, 8),
-    ]).slice(0, 10);
-    const compliance = idx.termsByKind("compliance").slice(0, 6);
-    const regulations = idx.termsByKind("regulation").slice(0, 6);
+      ...timelessProc.slice(0, 30),
+      "Agile",
+      "Scrum",
+      "Waterfall",
+      "SDLC",
+      "UAT",
+      "SIT",
+      "Requirements gathering",
+      "Gap analysis",
+      "Change management",
+      "Cutover planning",
+      "Hypercare",
+      "Knowledge transfer",
+      "Defect triage",
+      "Root cause analysis",
+      "Release management",
+      "RACI",
+      "RAID log",
+    ]).slice(0, 16);
 
-    // Prefer grouped skills when we have content
-    if (tools.length >= 4) {
+    const platforms = uniqueTerms([
+      ...timelessPlat.slice(0, 12),
+      "On-premise",
+      "Windows",
+      "Client site",
+      "ALM",
+      "VPN",
+      "Data center",
+    ]).slice(0, 10);
+
+    const compliance = uniqueTerms([
+      ...idx.timelessByKind("compliance").slice(0, 10),
+      "SOX",
+      "SoD",
+      "Access controls",
+      "Change control",
+      "Audit trail",
+      "ITGC",
+    ]).slice(0, 8);
+
+    // Flatten to 40–50 total line items for Technical Skills section
+    const flat = uniqueTerms([
+      ...tools,
+      ...processes,
+      ...platforms,
+      ...compliance,
+    ]).slice(0, 50);
+
+    if (flat.length >= 20) {
       nextSkills = {
-        Tools: tools.slice(0, 16),
-        Processes: processes.slice(0, 8),
-        Compliance: compliance.slice(0, 5),
-        Regulations: regulations.slice(0, 5),
+        "Core tools": tools.slice(0, 18),
+        "Methods & delivery": processes.slice(0, 14),
+        Environments: platforms.slice(0, 10),
+        Controls: compliance.slice(0, 8),
       };
-      notes.push("skills: rebuilt as Tools/Processes/Compliance/Regulations");
+      // Also ensure total token count ~40–50 via meta note
+      notes.push(
+        `skills: rebuilt ${flat.length} era-agnostic+domain tokens (target 40–50)`
+      );
+    } else if (flat.length >= 4) {
+      nextSkills = flat.join(", ");
+      notes.push(`skills: flat ${flat.length} tokens`);
     }
   }
 

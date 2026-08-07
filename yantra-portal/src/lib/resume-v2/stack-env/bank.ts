@@ -254,6 +254,12 @@ export function buildBankIndex(doc: StackEnvBankDoc) {
   const termsByKind = (kind: BankKind) =>
     doc.catalog.filter((e) => e.kind === kind).map((e) => e.term);
 
+  /** Explicit timeless flag only — domain products (FICO/ECC/ATTP) are never timeless. */
+  const timelessByKind = (kind: BankKind) =>
+    doc.catalog
+      .filter((e) => e.kind === kind && e.timeless === true)
+      .map((e) => e.term);
+
   return {
     doc,
     byKey,
@@ -264,13 +270,57 @@ export function buildBankIndex(doc: StackEnvBankDoc) {
       return byKey.get(normKey(token))?.kind ?? null;
     },
     termsByKind,
-    isEraOk(token: string, year: number | null): boolean {
-      if (year == null) return true;
+    timelessByKind,
+    eraMinOf(token: string): number | null {
       const e = byKey.get(normKey(token));
-      if (!e) return true;
+      return e?.eraMin ?? null;
+    },
+    isTimeless(token: string): boolean {
+      const e = byKey.get(normKey(token));
+      return e?.timeless === true;
+    },
+    /**
+     * Era honesty: unknown year is NOT a free pass for modern tools.
+     * Unknown year → only explicit timeless catalog entries.
+     */
+    isEraOk(token: string, year: number | null): boolean {
+      const e = byKey.get(normKey(token));
+      if (year == null) {
+        if (!e) return false;
+        return e.timeless === true;
+      }
+      if (!e) {
+        return true; // hard-era-ban in engine still applies
+      }
       if (e.eraMin != null && year < e.eraMin) return false;
       if (e.eraMax != null && year > e.eraMax) return false;
       return true;
+    },
+    /** Pool for padding: timeless-only before 2010; full era-filtered after. */
+    padPool(kind: BankKind, year: number | null): string[] {
+      const all = termsByKind(kind);
+      if (year == null || year < 2010) {
+        // Domain-agnostic first; then domain tools that are era-ok AND have eraMin ≤ year
+        // (explicit eraMin means "existed by then" — e.g. not FastAPI)
+        const timeless = timelessByKind(kind);
+        const eraDomain = all.filter((t) => {
+          const e = byKey.get(normKey(t));
+          if (!e || e.timeless) return false;
+          if (e.eraMin == null) return false; // domain product without era → skip early pad
+          if (year == null) return false;
+          if (year < e.eraMin) return false;
+          if (e.eraMax != null && year > e.eraMax) return false;
+          return true;
+        });
+        return [...timeless, ...eraDomain];
+      }
+      return all.filter((t) => {
+        const e = byKey.get(normKey(t));
+        if (!e) return true;
+        if (e.eraMin != null && year < e.eraMin) return false;
+        if (e.eraMax != null && year > e.eraMax) return false;
+        return true;
+      });
     },
   };
 }
