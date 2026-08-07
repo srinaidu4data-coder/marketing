@@ -460,22 +460,36 @@ export function NewChainForm({
         </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-2 pt-1">
+      <div className="flex flex-wrap items-center gap-2 pt-1">
         <Button
           type="submit"
           variant="soft"
           size="lg"
           disabled={pending || selectedCount === 0}
+          title={
+            selectedCount === 0
+              ? "Select at least one ready candidate"
+              : undefined
+          }
         >
           {pending
             ? "Generating…"
             : `Generate ${selectedCount} resume${selectedCount === 1 ? "" : "s"}`}
         </Button>
-        <Link href={cancelHref}>
-          <Button type="button" variant="ghost" size="lg" disabled={pending}>
-            Cancel
-          </Button>
+        {/* Always clickable — never disable cancel during generation */}
+        <Link
+          href={cancelHref}
+          className="inline-flex h-12 items-center rounded-full px-6 text-[15px] font-medium text-[#6e6e73] transition-colors hover:bg-black/[0.04] hover:text-[#1d1d1f]"
+        >
+          Cancel
         </Link>
+        {selectedCount === 0 && !pending ? (
+          <p className="w-full text-[13px] text-amber-800">
+            {pool.length === 0
+              ? "No candidates in your pool — ask admin to allocate someone."
+              : "Select at least one ready candidate to generate."}
+          </p>
+        ) : null}
       </div>
     </form>
   );

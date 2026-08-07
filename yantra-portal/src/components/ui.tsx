@@ -10,6 +10,7 @@ export function Button({
   className,
   variant = "default",
   size = "default",
+  type = "button",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "default" | "outline" | "ghost" | "destructive" | "secondary" | "soft";
@@ -35,6 +36,7 @@ export function Button({
   };
   return (
     <button
+      type={type}
       className={cn(
         "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-medium tracking-tight transition-all duration-200 ease-apple disabled:pointer-events-none disabled:opacity-40",
         variants[variant],

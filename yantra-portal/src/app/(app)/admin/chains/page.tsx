@@ -97,7 +97,12 @@ export default async function AdminChainsPage({
                 className="border-b last:border-0 hover:bg-slate-50/60"
               >
                 <td className="px-4 py-3">
-                  <div className="font-medium">{c.employee.name}</div>
+                  <Link
+                    href={`/admin/chains/${c.id}`}
+                    className="block font-medium hover:underline"
+                  >
+                    {c.employee.name}
+                  </Link>
                   <div className="text-xs text-slate-500">{c.employee.email}</div>
                   {c.employee.role === "ADMIN" ? (
                     <span className="text-[10px] font-semibold uppercase text-slate-400">

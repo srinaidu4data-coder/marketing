@@ -385,15 +385,26 @@ export function CandidatesRoster({
             {filtered.map((item) => (
               <li
                 key={item.id}
+                role="link"
+                tabIndex={0}
+                onClick={(e) => {
+                  // Don't navigate when using delete / confirm controls
+                  const t = e.target as HTMLElement;
+                  if (t.closest("button, a, input, label")) return;
+                  router.push(`/admin/candidates/${item.id}`);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/admin/candidates/${item.id}`);
+                  }
+                }}
                 className={cn(
-                  "group px-4 py-3 transition-colors duration-150 ease-apple hover:bg-[#fafafa] md:px-5",
+                  "group cursor-pointer px-4 py-3 transition-colors duration-150 ease-apple hover:bg-[#fafafa] md:px-5",
                   listGrid
                 )}
               >
-                <Link
-                  href={`/admin/candidates/${item.id}`}
-                  className="flex min-w-0 items-center gap-3 outline-none focus-visible:rounded-lg focus-visible:ring-2 focus-visible:ring-[#0071e3]/30"
-                >
+                <div className="flex min-w-0 items-center gap-3">
                   <div
                     className={cn(
                       "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-[12px] font-semibold tracking-tight",
@@ -419,7 +430,7 @@ export function CandidatesRoster({
                       {item.layoutName} · {formatDate(item.createdAt)}
                     </p>
                   </div>
-                </Link>
+                </div>
 
                 <div className="hidden min-w-0 md:block">
                   <ReadyPill item={item} />
@@ -462,12 +473,16 @@ export function CandidatesRoster({
                   <Link
                     href={`/admin/candidates/${item.id}`}
                     className="inline-flex items-center gap-0.5 rounded-full px-2 py-1.5 text-[12.5px] font-semibold text-[#0071e3] hover:bg-[#0071e3]/[0.08]"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     Open
                     <ChevronRight className="h-3.5 w-3.5" />
                   </Link>
                   {confirmId === item.id ? (
-                    <div className="flex items-center gap-0.5 rounded-full border border-red-200 bg-red-50 p-0.5 shadow-soft">
+                    <div
+                      className="flex items-center gap-0.5 rounded-full border border-red-200 bg-red-50 p-0.5 shadow-soft"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <button
                         type="button"
                         disabled={pending}
@@ -488,7 +503,10 @@ export function CandidatesRoster({
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setConfirmId(item.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmId(item.id);
+                      }}
                       className="rounded-full p-1.5 text-[#c7c7cc] hover:bg-red-50 hover:text-[#ff3b30]"
                       aria-label={`Permanently delete ${item.name}`}
                       title="Hard delete — permanently remove from database"

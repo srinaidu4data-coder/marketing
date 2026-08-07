@@ -60,8 +60,10 @@ export default async function AdminEmployeesPage({
         </div>
       </div>
 
-      <details className="rounded-lg border p-4" open={users.length === 0}>
-        <summary className="cursor-pointer font-medium">Add employee / admin</summary>
+      <details className="rounded-lg border p-4" open>
+        <summary className="cursor-pointer font-medium">
+          Add employee / admin
+        </summary>
         <CreateEmployeeForm />
       </details>
 

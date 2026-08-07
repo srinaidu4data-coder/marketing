@@ -153,23 +153,34 @@ export function AllocationGrid({
                       const loading = pending.has(k);
                       return (
                         <td key={e.id} className="px-4 py-3 text-center">
-                          {loading ? (
-                            <span
-                              className="mx-auto inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700"
-                              aria-label="Loading"
-                            />
-                          ) : (
+                          {/*
+                            Keep the checkbox mounted while saving — replacing it
+                            with a spinner made rapid clicks feel dead (element
+                            disappeared mid-interaction).
+                          */}
+                          <span className="relative inline-flex h-5 w-5 items-center justify-center">
                             <input
                               type="checkbox"
                               checked={checked}
                               disabled={loading}
                               onChange={(ev) => toggle(c.id, e.id, ev.target.checked)}
-                              className="h-4 w-4 cursor-pointer accent-slate-900"
+                              className={`h-4 w-4 accent-slate-900 ${
+                                loading
+                                  ? "cursor-wait opacity-50"
+                                  : "cursor-pointer"
+                              }`}
+                              aria-busy={loading}
                               aria-label={`${checked ? "Unassign" : "Assign"} ${c.name} ${
                                 checked ? "from" : "to"
                               } ${e.name}`}
                             />
-                          )}
+                            {loading ? (
+                              <span
+                                className="pointer-events-none absolute inset-0 m-auto h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700"
+                                aria-hidden
+                              />
+                            ) : null}
+                          </span>
                         </td>
                       );
                     })}
