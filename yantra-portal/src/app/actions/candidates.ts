@@ -7,7 +7,11 @@ import { requireAdmin } from "@/lib/session";
 import { audit } from "@/lib/audit";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
-import { RESUME_LAYOUTS } from "@/lib/resume/templates";
+import {
+  RESUME_LAYOUTS,
+  DEFAULT_LAYOUT_ID,
+  resolveLayoutId,
+} from "@/lib/resume/templates";
 import { getSystemConfig } from "@/lib/system-settings";
 import {
   extractMasterText,
@@ -26,6 +30,10 @@ import {
 import { masterUploadDir } from "@/lib/paths";
 
 const LAYOUT_IDS = new Set(RESUME_LAYOUTS.map((l) => l.id));
+function sanitizeLayoutId(raw: string): string {
+  const resolved = resolveLayoutId(raw);
+  return LAYOUT_IDS.has(resolved as never) ? resolved : DEFAULT_LAYOUT_ID;
+}
 
 export type ReplaceResumeResult =
   | {
@@ -94,8 +102,8 @@ export async function createCandidate(formData: FormData): Promise<void> {
   const defaults = await getSystemConfig();
   const name = String(formData.get("name") || "").trim();
   const email = String(formData.get("email") || "").trim();
-  const layoutId = String(
-    formData.get("layoutId") || defaults.defaultLayoutId || "ats_classic"
+  const layoutId = sanitizeLayoutId(
+    String(formData.get("layoutId") || defaults.defaultLayoutId || DEFAULT_LAYOUT_ID)
   );
   const exportFormat = String(
     formData.get("exportFormat") || defaults.defaultExportFormat || "DOCX"
@@ -129,7 +137,7 @@ export async function createCandidate(formData: FormData): Promise<void> {
         masterResumeText,
         masterResumePath,
         masterProfileJson,
-        layoutId: LAYOUT_IDS.has(layoutId as never) ? layoutId : "ats_classic",
+        layoutId,
         exportFormat: exportFormat === "DOCX_PDF" ? "DOCX_PDF" : "DOCX",
       },
     });
@@ -179,7 +187,9 @@ export async function updateCandidate(candidateId: string, formData: FormData) {
   const admin = await requireAdmin();
   const name = sanitizePostgresText(String(formData.get("name") || "").trim());
   const email = sanitizePostgresText(String(formData.get("email") || "").trim());
-  const layoutId = String(formData.get("layoutId") || "ats_classic");
+  const layoutId = sanitizeLayoutId(
+    String(formData.get("layoutId") || DEFAULT_LAYOUT_ID)
+  );
   const exportFormat = String(formData.get("exportFormat") || "DOCX");
   if (!name || !email) return;
 
@@ -188,7 +198,7 @@ export async function updateCandidate(candidateId: string, formData: FormData) {
     data: {
       name,
       email,
-      layoutId: LAYOUT_IDS.has(layoutId as never) ? layoutId : "ats_classic",
+      layoutId,
       exportFormat: exportFormat === "DOCX_PDF" ? "DOCX_PDF" : "DOCX",
     },
   });

@@ -61,7 +61,7 @@ Environment: SAP ECC, FICO, GL, AP, Controlling
 `;
 
 /**
- * GET /api/layouts/preview?layoutId=ats_classic&fmt=docx|pdf|html
+ * GET /api/layouts/preview?layoutId=signal_classic&fmt=docx|pdf|html
  * Generates a sample resume in the selected layout for visual preview.
  */
 export async function GET(req: Request) {
@@ -71,8 +71,9 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url);
-  const layoutId = (url.searchParams.get("layoutId") ||
-    "ats_classic") as ResumeLayoutId;
+  const rawId = url.searchParams.get("layoutId") || "signal_classic";
+  const layout = getLayout(rawId);
+  const layoutId = layout.id as ResumeLayoutId;
   const fmt = (url.searchParams.get("fmt") || "docx").toLowerCase();
 
   const valid = RESUME_LAYOUTS.some((l) => l.id === layoutId);
@@ -82,8 +83,6 @@ export async function GET(req: Request) {
       { status: 400 }
     );
   }
-
-  const layout = getLayout(layoutId);
   const safeName = layout.id.replace(/[^a-z0-9_-]/gi, "_");
 
   let tailored: Awaited<ReturnType<typeof progressiveTailor>>;

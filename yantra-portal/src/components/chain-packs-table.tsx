@@ -499,7 +499,7 @@ export function ChainPacksTable({
                   jd={rawJobText}
                   jobTitle={cc.jobTitle || role}
                   layoutId={
-                    cc.layoutId || cc.candidate.layoutId || "ats_classic"
+                    cc.layoutId || cc.candidate.layoutId || "signal_classic"
                   }
                 />
               ) : null}

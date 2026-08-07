@@ -22,7 +22,7 @@ export function FitReportPanel({
 }) {
   const [open, setOpen] = useState(true);
   // Default so layout rows always appear in the checklist
-  const resolvedLayoutId = (layoutId || "").trim() || "ats_classic";
+  const resolvedLayoutId = (layoutId || "").trim() || "signal_classic";
   const report = useMemo(
     () =>
       buildFitReport({

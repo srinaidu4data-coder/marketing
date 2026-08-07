@@ -35,7 +35,7 @@ model Candidate {
   /// Structured ground truth from master (engagements, dates, skills) — parse-on-upload
   masterProfileJson String           @default("{}")
   /// Resume layout template id (see RESUME_LAYOUTS)
-  layoutId         String            @default("ats_classic")
+  layoutId         String            @default("signal_classic")
   /// DOCX | DOCX_PDF
   exportFormat     String            @default("DOCX")
   createdAt        DateTime          @default(now())
@@ -84,7 +84,7 @@ model ChainCandidate {
   tailoredResumePath String?
   docxPath           String?
   pdfPath            String?
-  layoutId           String    @default("ats_classic")
+  layoutId           String    @default("signal_classic")
   jobTitle           String    @default("")
   skillFingerprint   String    @default("")
   atsScore           Int       @default(0)

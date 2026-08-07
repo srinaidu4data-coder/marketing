@@ -302,7 +302,10 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
   const soft = hexNoHash(layout.style.soft);
   const children: Paragraph[] = [];
   const center =
-    layout.id === "executive_serif" || layout.id === "ats_classic";
+    layout.id === "executive_serif" ||
+    layout.id === "pyramid_brief" ||
+    layout.id === "ats_classic" ||
+    layout.id === "signal_classic";
 
   if (layout.style.headerBand) {
     children.push(
@@ -354,25 +357,30 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
   } else {
     const align = center ? AlignmentType.CENTER : AlignmentType.LEFT;
     const displayName =
-      layout.id === "ats_classic" || layout.id === "technical_dense"
+      layout.id === "ats_classic" ||
+      layout.id === "signal_classic" ||
+      layout.id === "technical_dense" ||
+      layout.id === "stack_spec" ||
+      layout.id === "impact_banner" ||
+      layout.id === "consultant_band"
         ? resume.candidateName.toUpperCase()
         : resume.candidateName;
     const nameSize =
       layout.id === "modern_minimal"
         ? 52
-        : layout.id === "executive_serif"
+        : layout.id === "executive_serif" || layout.id === "pyramid_brief"
           ? 48
           : layout.style.nameSize * 2;
     const nameSpacing =
-      layout.id === "ats_classic"
+      layout.id === "ats_classic" || layout.id === "signal_classic"
         ? 120
         : layout.id === "modern_minimal"
           ? -20
-          : layout.id === "technical_dense"
+          : layout.id === "technical_dense" || layout.id === "stack_spec"
             ? 100
             : 40;
 
-    if (layout.id === "executive_serif") {
+    if (layout.id === "executive_serif" || layout.id === "pyramid_brief") {
       children.push(
         new Paragraph({
           alignment: AlignmentType.CENTER,
@@ -471,7 +479,9 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
             size: layout.style.headlineSize * 2,
             font: fonts.headline,
             color: muted,
-            italics: layout.id === "executive_serif",
+            italics:
+              layout.id === "executive_serif" ||
+              layout.id === "pyramid_brief",
           }),
         ],
       })
@@ -484,16 +494,21 @@ export async function renderDocxBuffer(resume: StructuredResume): Promise<Buffer
           children: [
             new TextRun({
               text: resume.contactLine,
-              size: layout.id === "technical_dense" ? 16 : 18,
+              size:
+                layout.id === "technical_dense" || layout.id === "stack_spec"
+                  ? 16
+                  : 18,
               color: muted,
               font:
-                layout.id === "technical_dense" ? fonts.mono : fonts.body,
+                layout.id === "technical_dense" || layout.id === "stack_spec"
+                  ? fonts.mono
+                  : fonts.body,
             }),
           ],
         })
       );
     }
-    if (layout.id === "executive_serif") {
+    if (layout.id === "executive_serif" || layout.id === "pyramid_brief") {
       children.push(
         new Paragraph({
           alignment: AlignmentType.CENTER,

@@ -32,8 +32,21 @@ export type ContentBundle = {
   vendorName: string;
 };
 
-/** Layouts with a dedicated non-isomorphic structure builder */
-const STRUCTURE_LAYOUT_IDS = new Set(STRUCTURE_CATALOG.map((s) => s.id));
+/** Layouts with a dedicated non-isomorphic structure builder (flagship + legacy aliases) */
+const STRUCTURE_LAYOUT_IDS = new Set([
+  ...STRUCTURE_CATALOG.map((s) => s.id),
+  "ats_classic",
+  "executive_serif",
+  "technical_dense",
+  "timeline_progressive",
+  "modern_minimal",
+  "consultant_band",
+  "signal_classic",
+  "pyramid_brief",
+  "stack_spec",
+  "arc_timeline",
+  "impact_banner",
+]);
 
 function cleanSkillTokens(skills: string[]): string[] {
   return Array.from(new Set(skills.filter(Boolean)))

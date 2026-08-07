@@ -1,6 +1,8 @@
 /**
- * Configurable layout library (12 spines).
- * Section order/headings customizable per layout — research-backed, non-isomorphic.
+ * Role Forge flagship layouts (5) — psychology-backed, user-selectable.
+ * One generation prompt for all; layout only changes structure + visual DNA.
+ *
+ * Default: signal_classic
  */
 
 export type SectionKey =
@@ -25,6 +27,10 @@ export type LayoutConfig = {
   tagline: string;
   researchSpine: string;
   literature: string[];
+  /** Short picker line: reading order */
+  scanPath: string;
+  /** Best-for label in UI */
+  bestFor: string;
   sections: LayoutSectionConfig[];
   style: {
     nameSize: number;
@@ -44,10 +50,12 @@ export type LayoutConfig = {
     bodyFont: "sans" | "serif";
     sectionBar: boolean;
     boldJobTitles: boolean;
-    /** Visual badge under name (e.g. TECH PACK) */
     badge?: string;
   };
 };
+
+/** Product default — highest dual pass (ATS + 7s skim). */
+export const DEFAULT_LAYOUT_ID = "signal_classic";
 
 function secs(
   rows: [SectionKey, string, number][]
@@ -60,14 +68,24 @@ function secs(
   }));
 }
 
-/** 12 distinct, research-oriented layouts — sharp, not clones */
+/**
+ * Five non-isomorphic templates from psychology research brief.
+ * Content still produced by the same ACTIVE prompt; layout shapes render only.
+ */
 export const LAYOUT_CONFIGS: LayoutConfig[] = [
   {
-    id: "ats_classic",
-    name: "ATS Classic",
-    tagline: "Schema-first HR fluency",
-    researchSpine: "Processing fluency + serial position (page-1 JD proof)",
-    literature: ["Schema match", "ATS single-column parse safety", "Primacy"],
+    id: "signal_classic",
+    name: "Signal Classic",
+    tagline: "Modern corporate fluency — default shortlist pack",
+    researchSpine:
+      "Processing fluency + schema match + F-pattern (7.4s recruiter skim)",
+    literature: [
+      "TheLadders eye-tracking (6–7.4s)",
+      "Schema match / ATS single-column",
+      "Primacy of page-1 JD proof",
+    ],
+    scanPath: "Summary → Skills → Impact → Experience → Education",
+    bestFor: "Most SAP / corporate vendor submissions",
     sections: secs([
       ["summary", "Professional Summary", 1],
       ["skills", "Core Competencies", 2],
@@ -96,11 +114,18 @@ export const LAYOUT_CONFIGS: LayoutConfig[] = [
     },
   },
   {
-    id: "executive_serif",
-    name: "Executive Serif",
-    tagline: "Minto answer-first leadership",
-    researchSpine: "Minto pyramid — claim before evidence",
-    literature: ["Minto", "Construal level abstract→concrete"],
+    id: "pyramid_brief",
+    name: "Pyramid Brief",
+    tagline: "Answer-first leadership memo (Minto)",
+    researchSpine:
+      "Minto pyramid + construal level: claim before evidence",
+    literature: [
+      "Barbara Minto pyramid principle",
+      "Trope & Liberman construal level",
+      "Serif = trust / executive signal",
+    ],
+    scanPath: "Executive Brief → Achievements → Engagements → Competencies",
+    bestFor: "Architect, program lead, director-level packs",
     sections: secs([
       ["summary", "Executive Brief", 1],
       ["impact", "Signature Achievements", 2],
@@ -129,17 +154,24 @@ export const LAYOUT_CONFIGS: LayoutConfig[] = [
     },
   },
   {
-    id: "technical_dense",
-    name: "Technical Dense",
-    tagline: "Capability matrix / RFP response",
-    researchSpine: "Modular decomposition — skills before prose",
-    literature: ["Cognitive load chunking", "RFP matrix scan"],
+    id: "stack_spec",
+    name: "Stack Spec",
+    tagline: "Interface-first technical credibility",
+    researchSpine:
+      "Domain fluency signaling + chunked capability matrix before narrative",
+    literature: [
+      "Cognitive load / chunking (Sweller)",
+      "High SNR information design",
+      "Tech recruiter stack-first skim",
+    ],
+    scanPath: "Capability Matrix → Systems → Metrics → Deep-Dives",
+    bestFor: "BASIS, ABAP, integration, data, ATTP technical JDs",
     sections: secs([
       ["skills", "Capability Matrix", 1],
-      ["methodology", "Systems & Integration", 2],
-      ["impact", "Delivery Metrics", 3],
-      ["experience", "Deep-Dive Engagements", 4],
-      ["education", "Education", 5],
+      ["impact", "Delivery Metrics", 2],
+      ["experience", "Deep-Dive Engagements", 3],
+      ["summary", "Technical Positioning", 4],
+      ["education", "Credentials", 5],
     ]),
     style: {
       nameSize: 18,
@@ -151,7 +183,7 @@ export const LAYOUT_CONFIGS: LayoutConfig[] = [
       soft: "#ecfeff",
       headingCase: "upper",
       bullet: "▸",
-      divider: "accent-bar",
+      divider: "line",
       headerBand: false,
       leftRail: true,
       skillSeparator: "  |  ",
@@ -163,11 +195,18 @@ export const LAYOUT_CONFIGS: LayoutConfig[] = [
     },
   },
   {
-    id: "timeline_progressive",
-    name: "Timeline Progressive",
-    tagline: "Narrative identity chapters",
-    researchSpine: "Progressive disclosure + peak–end",
-    literature: ["McAdams narrative identity", "Peak-end rule"],
+    id: "arc_timeline",
+    name: "Arc Timeline",
+    tagline: "Career as progressive growth story",
+    researchSpine:
+      "Narrative identity + progressive disclosure + peak–end across chapters",
+    literature: [
+      "McAdams narrative identity",
+      "Peak-end rule (Kahneman)",
+      "Progressive tenure psychology",
+    ],
+    scanPath: "Career Arc → Recent → Growth → Foundation → Skills",
+    bestFor: "Transfer candidates and long multi-module careers",
     sections: secs([
       ["summary", "Career Arc", 1],
       ["experience", "Chapter Timeline", 2],
@@ -176,12 +215,12 @@ export const LAYOUT_CONFIGS: LayoutConfig[] = [
       ["education", "Foundation", 5],
     ]),
     style: {
-      nameSize: 20,
+      nameSize: 22,
       headlineSize: 11,
       headingSize: 10,
       bodySize: 10,
-      accent: "#047857",
-      muted: "#64748b",
+      accent: "#059669",
+      muted: "#6b7280",
       soft: "#ecfdf5",
       headingCase: "title",
       bullet: "•",
@@ -196,50 +235,23 @@ export const LAYOUT_CONFIGS: LayoutConfig[] = [
     },
   },
   {
-    id: "modern_minimal",
-    name: "Modern Minimal",
-    tagline: "High-SNR sparse proof",
-    researchSpine: "Cognitive load reduction — proof first",
-    literature: ["Sparse signals", "F-pattern scanning"],
+    id: "impact_banner",
+    name: "Impact Banner",
+    tagline: "High-signal vendor submit pack",
+    researchSpine:
+      "Peak–end + schema-matched title in hot zone + System-1 header band",
+    literature: [
+      "Peak-end rule on recent outcomes",
+      "Title isomorphism to JD",
+      "Halo from polished submit artifact",
+    ],
+    scanPath: "Header band → Pitch → Skills → Impact Experience",
+    bestFor: "Aggressive vendor email packs that must sell in one viewport",
     sections: secs([
-      ["impact", "Selected Work", 1],
-      ["skills", "Keywords", 2],
-      ["summary", "Pitch", 3],
-      ["experience", "Prior Roles", 4],
-      ["education", "Footnotes", 5],
-    ]),
-    style: {
-      nameSize: 26,
-      headlineSize: 11,
-      headingSize: 9,
-      bodySize: 10,
-      accent: "#18181b",
-      muted: "#71717a",
-      soft: "#fafafa",
-      headingCase: "upper",
-      bullet: "•",
-      divider: "space",
-      headerBand: false,
-      leftRail: false,
-      skillSeparator: "    ·    ",
-      nameFont: "sans",
-      bodyFont: "sans",
-      sectionBar: true,
-      boldJobTitles: true,
-      badge: "PORTFOLIO",
-    },
-  },
-  {
-    id: "consultant_band",
-    name: "Consultant Band",
-    tagline: "Impact-led commercial pack",
-    researchSpine: "Peak-end + SCQA-lite",
-    literature: ["Peak-end", "Consulting case evidence"],
-    sections: secs([
-      ["summary", "Profile Summary", 1],
+      ["summary", "Pitch", 1],
       ["skills", "Core Skills", 2],
-      ["impact", "Key Achievements", 3],
-      ["experience", "Professional Experience", 4],
+      ["impact", "Peak Outcomes", 3],
+      ["experience", "Engagements", 4],
       ["education", "Education", 5],
     ]),
     style: {
@@ -247,7 +259,7 @@ export const LAYOUT_CONFIGS: LayoutConfig[] = [
       headlineSize: 11,
       headingSize: 10,
       bodySize: 10,
-      accent: "#9a3412",
+      accent: "#c2410c",
       muted: "#78716c",
       soft: "#fff7ed",
       headingCase: "upper",
@@ -260,212 +272,46 @@ export const LAYOUT_CONFIGS: LayoutConfig[] = [
       bodyFont: "sans",
       sectionBar: true,
       boldJobTitles: true,
-    },
-  },
-  {
-    id: "pyramid_brief",
-    name: "Pyramid Brief",
-    tagline: "Answer → support → detail",
-    researchSpine: "Minto + serial position",
-    literature: ["Minto pyramid", "Recruiter 6-second scan"],
-    sections: secs([
-      ["summary", "The Answer", 1],
-      ["impact", "Supporting Points", 2],
-      ["skills", "Evidence Toolkit", 3],
-      ["experience", "Detail & Delivery", 4],
-      ["education", "Background", 5],
-    ]),
-    style: {
-      nameSize: 22,
-      headlineSize: 11,
-      headingSize: 10,
-      bodySize: 10,
-      accent: "#312e81",
-      muted: "#6366f1",
-      soft: "#eef2ff",
-      headingCase: "title",
-      bullet: "◆",
-      divider: "accent-bar",
-      headerBand: false,
-      leftRail: true,
-      skillSeparator: "  ·  ",
-      nameFont: "serif",
-      bodyFont: "sans",
-      sectionBar: true,
-      boldJobTitles: true,
-    },
-  },
-  {
-    id: "skills_first",
-    name: "Skills-First Modular",
-    tagline: "Stack opens — engineers scan skills",
-    researchSpine: "Schema match via skill primacy",
-    literature: ["TF-IDF page-1 density", "Chunking"],
-    sections: secs([
-      ["skills", "Technical Stack", 1],
-      ["summary", "Consultant Snapshot", 2],
-      ["experience", "Engagements", 3],
-      ["impact", "Outcomes", 4],
-      ["education", "Education", 5],
-    ]),
-    style: {
-      nameSize: 19,
-      headlineSize: 10,
-      headingSize: 9,
-      bodySize: 9,
-      accent: "#155e75",
-      muted: "#0e7490",
-      soft: "#cffafe",
-      headingCase: "upper",
-      bullet: "›",
-      divider: "line",
-      headerBand: false,
-      leftRail: false,
-      skillSeparator: "  ·  ",
-      nameFont: "sans",
-      bodyFont: "sans",
-      sectionBar: true,
-      boldJobTitles: true,
-    },
-  },
-  {
-    id: "peak_end_case",
-    name: "Peak-End Case",
-    tagline: "Wins first, then full history",
-    researchSpine: "Peak-end rule for memory of quality",
-    literature: ["Kahneman peak-end", "Thin-slicing"],
-    sections: secs([
-      ["impact", "Peak Outcomes", 1],
-      ["summary", "Positioning", 2],
-      ["experience", "Case History", 3],
-      ["skills", "Methods & Tools", 4],
-      ["education", "Education", 5],
-    ]),
-    style: {
-      nameSize: 21,
-      headlineSize: 11,
-      headingSize: 10,
-      bodySize: 10,
-      accent: "#b45309",
-      muted: "#92400e",
-      soft: "#fffbeb",
-      headingCase: "title",
-      bullet: "•",
-      divider: "accent-bar",
-      headerBand: false,
-      leftRail: false,
-      skillSeparator: "  ·  ",
-      nameFont: "sans",
-      bodyFont: "sans",
-      sectionBar: true,
-      boldJobTitles: true,
-    },
-  },
-  {
-    id: "f_pattern",
-    name: "F-Pattern Scanner",
-    tagline: "Short labels + dense bullets",
-    researchSpine: "F-pattern eye tracking for web/resume scan",
-    literature: ["Nielsen F-pattern", "Fluency"],
-    sections: secs([
-      ["skills", "SCAN · Skills", 1],
-      ["impact", "SCAN · Proof", 2],
-      ["experience", "SCAN · History", 3],
-      ["summary", "SCAN · Fit", 4],
-      ["education", "SCAN · Creds", 5],
-    ]),
-    style: {
-      nameSize: 20,
-      headlineSize: 10,
-      headingSize: 9,
-      bodySize: 9,
-      accent: "#0f766e",
-      muted: "#115e59",
-      soft: "#f0fdfa",
-      headingCase: "upper",
-      bullet: "•",
-      divider: "line",
-      headerBand: false,
-      leftRail: true,
-      skillSeparator: " · ",
-      nameFont: "sans",
-      bodyFont: "sans",
-      sectionBar: true,
-      boldJobTitles: true,
-    },
-  },
-  {
-    id: "board_memo",
-    name: "Board Memo",
-    tagline: "Abstract claim → concrete proof",
-    researchSpine: "Construal level + executive memo",
-    literature: ["Trope & Liberman", "Board communication"],
-    sections: secs([
-      ["summary", "Recommendation", 1],
-      ["skills", "Capability", 2],
-      ["impact", "Evidence", 3],
-      ["experience", "Track Record", 4],
-      ["education", "Appendix", 5],
-    ]),
-    style: {
-      nameSize: 23,
-      headlineSize: 11,
-      headingSize: 10,
-      bodySize: 10,
-      accent: "#1e293b",
-      muted: "#475569",
-      soft: "#f1f5f9",
-      headingCase: "title",
-      bullet: "–",
-      divider: "double",
-      headerBand: false,
-      leftRail: false,
-      skillSeparator: "  ·  ",
-      nameFont: "serif",
-      bodyFont: "serif",
-      sectionBar: true,
-      boldJobTitles: true,
-      badge: "CONFIDENTIAL PACK",
-    },
-  },
-  {
-    id: "research_compact",
-    name: "Research Compact",
-    tagline: "Abstract · method · results",
-    researchSpine: "Scientific abstract structure applied to consulting",
-    literature: ["IMRaD-inspired", "Information hierarchy"],
-    sections: secs([
-      ["summary", "Abstract", 1],
-      ["methodology", "Method", 2],
-      ["skills", "Instruments", 3],
-      ["experience", "Results by Engagement", 4],
-      ["impact", "Discussion", 5],
-      ["education", "References", 6],
-    ]),
-    style: {
-      nameSize: 18,
-      headlineSize: 10,
-      headingSize: 9,
-      bodySize: 9,
-      accent: "#4c1d95",
-      muted: "#6d28d9",
-      soft: "#f5f3ff",
-      headingCase: "title",
-      bullet: "•",
-      divider: "accent-bar",
-      headerBand: false,
-      leftRail: true,
-      skillSeparator: "  ·  ",
-      nameFont: "sans",
-      bodyFont: "sans",
-      sectionBar: true,
-      boldJobTitles: true,
+      badge: "SUBMIT PACK",
     },
   },
 ];
 
+/**
+ * Legacy IDs (DB, chains, seeds) → flagship id.
+ * One prompt still generates content; layout only remaps structure/style.
+ */
+export const LAYOUT_ID_ALIASES: Record<string, string> = {
+  ats_classic: "signal_classic",
+  executive_serif: "pyramid_brief",
+  technical_dense: "stack_spec",
+  timeline_progressive: "arc_timeline",
+  modern_minimal: "signal_classic",
+  consultant_band: "impact_banner",
+  // Older research set → nearest flagship
+  pyramid_brief: "pyramid_brief",
+  skills_first: "stack_spec",
+  peak_end_case: "impact_banner",
+  f_pattern: "signal_classic",
+  board_memo: "pyramid_brief",
+  research_compact: "stack_spec",
+  // Identity aliases
+  signal_classic: "signal_classic",
+  stack_spec: "stack_spec",
+  arc_timeline: "arc_timeline",
+  impact_banner: "impact_banner",
+};
+
+export function resolveLayoutId(id?: string | null): string {
+  const raw = (id || "").trim() || DEFAULT_LAYOUT_ID;
+  return LAYOUT_ID_ALIASES[raw] || DEFAULT_LAYOUT_ID;
+}
+
 export function getLayoutConfig(id?: string | null): LayoutConfig {
-  return LAYOUT_CONFIGS.find((l) => l.id === id) || LAYOUT_CONFIGS[0];
+  const resolved = resolveLayoutId(id);
+  return (
+    LAYOUT_CONFIGS.find((l) => l.id === resolved) || LAYOUT_CONFIGS[0]!
+  );
 }
 
 export function allLayoutIds(): string[] {
@@ -473,7 +319,7 @@ export function allLayoutIds(): string[] {
 }
 
 export function layoutConfigForIndex(i: number): LayoutConfig {
-  return LAYOUT_CONFIGS[i % LAYOUT_CONFIGS.length];
+  return LAYOUT_CONFIGS[i % LAYOUT_CONFIGS.length]!;
 }
 
 /** Reorder/rename sections (admin customization hook) */

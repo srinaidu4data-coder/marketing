@@ -190,6 +190,27 @@ export const LAYOUT_DNA: Record<ResumeLayoutId, ThemeDNA> = {
   },
 };
 
+/** Map flagship + legacy layout ids → DNA key */
+const DNA_ALIASES: Record<string, string> = {
+  signal_classic: "ats_classic",
+  pyramid_brief: "executive_serif",
+  stack_spec: "technical_dense",
+  arc_timeline: "timeline_progressive",
+  impact_banner: "consultant_band",
+  ats_classic: "ats_classic",
+  executive_serif: "executive_serif",
+  technical_dense: "technical_dense",
+  timeline_progressive: "timeline_progressive",
+  modern_minimal: "modern_minimal",
+  consultant_band: "consultant_band",
+  f_pattern: "ats_classic",
+  board_memo: "executive_serif",
+  skills_first: "technical_dense",
+  research_compact: "technical_dense",
+  peak_end_case: "consultant_band",
+};
+
 export function getDna(id: ResumeLayoutId | string): ThemeDNA {
-  return LAYOUT_DNA[id as ResumeLayoutId] || LAYOUT_DNA.ats_classic;
+  const key = DNA_ALIASES[String(id || "")] || "ats_classic";
+  return LAYOUT_DNA[key as ResumeLayoutId] || LAYOUT_DNA.ats_classic;
 }

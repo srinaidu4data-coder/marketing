@@ -57,10 +57,12 @@ export function getLayout(id?: string | null): LayoutDef {
     id: c.id,
     name: c.name,
     tagline: c.tagline,
-    bestFor: c.researchSpine,
+    bestFor: c.bestFor || c.researchSpine,
     style: c.style,
   };
 }
+
+export { DEFAULT_LAYOUT_ID, resolveLayoutId } from "./layout-config";
 
 export function formatHeading(text: string, layout: LayoutDef) {
   return layout.style.headingCase === "upper" ? text.toUpperCase() : text;

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { RESUME_LAYOUTS } from "@/lib/resume/templates";
+import { RESUME_LAYOUTS, resolveLayoutId } from "@/lib/resume/templates";
 import {
   DEFAULT_RESUME_ENGINE_POLICY,
   parseResumeEnginePolicy,
@@ -101,7 +101,7 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   companyName: "SR SOFT LLC",
   supportEmail: "admin@srsoft.com",
   dailyAiCostCapUsd: 25,
-  defaultLayoutId: "ats_classic",
+  defaultLayoutId: "signal_classic",
   defaultExportFormat: "DOCX",
   allowEmployeeSelfChains: true,
   resumeEnginePolicy: DEFAULT_RESUME_ENGINE_POLICY,
@@ -140,7 +140,10 @@ export async function getSystemConfig(): Promise<SystemConfig> {
     companyName: map.get(SETTING_KEYS.COMPANY_NAME) || DEFAULT_SYSTEM_CONFIG.companyName,
     supportEmail: map.get(SETTING_KEYS.SUPPORT_EMAIL) || DEFAULT_SYSTEM_CONFIG.supportEmail,
     dailyAiCostCapUsd: Number.isFinite(cap) && cap >= 0 ? cap : DEFAULT_SYSTEM_CONFIG.dailyAiCostCapUsd,
-    defaultLayoutId: LAYOUT_IDS.has(layout as never) ? layout : DEFAULT_SYSTEM_CONFIG.defaultLayoutId,
+    defaultLayoutId: (() => {
+      const r = resolveLayoutId(layout);
+      return LAYOUT_IDS.has(r as never) ? r : DEFAULT_SYSTEM_CONFIG.defaultLayoutId;
+    })(),
     defaultExportFormat: exportFmt === "DOCX_PDF" ? "DOCX_PDF" : "DOCX",
     allowEmployeeSelfChains:
       (map.get(SETTING_KEYS.ALLOW_EMPLOYEE_SELF_CHAINS) ?? "true") !== "false",

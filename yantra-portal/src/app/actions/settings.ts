@@ -10,7 +10,7 @@ import {
   serializeEngineSequence,
   type SettingKey,
 } from "@/lib/system-settings";
-import { RESUME_LAYOUTS } from "@/lib/resume/templates";
+import { RESUME_LAYOUTS, resolveLayoutId } from "@/lib/resume/templates";
 import {
   parseResumeEnginePolicy,
   serializeResumeEnginePolicy,
@@ -27,7 +27,9 @@ export async function saveSystemSettings(formData: FormData): Promise<SettingsAc
   const companyName = String(formData.get("companyName") || "").trim();
   const supportEmail = String(formData.get("supportEmail") || "").trim();
   const dailyCap = Number(formData.get("dailyAiCostCapUsd"));
-  const defaultLayoutId = String(formData.get("defaultLayoutId") || "ats_classic");
+  const defaultLayoutId = String(
+    formData.get("defaultLayoutId") || "signal_classic"
+  );
   const defaultExportFormat = String(formData.get("defaultExportFormat") || "DOCX");
   const allowSelf = formData.get("allowEmployeeSelfChains") === "on" || formData.get("allowEmployeeSelfChains") === "true";
   const policyJson = String(formData.get("resumeEnginePolicyJson") || "").trim();
@@ -46,7 +48,8 @@ export async function saveSystemSettings(formData: FormData): Promise<SettingsAc
   if (!Number.isFinite(dailyCap) || dailyCap < 0) {
     return { ok: false, error: "Daily AI cost cap must be a non-negative number." };
   }
-  if (!LAYOUT_IDS.has(defaultLayoutId as never)) {
+  const resolvedDefaultLayout = resolveLayoutId(defaultLayoutId);
+  if (!LAYOUT_IDS.has(resolvedDefaultLayout as never)) {
     return { ok: false, error: "Invalid default layout." };
   }
   if (defaultExportFormat !== "DOCX" && defaultExportFormat !== "DOCX_PDF") {
@@ -108,7 +111,7 @@ export async function saveSystemSettings(formData: FormData): Promise<SettingsAc
     [SETTING_KEYS.COMPANY_NAME]: companyName,
     [SETTING_KEYS.SUPPORT_EMAIL]: supportEmail,
     [SETTING_KEYS.DAILY_AI_COST_CAP_USD]: String(dailyCap),
-    [SETTING_KEYS.DEFAULT_LAYOUT_ID]: defaultLayoutId,
+    [SETTING_KEYS.DEFAULT_LAYOUT_ID]: resolvedDefaultLayout,
     [SETTING_KEYS.DEFAULT_EXPORT_FORMAT]: defaultExportFormat,
     [SETTING_KEYS.ALLOW_EMPLOYEE_SELF_CHAINS]: allowSelf ? "true" : "false",
     [SETTING_KEYS.RESUME_ENGINE_SEQUENCE]: serializeEngineSequence(engineSeq),

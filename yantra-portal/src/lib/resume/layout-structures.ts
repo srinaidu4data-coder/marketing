@@ -61,21 +61,20 @@ export type StructureDef = {
 };
 
 /**
- * Six spines — intentionally non-isomorphic:
+ * Five flagship spines (psychology brief) — non-isomorphic:
  *
- * 1. ats_classic        IDENTITY → CLAIM → SKILLS → ALL ROLES → CLOSE
- * 2. executive_serif    ANSWER → SUPPORTING POINTS → DETAIL → COMPETENCIES → CRED
- * 3. technical_dense    MATRIX → INTERFACES → METRICS → DEEP-DIVES → PRACTICES
- * 4. timeline_progressive  STORY HOOK → CHRONO CHAPTERS → EVOLUTION → PEAKS → ROOTS
- * 5. modern_minimal     PROOF WORK → KEYWORDS → ONE-LINE PITCH → ARCHIVE → FOOTNOTE
- * 6. consultant_band    SITUATION → CASE DECK → OUTCOMES → METHOD → COMMERCIAL CTA
+ * 1. signal_classic   Summary → Skills → Impact → Experience → Education
+ * 2. pyramid_brief    Answer → Wins → Engagements → Competencies → Cred
+ * 3. stack_spec       Matrix → Metrics → Deep-dives → Positioning
+ * 4. arc_timeline     Arc → Chapters → Evolution → Milestones → Foundation
+ * 5. impact_banner    Pitch → Skills → Peak outcomes → Engagements
  */
 export const STRUCTURE_CATALOG: StructureDef[] = [
   {
-    id: "ats_classic",
-    name: "ATS Classic",
+    id: "signal_classic",
+    name: "Signal Classic",
     structureName: "Canonical Linear Checklist",
-    feel: "Strict corporate order recruiters and parsers expect — no surprises.",
+    feel: "Strict corporate order recruiters and parsers expect — modern, not bare.",
     spine: LAYOUT_RHETORIC.ats_classic.spine + " · Summary → Skills → Impact → Experience → Education",
     literature: [
       "Schema matching + processing fluency (System-1 6s scan)",
@@ -87,14 +86,14 @@ export const STRUCTURE_CATALOG: StructureDef[] = [
     expectedHeadings: [
       "Professional Summary",
       "Core Competencies",
-      "Selected Impact Snapshot",
+      "Selected Impact",
       "Professional Experience",
       "Education",
     ],
   },
   {
-    id: "executive_serif",
-    name: "Executive Serif",
+    id: "pyramid_brief",
+    name: "Pyramid Brief",
     structureName: "Minto Pyramid Brief",
     feel: "Answer-first leadership memo — conclusion before evidence.",
     spine: LAYOUT_RHETORIC.executive_serif.spine + " · Answer → Wins → Engagements → Competencies → Credentials",
@@ -114,8 +113,8 @@ export const STRUCTURE_CATALOG: StructureDef[] = [
     ],
   },
   {
-    id: "technical_dense",
-    name: "Technical Dense",
+    id: "stack_spec",
+    name: "Stack Spec",
     structureName: "Stack-First Modular Spec",
     feel: "Engineer one-pager: capability matrix and interfaces before story.",
     spine: "Capability Matrix → Systems Surface → Delivery Metrics → Deep-Dives → Practices",
@@ -127,15 +126,15 @@ export const STRUCTURE_CATALOG: StructureDef[] = [
     ],
     expectedHeadings: [
       "Capability Matrix",
-      "Systems & Integration Surface",
       "Delivery Metrics",
       "Deep-Dive Engagements",
-      "Engineering Practices",
+      "Technical Positioning",
+      "Credentials",
     ],
   },
   {
-    id: "timeline_progressive",
-    name: "Timeline Progressive",
+    id: "arc_timeline",
+    name: "Arc Timeline",
     structureName: "Narrative Growth Arc",
     feel: "Career as a story of progressive mastery over time.",
     spine: "Career Arc → Chapter Timeline → Skill Evolution → Defining Milestones → Foundation",
@@ -154,42 +153,22 @@ export const STRUCTURE_CATALOG: StructureDef[] = [
     ],
   },
   {
-    id: "modern_minimal",
-    name: "Modern Minimal",
-    structureName: "Proof-First Dense One-Pager",
-    feel: "F-pattern product sheet — dense pitch + keywords, then selected work proof.",
-    spine: "Pitch → Keywords → Selected Work → Prior Roles → Footnotes",
+    id: "impact_banner",
+    name: "Impact Banner",
+    structureName: "Peak-End Submit Pack",
+    feel: "Bold header band + high-signal pitch — sells in one viewport for vendor email.",
+    spine: "Pitch → Core Skills → Peak Outcomes → Engagements → Education",
     literature: [
-      "Eye-tracking F-pattern (Nielsen-style scanning; left-edge primacy)",
-      "Thin-slicing first impressions (Ambady)",
-      "Less-is-more aesthetics / fluency under low cognitive load",
-      "Business: product one-pager / personal brand sheet (proof above fold)",
-    ],
-    expectedHeadings: [
-      "Pitch",
-      "Keywords",
-      "Selected Work",
-      "Prior Roles",
-      "Footnotes",
-    ],
-  },
-  {
-    id: "consultant_band",
-    name: "Consultant Band",
-    structureName: "Impact-Led Professional Pack",
-    feel: "Bold header band with clean professional sections — summary, skills, achievements, experience.",
-    spine: "Profile Summary → Core Skills → Key Achievements → Professional Experience → Education",
-    literature: [
-      "Peak-end achievements before full history",
-      "Schema match via skills block",
-      "Consulting delivery evidence without sales-deck framing",
+      "Peak-end rule on recent outcomes",
+      "Title isomorphism to JD in hot zone",
+      "Halo from polished submit artifact",
       "Primacy of recent proof for enterprise buyers",
     ],
     expectedHeadings: [
-      "Profile Summary",
+      "Pitch",
       "Core Skills",
-      "Key Achievements",
-      "Professional Experience",
+      "Peak Outcomes",
+      "Engagements",
       "Education",
     ],
   },
@@ -261,20 +240,30 @@ function firstName(name: string) {
   return name.split(/\s+/)[0] || name;
 }
 
-/** Build sections unique to layout structure */
+/** Build sections unique to layout structure (flagship ids + legacy aliases). */
 export function buildSectionsForLayout(ctx: StructureCtx): ResumeSection[] {
-  switch (ctx.layoutId) {
+  const id = String(ctx.layoutId || "signal_classic");
+  switch (id) {
+    case "signal_classic":
     case "ats_classic":
+    case "f_pattern":
+    case "modern_minimal":
       return buildAtsClassic(ctx);
+    case "pyramid_brief":
     case "executive_serif":
+    case "board_memo":
       return buildExecutivePyramid(ctx);
+    case "stack_spec":
     case "technical_dense":
+    case "skills_first":
+    case "research_compact":
       return buildTechModular(ctx);
+    case "arc_timeline":
     case "timeline_progressive":
       return buildTimelineNarrative(ctx);
-    case "modern_minimal":
-      return buildMinimalSparse(ctx);
+    case "impact_banner":
     case "consultant_band":
+    case "peak_end_case":
       return buildScqaCasePortfolio(ctx);
     default:
       return buildAtsClassic(ctx);
@@ -575,9 +564,24 @@ function buildScqaCasePortfolio(ctx: StructureCtx): ResumeSection[] {
   ];
 }
 
+const STRUCTURE_ALIASES: Record<string, string> = {
+  ats_classic: "signal_classic",
+  executive_serif: "pyramid_brief",
+  technical_dense: "stack_spec",
+  timeline_progressive: "arc_timeline",
+  consultant_band: "impact_banner",
+  modern_minimal: "signal_classic",
+  signal_classic: "signal_classic",
+  pyramid_brief: "pyramid_brief",
+  stack_spec: "stack_spec",
+  arc_timeline: "arc_timeline",
+  impact_banner: "impact_banner",
+};
+
 export function getStructureDef(layoutId: string): StructureDef {
+  const id = STRUCTURE_ALIASES[layoutId] || layoutId;
   return (
-    STRUCTURE_CATALOG.find((s) => s.id === layoutId) || STRUCTURE_CATALOG[0]
+    STRUCTURE_CATALOG.find((s) => s.id === id) || STRUCTURE_CATALOG[0]!
   );
 }
 

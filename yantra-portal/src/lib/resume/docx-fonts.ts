@@ -91,6 +91,43 @@ function fromDna(dna: ThemeDNA, layoutStyle?: LayoutDef["style"]): DocxFontSet {
 
 /** Explicit overrides where DNA + Office pairing needs a sharper identity */
 const LAYOUT_DOCX_OVERRIDES: Partial<Record<string, Partial<DocxFontSet>>> = {
+  // Flagship 5
+  signal_classic: {
+    name: "Calibri",
+    headline: "Calibri",
+    heading: "Calibri",
+    body: "Calibri",
+    mono: "Calibri",
+  },
+  pyramid_brief: {
+    name: "Georgia",
+    headline: "Georgia",
+    heading: "Georgia",
+    body: "Calibri",
+    mono: "Calibri",
+  },
+  stack_spec: {
+    name: "Consolas",
+    headline: "Calibri",
+    heading: "Consolas",
+    body: "Calibri",
+    mono: "Consolas",
+  },
+  arc_timeline: {
+    name: "Calibri",
+    headline: "Calibri",
+    heading: "Calibri",
+    body: "Calibri",
+    mono: "Calibri",
+  },
+  impact_banner: {
+    name: "Calibri",
+    headline: "Calibri",
+    heading: "Calibri",
+    body: "Calibri",
+    mono: "Calibri",
+  },
+  // Legacy ids (same faces as aliases)
   ats_classic: {
     name: "Calibri",
     headline: "Calibri",
@@ -119,14 +156,6 @@ const LAYOUT_DOCX_OVERRIDES: Partial<Record<string, Partial<DocxFontSet>>> = {
     body: "Calibri",
     mono: "Calibri",
   },
-  modern_minimal: {
-    // Inter → Calibri Light if available; Calibri is universal
-    name: "Calibri",
-    headline: "Calibri",
-    heading: "Calibri",
-    body: "Calibri",
-    mono: "Calibri",
-  },
   consultant_band: {
     name: "Calibri",
     headline: "Calibri",
@@ -134,55 +163,13 @@ const LAYOUT_DOCX_OVERRIDES: Partial<Record<string, Partial<DocxFontSet>>> = {
     body: "Calibri",
     mono: "Calibri",
   },
-  pyramid_brief: {
-    name: "Georgia",
-    headline: "Georgia",
-    heading: "Georgia",
-    body: "Calibri",
-    mono: "Calibri",
-  },
-  skills_first: {
-    name: "Calibri",
-    headline: "Calibri",
-    heading: "Calibri",
-    body: "Calibri",
-    mono: "Consolas",
-  },
-  peak_end_case: {
-    name: "Calibri",
-    headline: "Calibri",
-    heading: "Calibri",
-    body: "Calibri",
-    mono: "Calibri",
-  },
-  f_pattern: {
-    name: "Calibri",
-    headline: "Calibri",
-    heading: "Calibri",
-    body: "Calibri",
-    mono: "Calibri",
-  },
-  board_memo: {
-    name: "Georgia",
-    headline: "Georgia",
-    heading: "Georgia",
-    body: "Georgia",
-    mono: "Calibri",
-  },
-  research_compact: {
-    name: "Calibri",
-    headline: "Calibri",
-    heading: "Calibri",
-    body: "Calibri",
-    mono: "Consolas",
-  },
 };
 
 export function getDocxFonts(
   layoutId: string | null | undefined,
   layoutStyle?: LayoutDef["style"]
 ): DocxFontSet {
-  const id = layoutId || "ats_classic";
+  const id = layoutId || "signal_classic";
   const dna = getDna(id);
   const base = fromDna(dna, layoutStyle);
   const over = LAYOUT_DOCX_OVERRIDES[id];

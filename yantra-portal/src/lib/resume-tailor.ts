@@ -975,7 +975,7 @@ export async function tailorResume(opts: {
       jobTitle,
       domain: "general",
       yearsHint: 2,
-      layoutId: opts.layoutId || "ats_classic",
+      layoutId: opts.layoutId || "signal_classic",
       vendorName: opts.vendorName,
     });
     const text = renderPlainFromStructured(structured);
