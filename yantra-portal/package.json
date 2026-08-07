@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/check-single-db.mjs",
     "dev": "next dev",
     "build": "node scripts/vercel-build.mjs",
     "start": "next start",
@@ -20,9 +21,7 @@
     "db:reset": "node scripts/check-single-db.mjs && prisma db push --schema=prisma/schema.prisma --force-reset && tsx prisma/seed.ts",
     "postinstall": "prisma generate --schema=prisma/schema.prisma",
     "db:push:pg": "npm run db:push",
-    "db:seed:pg": "npm run db:seed",
-    "predev": "node scripts/check-single-db.mjs",
-    "dev": "next dev"
+    "db:seed:pg": "npm run db:seed"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
