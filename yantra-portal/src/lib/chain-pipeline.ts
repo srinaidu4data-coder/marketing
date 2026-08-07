@@ -427,6 +427,27 @@ export async function generateChainResumes(
           },
         });
 
+        // StackEnv last pass on plain text — never persist cloned Tech Stack/Environment
+        try {
+          const { applyStackEnvToPlainText } = await import(
+            "@/lib/resume-v2/stack-env"
+          );
+          const fixed = applyStackEnvToPlainText(tailored.text || "", {
+            jd: effectiveJd,
+            masterText: c.masterResumeText || "",
+            force: true,
+          });
+          if (fixed.changed && fixed.text.trim().length >= 200) {
+            tailored.text = fixed.text;
+            tailored.structured.meta.progressiveNotes = [
+              ...(tailored.structured.meta.progressiveNotes || []),
+              `stack-env: plain-text diversified sigs=${fixed.report?.uniqueSignatures ?? "?"} maxJ=${fixed.report?.maxPairJaccard?.toFixed(2) ?? "?"}`,
+            ];
+          }
+        } catch (e) {
+          console.warn("[chain] stack-env plain-text pass failed", e);
+        }
+
         // Product law: never block save with ship-error banners for users.
         // Soft-inspect only — attach notes; still persist any pack with real text.
         const ship = inspectPackShipReady({

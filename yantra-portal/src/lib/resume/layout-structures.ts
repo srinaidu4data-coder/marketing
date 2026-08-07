@@ -176,7 +176,7 @@ export const STRUCTURE_CATALOG: StructureDef[] = [
 
 function expLines(
   projects: StructureProject[],
-  cleanSkills: string[],
+  _cleanSkills: string[],
   bullet: string,
   sep: string,
   opts: {
@@ -216,11 +216,9 @@ function expLines(
     // MANDATORY: employer/client on its own line for every project (all layouts)
     out.push(`Employer / Client: ${client}`);
     out.push(`${p.location}  |  ${p.startYear} – ${end}`);
-    // Environment = tools/platforms ONLY (never soft duties or role-title fragments)
-    const stackRaw =
-      p.era === "recent"
-        ? [...p.skills, ...cleanSkills.slice(0, 12)]
-        : p.skills.slice(0, 12);
+    // Environment / stack = THIS project's skills only.
+    // NEVER inject global cleanSkills into every recent role — that clones one set across jobs.
+    const stackRaw = (p.skills || []).slice(0, 12);
     const stack = filterEnvironmentTokens(stackRaw, { max: 10 });
     if (stack.length) {
       out.push(`${opts.stackLabel || "Stack"}: ${stack.join(sep)}`);

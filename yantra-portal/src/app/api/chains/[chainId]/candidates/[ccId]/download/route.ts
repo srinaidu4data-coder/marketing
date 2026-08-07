@@ -105,7 +105,46 @@ export async function GET(
   const forceRegen = url.searchParams.get("regen") === "1";
   const master = (row.candidate.masterResumeText || "").trim();
   const jd = row.chain.rawJobText || "";
-  const storedText = stripEngineFooter(row.tailoredResumeText || "").trim();
+  let storedText = stripEngineFooter(row.tailoredResumeText || "").trim();
+  /** When true, ignore cached docx/pdf (they still have clone stacks). */
+  let invalidateArtifacts = false;
+
+  // Last-line defense: diversify cloned Tech Stack / Environment before user sees pack
+  // (covers packs generated before StackEnv engine + any path that skipped it)
+  if (storedText.length >= 80) {
+    try {
+      const { applyStackEnvToPlainText, plainTextHasCloneStacks } = await import(
+        "@/lib/resume-v2/stack-env"
+      );
+      const isClone = plainTextHasCloneStacks(storedText);
+      const fixed = applyStackEnvToPlainText(storedText, {
+        jd,
+        masterText: master,
+        force: isClone,
+      });
+      if (fixed.changed && fixed.text.trim().length >= 80) {
+        storedText = stripEngineFooter(fixed.text).trim();
+        invalidateArtifacts = true;
+        // Persist so next download/preview is clean (CPU only — no LLM)
+        await prisma.chainCandidate
+          .update({
+            where: { id: row.id },
+            data: {
+              tailoredResumeText: sanitizePostgresText(storedText),
+              docxPath: null,
+              pdfPath: null,
+            },
+          })
+          .catch(() => {
+            /* non-fatal */
+          });
+      } else if (isClone) {
+        invalidateArtifacts = true;
+      }
+    } catch (e) {
+      console.warn("[download] stack-env plain-text pass failed", e);
+    }
+  }
 
   const nameOpts = {
     candidateName: row.candidate.name,
@@ -209,7 +248,8 @@ export async function GET(
   if (fmt === "docx") {
     const type =
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    const fromDisk = await tryRead(row.docxPath);
+    const fromDisk =
+      !invalidateArtifacts ? await tryRead(row.docxPath) : null;
     if (fromDisk) {
       mark(trace, "cache_hit", "disk_docx");
       mark(trace, "response_first_byte");
@@ -253,7 +293,8 @@ export async function GET(
   // ─── PDF ──────────────────────────────────────────────────────────
   if (fmt === "pdf") {
     const type = "application/pdf";
-    const fromDisk = await tryRead(row.pdfPath);
+    const fromDisk =
+      !invalidateArtifacts ? await tryRead(row.pdfPath) : null;
     // Accept only real PDF magic bytes (avoid serving corrupt/empty disk files)
     if (fromDisk && fromDisk.length > 200 && fromDisk.subarray(0, 4).toString() === "%PDF") {
       mark(trace, "cache_hit", "disk_pdf");

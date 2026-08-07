@@ -104,6 +104,8 @@ export {
 export {
   runStackEnvEngine,
   enforceStackEnvShipShape,
+  applyStackEnvToPlainText,
+  plainTextHasCloneStacks,
   getStackEnvBank,
   setStackEnvBank,
   parseStackEnvBank,

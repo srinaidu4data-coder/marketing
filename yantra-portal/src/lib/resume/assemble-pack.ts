@@ -529,17 +529,24 @@ export function buildProjects(opts: {
             FICO_ENV_BAN.test(s)
           )
       );
-    // Prefer JD-critical modules on recent ATTP roles
+    // Prefer JD-critical modules on recent ATTP roles ONLY (not every project).
+    // Early/mid get a rotated subset of the skill bank so Environment never clones.
     const attpTarget = /\battp\b|serialization|epcis/i.test(opts.jobTitle);
     const jdLean =
       attpTarget && isRecent
-        ? ["SAP ATTP", "EPCIS", "GS1", "Serialization", ...fill]
-        : fill;
+        ? ["SAP ATTP", "EPCIS", "GS1", "Serialization", ...fill.slice(0, 4)]
+        : [];
+    // Rotate bank by project index (derived from startYear) so stacks diverge
+    const rot = Math.abs(Number(anchor.startYear) || 0) % Math.max(1, bank.length);
+    const rotatedFill = [
+      ...bank.slice(rot, rot + skillCap),
+      ...bank.slice(0, rot),
+    ].slice(0, skillCap);
     const skills = Array.from(
       new Set([
         ...(modules.length ? modules : []),
         ...jdLean,
-        ...fill.slice(0, 2),
+        ...(isRecent ? fill.slice(0, 4) : rotatedFill.slice(0, skillCap)),
       ])
     )
       .filter((s) => !isOffDomainText(s, opts.domain, opts.policy))

@@ -34,3 +34,10 @@ export {
   eraBucket,
   type StackEnvEngineResult,
 } from "./engine";
+
+export {
+  applyStackEnvToPlainText,
+  plainTextHasCloneStacks,
+  parseStackEnvBlocks,
+  type PlainTextStackEnvResult,
+} from "./plain-text";

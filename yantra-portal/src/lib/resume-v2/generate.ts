@@ -419,51 +419,68 @@ export async function generateResumeV2(opts: {
       pack.techSkills = skillFallback.toolNouns;
     }
   }
-  const text = renderPackText(pack, skillFallback);
-  const structured = packToStructuredResume(pack, "ats_classic", skillFallback);
-  const jobTitle = pack.header.jobTitle;
-  const modeResult = resolveTailorMode(jdForLlm, masterForLlm);
-  const ats = scoreResume({
-    resumeText: text,
-    jd: jdForLlm,
-    jobTitle,
-  });
-  const psych = scorePsych({
-    resumeText: text,
-    masterText: masterForLlm,
-    jd: jdForLlm,
-    jobTitle,
-    mode: modeResult.mode,
-    candidateName: pack.header.name,
-  });
-  structured.meta.atsScore = ats.score;
-  structured.meta.psychScore = psych.score;
-  structured.meta.jobTitle = jobTitle;
-  structured.meta.skillFingerprint = (ats.missingKeywords || []).slice(0, 5).join(",");
-  structured.meta.tailorMode = modeResult.mode;
-  structured.meta.progressiveNotes = [
-    `resume-v2 · ${provider || "llm"} · ${model || "model"}`,
-    `ATS ${ats.score} · Psych ${psych.score}`,
-    ...issues.slice(0, 6).map((i) => i.detail),
-  ];
-
-  return {
-    ok: true,
-    pack,
-    text,
-    structured,
-    issues,
-    precheckErrors: pre.errors,
-    precheckWarnings: pre.warnings,
-    ats,
-    psych,
-    model,
-    provider,
-    attempts,
-    tokensIn,
-    tokensOut,
-    enginesTried,
-  };
+  // ALWAYS run StackEnv engine before any user-facing text (no clone stacks)
+  {
+    const { ensureShipCompatibleText } = await import("./ensure-ship-shape");
+    const shaped = ensureShipCompatibleText(
+      pack,
+      masterForLlm,
+      undefined,
+      jdForLlm
+    );
+    pack = shaped.pack;
+    const textShaped = shaped.text;
+    const structuredShaped = packToStructuredResume(
+      pack,
+      "ats_classic",
+      skillFallback
+    );
+    const jobTitle = pack.header.jobTitle;
+    const modeResult = resolveTailorMode(jdForLlm, masterForLlm);
+    const ats = scoreResume({
+      resumeText: textShaped,
+      jd: jdForLlm,
+      jobTitle,
+    });
+    const psych = scorePsych({
+      resumeText: textShaped,
+      masterText: masterForLlm,
+      jd: jdForLlm,
+      jobTitle,
+      mode: modeResult.mode,
+      candidateName: pack.header.name,
+    });
+    structuredShaped.meta.atsScore = ats.score;
+    structuredShaped.meta.psychScore = psych.score;
+    structuredShaped.meta.jobTitle = jobTitle;
+    structuredShaped.meta.skillFingerprint = (ats.missingKeywords || [])
+      .slice(0, 5)
+      .join(",");
+    structuredShaped.meta.tailorMode = modeResult.mode;
+    structuredShaped.meta.progressiveNotes = [
+      `resume-v2 · ${provider || "llm"} · ${model || "model"}`,
+      `ATS ${ats.score} · Psych ${psych.score}`,
+      ...issues.slice(0, 6).map((i) => i.detail),
+      ...(pack.meta?.notes || []).filter((n) => /stack-env/i.test(n)).slice(0, 4),
+    ];
+    return {
+      ok: true,
+      pack,
+      text: textShaped,
+      structured: structuredShaped,
+      issues,
+      precheckErrors: pre.errors,
+      precheckWarnings: pre.warnings,
+      ats,
+      psych,
+      provider,
+      model,
+      tokensIn,
+      tokensOut,
+      attempts,
+      enginesTried,
+    };
+  }
 }
 
 function emptyPack(): ResumePackV2 {
