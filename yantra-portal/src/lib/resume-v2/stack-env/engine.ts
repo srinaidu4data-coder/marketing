@@ -25,9 +25,9 @@ import type {
 /** Mirror of bible-prompt.JD_REWRITE_MAX_INDEX — avoid importing prisma via bible-prompt. */
 const JD_REWRITE_MAX_INDEX = 2;
 
-const MAX_PAIR_JACCARD = 0.42;
-const MIN_STACK = 3;
-const MIN_ENV = 2;
+const MAX_PAIR_JACCARD = 0.35;
+const MIN_STACK = 4;
+const MIN_ENV = 3;
 const MAX_STACK = 8;
 const MAX_ENV = 6;
 
@@ -296,19 +296,56 @@ function assignOne(opts: {
   const eraFilter = (terms: string[]) =>
     terms.filter((t) => opts.bank.isEraOk(t, year));
 
-  // Stack seed: LLM tools + master tools (+ limited JD on recent only)
-  let stack = eraFilter(
+  // Recipe-first (rotated per project) — guarantees projects never share one set.
+  // LLM / master / JD only add tokens that do not collide with prior projects.
+  const priorOccupied = occupancyKeys(opts.priorSignatures.flat());
+  const llmStack = eraFilter(
     uniqueTerms([
       ...fromStack.stack,
-      ...fromEnv.stack, // tools wrongly put on env
+      ...fromEnv.stack,
       ...fromMaster.stack,
-      ...(opts.isRecent ? fromJd.stack.slice(0, 3) : []),
+      ...(opts.isRecent ? fromJd.stack.slice(0, 2) : []),
+    ])
+  ).filter((t) => !conflictsWith(t, priorOccupied));
+
+  const llmEnv = eraFilter(
+    uniqueTerms([...fromStack.env, ...fromEnv.env, ...fromMaster.env])
+  ).filter((t) => !conflictsWith(t, priorOccupied));
+
+  // Exclusive bank slices by project index so pads diverge even when recipes thin
+  const toolPool = opts.bank.termsByKind("tool");
+  const platformPool = opts.bank.termsByKind("platform");
+  const slice = <T,>(arr: T[], start: number, n: number): T[] => {
+    if (!arr.length) return [];
+    const out: T[] = [];
+    for (let i = 0; i < n; i++) out.push(arr[(start + i * 7) % arr.length]!);
+    return out;
+  };
+  const exclusiveTools = slice(toolPool, opts.projectIndex * 11, 10).filter(
+    (t) => opts.bank.isEraOk(t, year) && !conflictsWith(t, priorOccupied)
+  );
+  const exclusivePlatforms = slice(
+    platformPool,
+    opts.projectIndex * 13 + 3,
+    8
+  ).filter(
+    (t) => opts.bank.isEraOk(t, year) && !conflictsWith(t, priorOccupied)
+  );
+
+  let stack = eraFilter(
+    uniqueTerms([
+      ...recipe.stack,
+      ...llmStack.slice(0, opts.isRecent ? 3 : 1),
+      ...exclusiveTools,
     ])
   );
 
-  // Env seed: platforms only from LLM + master (era-stripped)
   let env = eraFilter(
-    uniqueTerms([...fromStack.env, ...fromEnv.env, ...fromMaster.env])
+    uniqueTerms([
+      ...recipe.env,
+      ...llmEnv.slice(0, opts.isRecent ? 2 : 1),
+      ...exclusivePlatforms,
+    ])
   );
 
   // Flavor: at most 1 process + 1 compliance/regulation on env for diversity (not on stack)
@@ -328,11 +365,11 @@ function assignOne(opts: {
     ...(recipe.regulations || []),
   ]);
 
-  // Pad stack/env from recipe first (era-true, rotated)
-  let stackForbidden = occupancyKeys(env);
+  // Pad remaining mins from exclusive pools (never the same global JD bag)
+  let stackForbidden = occupancyKeys([...env, ...Array.from(priorOccupied)]);
   stack = padFrom(
     stack,
-    [...recipe.stack, ...opts.bank.termsByKind("tool")],
+    [...exclusiveTools, ...recipe.stack, ...toolPool],
     MIN_STACK,
     MAX_STACK,
     stackForbidden,
@@ -340,10 +377,10 @@ function assignOne(opts: {
     opts.bank
   );
 
-  let envForbidden = occupancyKeys(stack);
+  let envForbidden = occupancyKeys([...stack, ...Array.from(priorOccupied)]);
   env = padFrom(
     env,
-    [...recipe.env, ...opts.bank.termsByKind("platform")],
+    [...exclusivePlatforms, ...recipe.env, ...platformPool],
     MIN_ENV,
     MAX_ENV,
     envForbidden,
