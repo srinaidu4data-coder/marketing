@@ -36,6 +36,7 @@ import {
   getStackEnvBank,
   type StackEnvBankDoc,
 } from "./stack-env";
+import { groundPackToolsToThisChain } from "@/lib/resume/chain-isolation";
 
 const EC = "Employer / Client:";
 
@@ -203,6 +204,16 @@ export function ensurePackShipShape(
         ],
       };
     }
+  }
+
+  // Chain isolation: drop tools not grounded in THIS JD ∪ THIS master
+  // (kills cross-JD / prior-pack tool bleed from LLM habit or stale recipes)
+  {
+    const iso = groundPackToolsToThisChain(pack, {
+      jd: jd || "",
+      masterText: masterText || "",
+    });
+    pack = iso.pack;
   }
 
   // Skills section: coerce object items, scrub prose, never ship [object Object]

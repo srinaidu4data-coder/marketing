@@ -5,6 +5,7 @@ import {
   DEFAULT_LAYOUT_ID,
 } from "@/lib/resume/templates";
 import { getLayoutConfig } from "@/lib/resume/layout-config";
+import { getLayoutTypeface } from "@/lib/resume/layout-typefaces";
 import { Label } from "@/components/ui";
 
 function previewHref(layoutId: string, fmt: "html" | "docx" | "pdf") {
@@ -75,14 +76,14 @@ export function LayoutPicker({
     <div className="space-y-2.5">
       <Label htmlFor={name}>Resume layout</Label>
       <p className="text-[12.5px] leading-relaxed text-[#86868b]">
-        Five modern templates. One generation prompt fills all of them — pick
-        the look that fits the JD.{" "}
-        <span className="font-medium text-[#1d1d1f]">Signal Classic</span> is
-        the default for most vendor packs.
+        Five templates with <strong className="font-semibold text-[#1d1d1f]">distinct typefaces</strong>{" "}
+        (not Calibri clones). Same generation prompt; layout changes structure + fonts.{" "}
+        <span className="font-medium text-[#1d1d1f]">Signal Classic</span> is the default.
       </p>
       <div className="grid gap-2 sm:grid-cols-1 lg:grid-cols-2">
         {RESUME_LAYOUTS.map((l) => {
           const cfg = getLayoutConfig(l.id);
+          const typeface = getLayoutTypeface(l.id);
           const isDefault = l.id === DEFAULT_LAYOUT_ID;
           return (
             <div
@@ -111,7 +112,10 @@ export function LayoutPicker({
                   <span className="mt-0.5 block text-[12px] leading-snug text-[#6e6e73]">
                     {l.tagline}
                   </span>
-                  <span className="mt-1 block text-[11px] leading-snug text-[#86868b]">
+                  <span className="mt-1 block text-[11px] font-medium leading-snug text-[#0071e3]">
+                    Type · {typeface.label}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-snug text-[#86868b]">
                     <span className="font-medium text-[#6e6e73]">Best for:</span>{" "}
                     {cfg.bestFor}
                   </span>

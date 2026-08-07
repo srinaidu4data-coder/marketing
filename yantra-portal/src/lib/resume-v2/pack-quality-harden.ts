@@ -24,6 +24,7 @@ import {
   runStackEnvEngine,
   type StackEnvBankDoc,
 } from "./stack-env";
+import { groundPackToolsToThisChain } from "@/lib/resume/chain-isolation";
 
 /** Expanded filler / bank / meta lines */
 export const BANNED_BULLET_RE =
@@ -282,6 +283,20 @@ export function hardenPackQuality(
       notes.push(
         `stack-env: ship checks passed sigs=${r.report.uniqueSignatures}`
       );
+    }
+  }
+
+  // Fresh-chain tool isolation — strip tools not in THIS JD ∪ THIS master
+  {
+    const iso = groundPackToolsToThisChain(p, {
+      jd: opts.jd || "",
+      masterText: opts.masterText || "",
+    });
+    p = iso.pack;
+    if (iso.droppedCount) {
+      notes.push(`chain-iso: dropped ${iso.droppedCount} ungrounded tool token(s)`);
+    } else {
+      notes.push("chain-iso: tools grounded to this JD+master");
     }
   }
 

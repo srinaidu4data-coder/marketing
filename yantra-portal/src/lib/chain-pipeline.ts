@@ -241,6 +241,20 @@ export async function generateChainResumes(
       console.warn(`[chain ${chainId}] mkdir skipped (ephemeral FS)`, e);
     }
 
+    // Hard isolation: wipe any existing packs/artifacts for THIS chain only
+    // so regenerate never reuses prior tailored text or tools from a previous run.
+    try {
+      const { clearThisChainPacks } = await import("@/lib/resume/chain-isolation");
+      const wiped = await clearThisChainPacks(chainId);
+      if (wiped.rowsCleared || wiped.filesRemoved) {
+        console.info(
+          `[chain ${chainId}] isolation wipe packs=${wiped.rowsCleared} files=${wiped.filesRemoved}`
+        );
+      }
+    } catch (e) {
+      console.warn(`[chain ${chainId}] isolation wipe skipped`, e);
+    }
+
     await emit({
       type: "chain_start",
       chainId,
@@ -376,6 +390,8 @@ export async function generateChainResumes(
           layoutId: c.layoutId,
           email: c.email,
           chainBudget,
+          // Fresh-chain isolation — never pass prior packs; ground tools to this JD+master
+          chainId,
           // Fit repair is product law (runPack). fastMode only trims soft/BoN.
           fastMode: process.env.CHAIN_FAST_MODE === "1",
           useRunPack: process.env.RESUME_RUN_PACK !== "0",

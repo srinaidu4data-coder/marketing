@@ -7,13 +7,20 @@ import { formatDateTime } from "@/lib/utils";
 import {
   hideEmployeeChainsAction,
   hideSingleEmployeeChainAction,
+  hardPurgeChainsAction,
   unhideChainFromEmployeeAction,
 } from "@/app/actions/chains";
 
 export default async function AdminChainsPage({
   searchParams,
 }: {
-  searchParams?: { cleaned?: string; count?: string };
+  searchParams?: {
+    cleaned?: string;
+    count?: string;
+    purged?: string;
+    chains?: string;
+    packs?: string;
+  };
 }) {
   await requireAdmin();
   const chains = await prisma.chain.findMany({
@@ -39,29 +46,100 @@ export default async function AdminChainsPage({
     }
   }
 
+  async function hardPurgeAllAction(formData: FormData) {
+    "use server";
+    formData.set("scope", "all");
+    const r = await hardPurgeChainsAction(formData);
+    if (r.ok) {
+      redirect(
+        `/admin/chains?purged=1&chains=${r.chainsDeleted}&packs=${r.packsDeleted}`
+      );
+    }
+    redirect(`/admin/chains?purged=0`);
+  }
+
   return (
     <div className="space-y-6 p-2 lg:p-4">
       <PageHeader
         title="All Chains"
-        description="System-wide view — every employee’s chain activity. Cleaning only hides chains from employees; admin history is kept forever."
+        description="System-wide view. New generation is isolated per chain (this JD + master only). Soft clean hides from employees; hard purge permanently deletes packs and history."
         actions={
-          <form action={cleanAllAction}>
-            <Button
-              type="submit"
-              variant="outline"
-              title="Hide all employee-owned chains from employee workspaces. Admin still sees everything."
-            >
-              Clean all employee chains
-            </Button>
-          </form>
+          <div className="flex flex-wrap items-center gap-2">
+            <form action={cleanAllAction}>
+              <Button
+                type="submit"
+                variant="outline"
+                title="Hide all employee-owned chains from employee workspaces. Admin still sees everything."
+              >
+                Clean all employee chains
+              </Button>
+            </form>
+          </div>
         }
       />
+
+      <div className="rounded-2xl border border-violet-200 bg-violet-50/80 px-4 py-3 text-[13px] leading-relaxed text-violet-950">
+        <p className="font-semibold">Chain isolation (always on)</p>
+        <p className="mt-1 text-violet-900/90">
+          Each new / regenerated chain wipes its own pack rows, never seeds from
+          another chain, and grounds Tech Stack / Environment to{" "}
+          <strong>this JD + this master only</strong> so tools from prior JDs
+          cannot stick.
+        </p>
+      </div>
+
+      <details className="rounded-2xl border border-red-200 bg-red-50/50 p-4">
+        <summary className="cursor-pointer text-[14px] font-semibold text-red-900">
+          Hard purge all chain history (destructive)
+        </summary>
+        <p className="mt-2 text-[13px] text-red-900/85">
+          Permanently deletes every chain, generated resume pack, download
+          artifact, and linked vendor-submission memory. Masters and candidates
+          are kept. Type <code className="rounded bg-white px-1">PURGE</code> to
+          confirm.
+        </p>
+        <form action={hardPurgeAllAction} className="mt-3 flex flex-wrap items-end gap-2">
+          <div>
+            <label
+              htmlFor="purge-confirm"
+              className="block text-[11px] font-semibold uppercase tracking-wide text-red-800"
+            >
+              Confirm
+            </label>
+            <input
+              id="purge-confirm"
+              name="confirm"
+              placeholder="PURGE"
+              autoComplete="off"
+              className="mt-1 h-10 rounded-xl border border-red-200 bg-white px-3 text-[14px] font-mono"
+            />
+          </div>
+          <Button type="submit" variant="destructive">
+            Delete all chains forever
+          </Button>
+        </form>
+      </details>
 
       {searchParams?.cleaned === "1" ? (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           Cleaned {searchParams.count || "0"} chain
           {searchParams.count === "1" ? "" : "s"} from employee view. Admin
           history unchanged.
+        </div>
+      ) : null}
+
+      {searchParams?.purged === "1" ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          Hard purged {searchParams.chains || "0"} chain
+          {searchParams.chains === "1" ? "" : "s"} and {searchParams.packs || "0"}{" "}
+          pack
+          {searchParams.packs === "1" ? "" : "s"}. New chains start fully fresh.
+        </div>
+      ) : null}
+
+      {searchParams?.purged === "0" ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          Hard purge cancelled — type PURGE exactly to confirm.
         </div>
       ) : null}
 

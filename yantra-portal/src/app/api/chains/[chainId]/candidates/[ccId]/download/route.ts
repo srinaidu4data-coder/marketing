@@ -359,6 +359,7 @@ export async function GET(
       candidateName: row.candidate.name,
       jobTitle: nameOpts.jobTitle || undefined,
       text: storedText,
+      layoutId: row.layoutId || row.candidate.layoutId || null,
     });
     flushPerfLog(trace, { fmt, path: "text" });
     return new NextResponse(html, {

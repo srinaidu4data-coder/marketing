@@ -625,6 +625,61 @@ export async function hideEmployeeChainsAction(formData: FormData) {
   return { ok: true as const, count: result.count };
 }
 
+/**
+ * HARD PURGE — permanently delete chain history + packs + artifacts.
+ * Use before a clean slate so no prior pack text/tools can be re-downloaded
+ * or confused with fresh generation. Generation already never seeds from prior chains;
+ * this removes residual files and vendor-submission memory.
+ *
+ * scope:
+ *  - all: every chain in the system
+ *  - employee: one employee's chains (employeeId required)
+ *  - candidates: all chains that include any of the given candidateIds
+ */
+export async function hardPurgeChainsAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const confirm = String(formData.get("confirm") || "").trim();
+  if (confirm !== "PURGE") {
+    return {
+      ok: false as const,
+      error: 'Type PURGE in the confirm field to hard-delete chain history.',
+    };
+  }
+  const scope = String(formData.get("scope") || "all").trim();
+  const employeeId = String(formData.get("employeeId") || "").trim() || undefined;
+  const candidateIds = formData
+    .getAll("candidateIds")
+    .map(String)
+    .filter(Boolean);
+
+  const { hardPurgeChains } = await import("@/lib/resume/chain-isolation");
+  let result: Awaited<ReturnType<typeof hardPurgeChains>>;
+  if (scope === "employee" && employeeId) {
+    result = await hardPurgeChains({ employeeId });
+  } else if (scope === "candidates" && candidateIds.length) {
+    result = await hardPurgeChains({ candidateIds });
+  } else if (scope === "all") {
+    result = await hardPurgeChains({ all: true });
+  } else {
+    return { ok: false as const, error: "Invalid scope or missing ids" };
+  }
+
+  await audit("chain.hard_purge", admin.id, {
+    scope,
+    employeeId: employeeId || null,
+    candidateIds,
+    ...result,
+  });
+
+  revalidatePath("/chains");
+  revalidatePath("/admin/chains");
+  revalidatePath("/admin/queues");
+  revalidatePath("/admin/employees");
+  revalidatePath("/");
+
+  return { ok: true as const, ...result };
+}
+
 /** Hide one chain from its employee owner (admin only). */
 export async function hideSingleEmployeeChainAction(chainId: string) {
   const admin = await requireAdmin();

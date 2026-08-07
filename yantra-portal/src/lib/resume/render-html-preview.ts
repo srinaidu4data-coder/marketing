@@ -3,6 +3,7 @@
  */
 import { getLayout, type StructuredResume } from "./templates";
 import { getDna } from "./layout-themes";
+import { googleFontsLinkTags } from "./layout-typefaces";
 import {
   isBullet,
   isEnvToolsLine,
@@ -145,6 +146,7 @@ export function renderLayoutHtmlPreview(resume: StructuredResume): string {
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>${escapeHtml(layout.name)} — Layout preview</title>
+${googleFontsLinkTags(resume.layoutId)}
 <style>
   :root {
     --accent: ${dna.accent};
@@ -169,6 +171,8 @@ export function renderLayoutHtmlPreview(resume: StructuredResume): string {
     font-family: var(--body-font);
     color: #0f172a;
     line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
   .banner {
     max-width: 880px; margin: 0 auto 1rem;
@@ -322,10 +326,24 @@ export function renderLayoutHtmlPreview(resume: StructuredResume): string {
     background: var(--soft); border-radius: 8px; padding: .55rem .8rem; font-size: .9rem;
   }
   .skill-mono-block {
-    font-family: ui-monospace, Consolas, monospace; font-size: .8rem;
+    font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; font-size: .8rem;
     background: #164e63; color: #ecfeff; padding: .65rem .8rem; border-radius: 6px;
     border-left: 3px solid var(--accent);
   }
+  /* Type polish */
+  .hdr.elegant h1 { font-feature-settings: "kern" 1, "liga" 1; }
+  .hdr.minimal h1 { font-feature-settings: "ss01" 1, "kern" 1; }
+  .hdr.band h1 { font-stretch: condensed; }
+  body[data-layout="consultant_band"] h2,
+  body[data-layout="impact_banner"] h2 {
+    font-family: var(--name-font);
+    letter-spacing: .12em;
+  }
+  body[data-layout="ats_classic"] h1,
+  body[data-layout="signal_classic"] h1 {
+    font-family: var(--name-font);
+  }
+  p, li { font-feature-settings: "kern" 1, "liga" 1; }
   .skill-plain { color: inherit; }
   ul.bullets { margin: .35rem 0 .6rem; padding-left: 1.2rem; }
   ul.bullets-timeline-dot { list-style: none; padding-left: .25rem; }

@@ -280,6 +280,11 @@ export async function tailorResume(opts: {
    * single LLM wave, no soft/BoN, no ATS-until-100 climb.
    */
   fastMode?: boolean;
+  /**
+   * Owning chain id (isolation audit only). Generation never loads other
+   * chains' packs — this documents the virgin-run contract.
+   */
+  chainId?: string;
 }): Promise<TailorResumeResult> {
   // Sole writing SOT: Admin ACTIVE PromptVersion (read-only; no auto-seed)
   let promptId = "default";
@@ -299,11 +304,17 @@ export async function tailorResume(opts: {
 
   // ── Prompt-only v2 path (default) ─────────────────────────────────
   // Hydrate + normalize inputs so chain packs never fail on phantom "empty JD".
+  // ISOLATION: only this JD + this master. Never prior chain packs / prior JDs.
   const { normalizeJdText, normalizeMasterText } = await import(
     "./resume-v2/precheck"
   );
   const jdHydrated = normalizeJdText(opts.jd);
   const masterHydrated = normalizeMasterText(opts.master);
+  if (opts.chainId) {
+    console.info(
+      `[tailorResume] chain_isolation chainId=${opts.chainId} jdChars=${jdHydrated.length} masterChars=${masterHydrated.length}`
+    );
+  }
   if (!promptTemplate || promptTemplate.trim().length < 80) {
     throw new Error(NO_ACTIVE_PROMPT_MESSAGE);
   }

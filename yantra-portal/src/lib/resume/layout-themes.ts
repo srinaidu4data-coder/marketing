@@ -44,12 +44,16 @@ export const LAYOUT_DNA: Record<ResumeLayoutId, ThemeDNA> = {
     sheetBg: "#ffffff",
     nameAlign: "center",
     nameTransform: "uppercase",
-    nameSizePx: 28,
-    nameWeight: 800,
-    nameLetterSpacing: "0.14em",
-    nameFontStack: '"Segoe UI", Calibri, system-ui, sans-serif',
-    headlineFontStack: '"Segoe UI", Calibri, system-ui, sans-serif',
-    bodyFontStack: '"Segoe UI", Calibri, system-ui, sans-serif',
+    nameSizePx: 30,
+    nameWeight: 700,
+    nameLetterSpacing: "0.12em",
+    // Source Serif display + Source Sans body — editorial corporate, not Calibri
+    nameFontStack:
+      '"Source Serif 4", "Source Serif Pro", Cambria, Georgia, "Times New Roman", serif',
+    headlineFontStack:
+      '"Source Sans 3", "Source Sans Pro", Calibri, "Segoe UI", system-ui, sans-serif',
+    bodyFontStack:
+      '"Source Sans 3", "Source Sans Pro", Calibri, "Segoe UI", system-ui, sans-serif',
     h2Style: "full-rule",
     h2Transform: "uppercase",
     bulletStyle: "disc",
@@ -61,7 +65,7 @@ export const LAYOUT_DNA: Record<ResumeLayoutId, ThemeDNA> = {
     jobWeight: 700,
     radius: "4px",
     shadow: "0 4px 24px rgba(15,23,42,.06)",
-    aura: "Corporate · Portal-safe · Precise",
+    aura: "Editorial corporate · Serif name · Fluent body",
   },
   executive_serif: {
     headerMode: "centered_serif_elegant",
@@ -69,12 +73,16 @@ export const LAYOUT_DNA: Record<ResumeLayoutId, ThemeDNA> = {
     sheetBg: "#fffcf7",
     nameAlign: "center",
     nameTransform: "none",
-    nameSizePx: 36,
-    nameWeight: 600,
-    nameLetterSpacing: "0.02em",
-    nameFontStack: 'Georgia, "Times New Roman", serif',
-    headlineFontStack: 'Georgia, "Times New Roman", serif',
-    bodyFontStack: '"Segoe UI", Calibri, system-ui, sans-serif',
+    nameSizePx: 40,
+    nameWeight: 700,
+    nameLetterSpacing: "0.01em",
+    // Playfair Display = boardroom drama; Lora body for warm long-form
+    nameFontStack:
+      '"Playfair Display", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif',
+    headlineFontStack:
+      'Lora, Georgia, "Palatino Linotype", "Times New Roman", serif',
+    bodyFontStack:
+      'Lora, Georgia, "Source Sans 3", Calibri, "Segoe UI", serif',
     h2Style: "underline-gold",
     h2Transform: "none",
     bulletStyle: "dash",
@@ -86,7 +94,7 @@ export const LAYOUT_DNA: Record<ResumeLayoutId, ThemeDNA> = {
     jobWeight: 600,
     radius: "2px",
     shadow: "0 8px 32px rgba(30,58,95,.08)",
-    aura: "Executive · Refined · Leadership",
+    aura: "Boardroom serif · Playfair name · Leadership",
   },
   technical_dense: {
     headerMode: "left_rail_tech",
@@ -94,12 +102,15 @@ export const LAYOUT_DNA: Record<ResumeLayoutId, ThemeDNA> = {
     sheetBg: "#0f172a",
     nameAlign: "left",
     nameTransform: "uppercase",
-    nameSizePx: 22,
+    nameSizePx: 24,
     nameWeight: 700,
-    nameLetterSpacing: "0.12em",
-    nameFontStack: 'ui-monospace, "Cascadia Code", Consolas, monospace',
-    headlineFontStack: '"Segoe UI", system-ui, sans-serif',
-    bodyFontStack: '"Segoe UI", system-ui, sans-serif',
+    nameLetterSpacing: "0.14em",
+    nameFontStack:
+      '"JetBrains Mono", "Cascadia Code", Consolas, "Courier New", monospace',
+    headlineFontStack:
+      '"IBM Plex Sans", "Segoe UI", Calibri, system-ui, sans-serif',
+    bodyFontStack:
+      '"IBM Plex Sans", "Segoe UI", Calibri, system-ui, sans-serif',
     h2Style: "pill",
     h2Transform: "uppercase",
     bulletStyle: "square",
@@ -111,7 +122,7 @@ export const LAYOUT_DNA: Record<ResumeLayoutId, ThemeDNA> = {
     jobWeight: 700,
     radius: "6px",
     shadow: "0 0 0 1px #1e293b, 0 12px 40px rgba(0,0,0,.4)",
-    aura: "Engineer · Dense · High-signal",
+    aura: "Console mono · JetBrains · High-signal",
   },
   timeline_progressive: {
     headerMode: "timeline_rail",
@@ -119,12 +130,15 @@ export const LAYOUT_DNA: Record<ResumeLayoutId, ThemeDNA> = {
     sheetBg: "#ffffff",
     nameAlign: "left",
     nameTransform: "none",
-    nameSizePx: 30,
-    nameWeight: 700,
-    nameLetterSpacing: "-0.02em",
-    nameFontStack: '"Segoe UI", system-ui, sans-serif',
-    headlineFontStack: '"Segoe UI", system-ui, sans-serif',
-    bodyFontStack: '"Segoe UI", system-ui, sans-serif',
+    nameSizePx: 32,
+    nameWeight: 800,
+    nameLetterSpacing: "-0.025em",
+    // Outfit geometric display + DM Sans body — growth energy
+    nameFontStack: 'Outfit, Candara, "Segoe UI", Calibri, system-ui, sans-serif',
+    headlineFontStack:
+      '"DM Sans", Candara, "Segoe UI", Calibri, system-ui, sans-serif',
+    bodyFontStack:
+      '"DM Sans", Candara, "Segoe UI", Calibri, system-ui, sans-serif',
     h2Style: "left-bar",
     h2Transform: "none",
     bulletStyle: "timeline-dot",
@@ -136,7 +150,7 @@ export const LAYOUT_DNA: Record<ResumeLayoutId, ThemeDNA> = {
     jobWeight: 700,
     radius: "10px",
     shadow: "0 10px 30px rgba(5,150,105,.1)",
-    aura: "Growth · Progressive · Momentum",
+    aura: "Geometric growth · Outfit display · Momentum",
   },
   modern_minimal: {
     headerMode: "minimal_hero",
@@ -144,12 +158,15 @@ export const LAYOUT_DNA: Record<ResumeLayoutId, ThemeDNA> = {
     sheetBg: "#ffffff",
     nameAlign: "left",
     nameTransform: "none",
-    nameSizePx: 42,
+    nameSizePx: 46,
     nameWeight: 800,
-    nameLetterSpacing: "-0.04em",
-    nameFontStack: 'Inter, "Segoe UI", system-ui, sans-serif',
-    headlineFontStack: 'Inter, "Segoe UI", system-ui, sans-serif',
-    bodyFontStack: 'Inter, "Segoe UI", system-ui, sans-serif',
+    nameLetterSpacing: "-0.045em",
+    // Manrope for sculpted display; Inter for product body
+    nameFontStack:
+      'Manrope, Inter, "Segoe UI", Calibri, system-ui, sans-serif',
+    headlineFontStack:
+      'Inter, Manrope, "Segoe UI", Calibri, system-ui, sans-serif',
+    bodyFontStack: 'Inter, "Segoe UI", Calibri, system-ui, sans-serif',
     h2Style: "minimal-gap",
     h2Transform: "uppercase",
     bulletStyle: "disc",
@@ -161,7 +178,7 @@ export const LAYOUT_DNA: Record<ResumeLayoutId, ThemeDNA> = {
     jobWeight: 600,
     radius: "0",
     shadow: "none",
-    aura: "Minimal · Bold type · Airy",
+    aura: "Manrope hero · Inter body · Product sheet",
   },
   consultant_band: {
     headerMode: "full_band",
@@ -169,12 +186,14 @@ export const LAYOUT_DNA: Record<ResumeLayoutId, ThemeDNA> = {
     sheetBg: "#ffffff",
     nameAlign: "left",
     nameTransform: "uppercase",
-    nameSizePx: 26,
+    nameSizePx: 30,
     nameWeight: 800,
-    nameLetterSpacing: "0.1em",
-    nameFontStack: '"Segoe UI", system-ui, sans-serif',
-    headlineFontStack: '"Segoe UI", system-ui, sans-serif',
-    bodyFontStack: '"Segoe UI", system-ui, sans-serif',
+    nameLetterSpacing: "0.08em",
+    // Barlow Condensed = proposal punch; Barlow body
+    nameFontStack:
+      '"Barlow Condensed", "Arial Narrow", Impact, Arial, "Segoe UI", sans-serif',
+    headlineFontStack: 'Barlow, "Trebuchet MS", Arial, "Segoe UI", sans-serif',
+    bodyFontStack: 'Barlow, "Trebuchet MS", Arial, "Segoe UI", sans-serif',
     h2Style: "short-rule",
     h2Transform: "uppercase",
     bulletStyle: "disc",
@@ -186,7 +205,7 @@ export const LAYOUT_DNA: Record<ResumeLayoutId, ThemeDNA> = {
     jobWeight: 700,
     radius: "12px",
     shadow: "0 16px 48px rgba(194,65,12,.12)",
-    aura: "Bold · Marketing pack · High impact",
+    aura: "Condensed impact · Proposal punch · High energy",
   },
 };
 

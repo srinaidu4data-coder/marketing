@@ -94,7 +94,7 @@ export const LAYOUT_CONFIGS: LayoutConfig[] = [
       ["education", "Education", 5],
     ]),
     style: {
-      nameSize: 22,
+      nameSize: 24,
       headlineSize: 11,
       headingSize: 10,
       bodySize: 10,
@@ -107,7 +107,7 @@ export const LAYOUT_CONFIGS: LayoutConfig[] = [
       headerBand: false,
       leftRail: false,
       skillSeparator: "  ·  ",
-      nameFont: "sans",
+      nameFont: "serif",
       bodyFont: "sans",
       sectionBar: true,
       boldJobTitles: true,
@@ -134,7 +134,7 @@ export const LAYOUT_CONFIGS: LayoutConfig[] = [
       ["education", "Credentials", 5],
     ]),
     style: {
-      nameSize: 24,
+      nameSize: 26,
       headlineSize: 11,
       headingSize: 11,
       bodySize: 10,
@@ -174,7 +174,7 @@ export const LAYOUT_CONFIGS: LayoutConfig[] = [
       ["education", "Credentials", 5],
     ]),
     style: {
-      nameSize: 18,
+      nameSize: 20,
       headlineSize: 10,
       headingSize: 9,
       bodySize: 9,
@@ -215,7 +215,7 @@ export const LAYOUT_CONFIGS: LayoutConfig[] = [
       ["education", "Foundation", 5],
     ]),
     style: {
-      nameSize: 22,
+      nameSize: 24,
       headlineSize: 11,
       headingSize: 10,
       bodySize: 10,
@@ -255,7 +255,7 @@ export const LAYOUT_CONFIGS: LayoutConfig[] = [
       ["education", "Education", 5],
     ]),
     style: {
-      nameSize: 20,
+      nameSize: 24,
       headlineSize: 11,
       headingSize: 10,
       bodySize: 10,

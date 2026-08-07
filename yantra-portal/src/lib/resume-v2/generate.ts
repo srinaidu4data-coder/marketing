@@ -67,9 +67,16 @@ function buildUserMessage(opts: {
    * When set, still keep master for locks but evidence drives rewrite.
    */
   evidenceBlock?: string;
+  /** Fresh-chain isolation banner (default on) */
+  isolationBanner?: string;
 }): string {
   const isFitAccumulate = /FIT ACCUMULATE|MUST WEAVE/i.test(opts.feedback || "");
   const parts: string[] = [];
+
+  // Always first: no prior-chain / prior-JD tool bleed
+  if (opts.isolationBanner) {
+    parts.push(opts.isolationBanner, "");
+  }
 
   // OpenAI-style: instructions + prior first on repair (model attends to front)
   if (isFitAccumulate && opts.feedback) {
@@ -286,14 +293,19 @@ export async function generateResumeV2(opts: {
         /* bank optional */
       }
     }
+    const { CHAIN_ISOLATION_BANNER } = await import(
+      "@/lib/resume/chain-isolation"
+    );
     const user = buildUserMessage({
       master: masterForLlm,
       jd: jdForLlm,
       contactHint: pre.contact,
       feedback: opts.feedback,
+      // priorJson is ONLY within-run Fit repair for THIS pack — never another chain
       priorJson: opts.priorJson,
       bulletBankBlock,
       evidenceBlock: opts.evidenceBlock,
+      isolationBanner: CHAIN_ISOLATION_BANNER,
     });
 
     try {

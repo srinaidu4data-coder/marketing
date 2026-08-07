@@ -14,6 +14,7 @@ import {
   stripBullet,
 } from "./line-class";
 import { stripEngineFooter } from "./strip-engine-footer";
+import { registerPdfFonts } from "./pdf-fonts";
 
 export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer> {
   const layout = getLayout(resume.layoutId);
@@ -39,6 +40,14 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
+    // Distinct typefaces per layout (system TTF when available)
+    const faces = registerPdfFonts(doc, resume.layoutId);
+    const F_NAME = faces.nameBold;
+    const F_HEAD = faces.name;
+    const F_BODY = faces.body;
+    const F_BOLD = faces.bodyBold;
+    const F_MONO = faces.mono;
+
     const pageW = doc.page.width;
     const pageH = doc.page.height;
     const contentLeft = margin + (layout.style.leftRail ? 14 : 0);
@@ -58,12 +67,12 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
       doc.save();
       doc.rect(0, 0, pageW, 96).fill(accent);
       doc.rect(0, 90, pageW, 10).fill("#ea580c");
-      doc.fillColor("#ffffff").fontSize(18).font("Helvetica-Bold");
+      doc.fillColor("#ffffff").fontSize(20).font(F_NAME);
       doc.text(resume.candidateName.toUpperCase(), contentLeft, 24, {
         width: contentWidth,
         characterSpacing: 1.5,
       });
-      doc.fillColor("#ffedd5").fontSize(11).font("Helvetica");
+      doc.fillColor("#ffedd5").fontSize(11).font(F_BODY);
       doc.text(resume.headline, contentLeft, doc.y + 4, { width: contentWidth });
       if (resume.contactLine) {
         doc.fillColor("#fed7aa").fontSize(9).text(resume.contactLine, contentLeft, doc.y + 2, {
@@ -79,7 +88,7 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
       doc
         .fillColor("#b8860b")
         .fontSize(8)
-        .font("Helvetica")
+        .font(F_BODY)
         .text("E X E C U T I V E   P R O F I L E", {
           align: "center",
           width: contentWidth,
@@ -89,15 +98,15 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
       doc
         .fillColor(accent)
         .fontSize(26)
-        .font("Times-Bold")
+        .font(F_NAME)
         .text(resume.candidateName, { align: "center", width: contentWidth });
       doc
         .fillColor(muted)
         .fontSize(11)
-        .font("Times-Italic")
+        .font(F_HEAD)
         .text(resume.headline, { align: "center", width: contentWidth });
       if (resume.contactLine) {
-        doc.fillColor(muted).fontSize(9).font("Helvetica").text(resume.contactLine, {
+        doc.fillColor(muted).fontSize(9).font(F_BODY).text(resume.contactLine, {
           align: "center",
           width: contentWidth,
         });
@@ -114,16 +123,16 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
     } else if (layout.id === "modern_minimal") {
       doc.x = contentLeft;
       doc.y = margin + 6;
-      doc.fillColor("#a1a1aa").fontSize(8).font("Helvetica-Bold").text("PORTFOLIO", {
+      doc.fillColor("#a1a1aa").fontSize(8).font(F_BOLD).text("PORTFOLIO", {
         characterSpacing: 3,
       });
       doc.moveDown(0.4);
       doc
         .fillColor("#09090b")
-        .fontSize(30)
-        .font("Helvetica-Bold")
+        .fontSize(32)
+        .font(F_NAME)
         .text(resume.candidateName, { width: contentWidth * 0.9 });
-      doc.fillColor(muted).fontSize(10).font("Helvetica").text(resume.headline, {
+      doc.fillColor(muted).fontSize(10).font(F_BODY).text(resume.headline, {
         width: contentWidth,
       });
       if (resume.contactLine) {
@@ -135,22 +144,22 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
       doc.y = margin;
       doc.save();
       doc.roundedRect(contentLeft, doc.y, 48, 15, 3).fill("#22d3ee");
-      doc.fillColor("#0f172a").fontSize(8).font("Helvetica-Bold").text("TECH", contentLeft + 10, doc.y + 3.5);
+      doc.fillColor("#0f172a").fontSize(8).font(F_BOLD).text("TECH", contentLeft + 10, doc.y + 3.5);
       doc.restore();
       doc.y += 26;
       doc
         .fillColor("#22d3ee")
-        .fontSize(15)
-        .font("Helvetica-Bold")
+        .fontSize(16)
+        .font(F_NAME)
         .text(resume.candidateName.toUpperCase(), {
           width: contentWidth,
           characterSpacing: 1.4,
         });
-      doc.fillColor("#cbd5e1").fontSize(10).font("Helvetica").text(resume.headline, {
+      doc.fillColor("#cbd5e1").fontSize(10).font(F_BODY).text(resume.headline, {
         width: contentWidth,
       });
       if (resume.contactLine) {
-        doc.fillColor("#94a3b8").fontSize(8).font("Courier").text(resume.contactLine, {
+        doc.fillColor("#94a3b8").fontSize(8).font(F_MONO).text(resume.contactLine, {
           width: contentWidth,
         });
       }
@@ -169,15 +178,15 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
       doc
         .fillColor("#059669")
         .fontSize(8)
-        .font("Helvetica-Bold")
+        .font(F_BOLD)
         .text("EARLY  →  MID  →  RECENT", { characterSpacing: 1 });
       doc.moveDown(0.4);
       doc
         .fillColor(accent)
-        .fontSize(22)
-        .font("Helvetica-Bold")
+        .fontSize(24)
+        .font(F_NAME)
         .text(resume.candidateName, { width: contentWidth });
-      doc.fillColor(muted).fontSize(10).font("Helvetica").text(resume.headline, {
+      doc.fillColor(muted).fontSize(10).font(F_BODY).text(resume.headline, {
         width: contentWidth,
       });
       if (resume.contactLine) {
@@ -193,19 +202,19 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
         .stroke();
       doc.y = y + 12;
     } else {
-      // ats_classic — centered corporate
+      // ats_classic / signal_classic — editorial corporate
       doc.x = contentLeft;
       doc.y = margin;
       doc
         .fillColor(accent)
-        .fontSize(18)
-        .font("Helvetica-Bold")
+        .fontSize(20)
+        .font(F_NAME)
         .text(resume.candidateName.toUpperCase(), {
           width: contentWidth,
           align: "center",
           characterSpacing: 2,
         });
-      doc.fillColor(muted).fontSize(10).font("Helvetica").text(resume.headline, {
+      doc.fillColor(muted).fontSize(10).font(F_BODY).text(resume.headline, {
         width: contentWidth,
         align: "center",
       });
@@ -246,7 +255,7 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
       doc
         .fillColor(accent)
         .fontSize(layout.style.headingSize)
-        .font("Helvetica-Bold")
+        .font(F_BOLD)
         .text(heading, contentLeft, doc.y, { width: contentWidth });
 
       if (layout.style.sectionBar) {
@@ -277,7 +286,7 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
           doc
             .fillColor("#0f172a")
             .fontSize(layout.style.bodySize + 0.5)
-            .font("Helvetica-Bold")
+            .font(F_BOLD)
             .text(line, contentLeft, doc.y, { width: contentWidth });
           doc.moveDown(0.08);
           continue;
@@ -287,7 +296,7 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
           doc
             .fillColor(accent)
             .fontSize(layout.style.bodySize)
-            .font("Helvetica-Bold")
+            .font(F_BOLD)
             .text(line, contentLeft, doc.y, { width: contentWidth });
           doc.moveDown(0.1);
           continue;
@@ -297,7 +306,7 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
           doc
             .fillColor(muted)
             .fontSize(layout.style.bodySize - 0.5)
-            .font("Helvetica-Oblique")
+            .font(F_BODY)
             .text(line, contentLeft, doc.y, { width: contentWidth });
           doc.moveDown(0.12);
           continue;
@@ -317,7 +326,7 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
           doc
             .fillColor("#1e293b")
             .fontSize(layout.style.bodySize)
-            .font("Helvetica")
+            .font(F_BODY)
             .text(display, contentLeft + 6, by + 2, { width: contentWidth - 12 });
           doc.y = by + textH + 10;
           continue;
@@ -337,7 +346,7 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
           doc
             .fillColor("#1e293b")
             .fontSize(layout.style.bodySize)
-            .font("Helvetica")
+            .font(F_BODY)
             .text(content, textX, by, { width: textW, lineGap: 2 });
           doc.y = Math.max(doc.y, by + h) + 4;
           continue;
@@ -347,7 +356,7 @@ export async function renderPdfBuffer(resume: StructuredResume): Promise<Buffer>
         doc
           .fillColor("#1e293b")
           .fontSize(layout.style.bodySize)
-          .font("Helvetica")
+          .font(F_BODY)
           .text(line, contentLeft, doc.y, {
             width: contentWidth,
             lineGap: sumTight ? 1.5 : 2,
@@ -395,6 +404,7 @@ export async function renderPdfFromPlainText(opts: {
   candidateName: string;
   jobTitle?: string;
   text: string;
+  layoutId?: string | null;
 }): Promise<Buffer> {
   const lines = stripEngineFooter(opts.text || "")
     .replace(/\r\n/g, "\n")
@@ -427,6 +437,11 @@ export async function renderPdfFromPlainText(opts: {
         resolve(out);
       });
       doc.on("error", reject);
+
+      const faces = registerPdfFonts(doc, opts.layoutId);
+      const F_NAME = faces.nameBold;
+      const F_BODY = faces.body;
+      const F_BOLD = faces.bodyBold;
 
       const pageW = doc.page.width;
       const pageH = doc.page.height;
@@ -462,11 +477,11 @@ export async function renderPdfFromPlainText(opts: {
 
       doc
         .fillColor("#0f172a")
-        .fontSize(18)
-        .font("Helvetica-Bold");
+        .fontSize(20)
+        .font(F_NAME);
       safeText(name.toUpperCase(), margin, margin, { width: contentWidth });
       if (jobTitle) {
-        doc.fillColor("#334155").fontSize(11).font("Helvetica");
+        doc.fillColor("#334155").fontSize(11).font(F_BODY);
         safeText(jobTitle, margin, undefined, { width: contentWidth });
       }
       doc.moveDown(0.3);
@@ -498,7 +513,7 @@ export async function renderPdfFromPlainText(opts: {
         if (isHeading) {
           ensureSpace(28);
           doc.moveDown(0.35);
-          doc.fillColor("#0f172a").fontSize(11).font("Helvetica-Bold");
+          doc.fillColor("#0f172a").fontSize(11).font(F_BOLD);
           safeText(line, margin, undefined, { width: contentWidth });
           doc.moveDown(0.15);
           continue;
@@ -521,11 +536,11 @@ export async function renderPdfFromPlainText(opts: {
           doc.save();
           doc.circle(margin + 4, by + 4, 2).fill("#0f172a");
           doc.restore();
-          doc.fillColor("#1e293b").fontSize(10).font("Helvetica");
+          doc.fillColor("#1e293b").fontSize(10).font(F_BODY);
           safeText(body, textX, by, { width: textW, lineGap: 1.5 });
           doc.y = Math.max(doc.y, by + h) + 3;
         } else {
-          doc.fillColor("#1e293b").fontSize(10).font("Helvetica");
+          doc.fillColor("#1e293b").fontSize(10).font(F_BODY);
           safeText(body, margin, undefined, {
             width: contentWidth,
             lineGap: 1.5,
@@ -536,7 +551,7 @@ export async function renderPdfFromPlainText(opts: {
 
       // Ensure at least some body content
       if (lines.filter((l) => l.trim()).length === 0) {
-        doc.fillColor("#64748b").fontSize(10).font("Helvetica");
+        doc.fillColor("#64748b").fontSize(10).font(F_BODY);
         safeText(
           "Resume content was empty. Re-generate the pack and download again.",
           margin,
