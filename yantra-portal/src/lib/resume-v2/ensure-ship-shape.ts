@@ -143,7 +143,7 @@ export function ensurePackShipShape(
         jd,
         { minStack: 3, minEnv: 2 }
       );
-      let stack = pair.techStack || stackFallback;
+      const stack = pair.techStack || stackFallback;
       let env = pair.environment || envFallback;
       // Final zero-overlap pass
       if (stack && env) {

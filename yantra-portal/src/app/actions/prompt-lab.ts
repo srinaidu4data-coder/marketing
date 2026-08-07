@@ -1,7 +1,6 @@
 "use server";
 
 import { requireAdmin } from "@/lib/session";
-import { prisma } from "@/lib/db";
 import { llmChatJson } from "@/lib/resume/llm-chat";
 import { getLlmConfigForProvider, type LlmProvider } from "@/lib/resume/llm-config";
 import { getActiveLlmConfig } from "@/lib/system-settings";
