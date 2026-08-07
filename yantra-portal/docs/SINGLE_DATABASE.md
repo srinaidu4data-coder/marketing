@@ -1,4 +1,4 @@
-# Single database policy
+# Single database policy (OpenAI + Claude + Grok consensus)
 
 **One Postgres. One Admin roster. Everywhere.**
 
@@ -8,50 +8,56 @@
 | Local `npm run dev` | **Same** `DATABASE_URL` |
 | Scripts (serialize, reparse, probes) | **Same** `DATABASE_URL` |
 
-## Why
+## Why two DBs broke us
 
-`file:./dev.db` was a **second** candidate list. That caused:
+`file:./dev.db` was a **second** candidate list:
 
-- Local: `srinaidu582@gmail.com`
-- Admin: `srinaidusfdc@gmail.com`
+| | Local SQLite | Admin Postgres |
+|--|--------------|----------------|
+| Sri email | `srinaidu582@gmail.com` | `srinaidusfdc@gmail.com` |
+| Deletes | only local | only prod |
+| Agents | answered from wrong DB | — |
 
-Those are different rows in different databases — not “two views of one person.”
+## Review consensus (fix)
 
-## Setup (local)
+| Lens | Finding | Fix |
+|------|---------|-----|
+| **OpenAI (ops)** | Dual schema + dual env = guaranteed drift | One `schema.prisma` = Postgres; `predev` + `db:check` refuse sqlite |
+| **Claude (safety)** | Silent fallback to sqlite hides errors | `assertSingleDatabaseUrl` hard-fails; no soft “ok anyway” |
+| **Grok (product)** | User sees one Admin; tools must match | Scripts/dev use only Admin URL; no “clone universe” |
 
-1. Vercel → Project **roleforge** → Settings → Environment Variables  
-2. Copy **Production** `DATABASE_URL` and `DIRECT_URL`  
-3. Put them in `yantra-portal/.env.local` (gitignored):
+## Setup (local) — do once
+
+1. Vercel → **roleforge** → Settings → Environment Variables  
+2. Copy **Production** `DATABASE_URL` + `DIRECT_URL`  
+3. Put in **`yantra-portal/.env.local`** (gitignored):
 
 ```env
 DATABASE_URL="postgresql://…"
 DIRECT_URL="postgresql://…"
 ```
 
-4. Generate client:
+Or:
 
 ```bash
-npm run db:generate
+set DATABASE_URL=postgresql://...
+set DIRECT_URL=postgresql://...
+npm run db:use-admin
 ```
 
-5. Confirm:
+4. Confirm:
 
 ```bash
 npm run db:check
+npm run db:generate
 ```
 
-You should see the same candidates as Admin.
+Candidates listed by scripts must match Admin.
 
 ## Forbidden
 
 - `DATABASE_URL=file:./dev.db` for normal work  
-- Maintaining a separate “local” roster  
-- Expecting scripts on sqlite to match Admin
+- Expecting local sqlite to match Admin  
+- “Soft” second copy of the roster  
 
-Emergency offline clone only:
-
-```bash
-ALLOW_SQLITE_CLONE=1 DATABASE_URL="file:./dev.db" …
-```
-
-That path is unsupported for real data.
+Emergency offline only: `ALLOW_SQLITE_CLONE=1` (unsupported for real data).

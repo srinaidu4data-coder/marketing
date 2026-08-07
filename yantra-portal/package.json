@@ -13,13 +13,16 @@
     "test:eval-c5": "node scripts/eval-run-pack-c5.mjs",
     "verify": "npm run typecheck && npm run lint && npm run test:smoke && npm run test:eval-c5",
     "db:check": "node scripts/check-single-db.mjs",
-    "db:generate": "prisma generate --schema=prisma/schema.prisma",
+    "db:use-admin": "node scripts/use-admin-db.mjs",
+    "db:generate": "node scripts/check-single-db.mjs && prisma generate --schema=prisma/schema.prisma",
     "db:push": "node scripts/check-single-db.mjs && prisma db push --schema=prisma/schema.prisma",
     "db:seed": "node scripts/check-single-db.mjs && tsx prisma/seed.ts",
     "db:reset": "node scripts/check-single-db.mjs && prisma db push --schema=prisma/schema.prisma --force-reset && tsx prisma/seed.ts",
     "postinstall": "prisma generate --schema=prisma/schema.prisma",
     "db:push:pg": "npm run db:push",
-    "db:seed:pg": "npm run db:seed"
+    "db:seed:pg": "npm run db:seed",
+    "predev": "node scripts/check-single-db.mjs",
+    "dev": "next dev"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
